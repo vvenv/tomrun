@@ -398,7 +398,8 @@ class HudView(context: Context, private val game: Game) : View(context) {
             val qd = game.quests.count { it.done }
             pixText(canvas, "任务 $qd/3  ·  最高连击 ${game.bestComboRun}", w / 2f, h * 0.51f, 26f * s, 0xFF7DEBA0.toInt(), sdx, sdy)
             if (game.deadTime > 0.6f) {
-                pixText(canvas, "点击屏幕再来一次", w / 2f, h * 0.58f, 28f * s, Color.WHITE, sdx, sdy)
+                // 放到底部，避开 0.61h 起的成就/图鉴信息与按钮区
+                pixText(canvas, "点击屏幕再来一次", w / 2f, h * 0.94f, 28f * s, Color.WHITE, sdx, sdy)
             }
         } else {
             pixText(canvas, "汤姆猫跑酷", w / 2f, h * 0.24f, 72f * s, Color.WHITE, sdx, sdy)
