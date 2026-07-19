@@ -20,7 +20,6 @@ import kotlin.math.min
  */
 class HudView(context: Context, private val game: Game) : View(context) {
 
-    // 关闭抗锯齿 / 亚像素：低分辨率位图上必须是硬边缘，最近邻放大后才是块状像素字
     private val textPaint = Paint().apply {
         color = Color.WHITE
         textAlign = Paint.Align.CENTER
@@ -52,13 +51,14 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private var downY = 0f
     private var consumed = false
 
-    private val colorBtn = RectF()   // 离屏坐标系
+    private val colorBtn = RectF()
 
     companion object {
-        private const val PIX = 3    // 像素化倍率（越大块越粗）
-        private val COLOR_NAMES = arrayOf("蓝灰", "橘黄", "乌黑", "粉红")
+        private const val PIX = 3
+        private val COLOR_NAMES = arrayOf("蓝灰", "橘黄", "乌黑", "粉红", "奶白", "青绿", "紫罗兰", "棕褐")
         private val COLOR_CHIPS = intArrayOf(
-            0xFF8594B3.toInt(), 0xFFF29E42.toInt(), 0xFF4D4D59.toInt(), 0xFFF5A8C1.toInt()
+            0xFF8594B3.toInt(), 0xFFF29E42.toInt(), 0xFF4D4D59.toInt(), 0xFFF5A8C1.toInt(),
+            0xFFEDE5D1.toInt(), 0xFF59B8A6.toInt(), 0xFF9E80D1.toInt(), 0xFF9E704D.toInt()
         )
     }
 
@@ -113,49 +113,134 @@ class HudView(context: Context, private val game: Game) : View(context) {
         postInvalidateOnAnimation()
     }
 
-    // ---------- 全部 HUD 内容（离屏低分辨率坐标系） ----------
     private fun drawHud(canvas: Canvas, w: Float, h: Float) {
         val s = h / 720f
-        // 硬阴影：整像素偏移，避免 soft shadow 把像素边缘抹糊
         val shadowDx = 1f
         val shadowDy = 1f
 
-        // 右上角：得分 / 金币 / 最高
+        // 右上角：得分 / 金币 / 最高 / 连击
         textPaint.textAlign = Paint.Align.RIGHT
         pixText(canvas, "得分 ${game.score}", w - 36f * s, 66f * s, 42f * s, Color.WHITE, shadowDx, shadowDy)
         pixText(canvas, "金币 ${game.coins}", w - 36f * s, 106f * s, 28f * s, 0xFFFFD54A.toInt(), shadowDx, shadowDy)
         pixText(canvas, "最高 ${game.highScore}", w - 36f * s, 142f * s, 28f * s, Color.WHITE, shadowDx, shadowDy)
+        if (game.state == Game.State.RUNNING && game.combo > 0) {
+            val cColor = when {
+                game.comboMult >= 5 -> 0xFFFF6B6B.toInt()
+                game.comboMult >= 3 -> 0xFFFFC21F.toInt()
+                else -> 0xFF7DEBA0.toInt()
+            }
+            pixText(
+                canvas, "连击 ${game.combo}  x${game.comboMult}",
+                w - 36f * s, 182f * s, 30f * s, cColor, shadowDx, shadowDy
+            )
+        }
 
-        // 左上角：生效中的道具 / 滑索 / 天气
+        // 左上角：道具 / 滑索 / 天气 / 昼夜
         textPaint.textAlign = Paint.Align.LEFT
         var buffY = 66f * s
-        if (game.helmet) {
-            pixText(canvas, "头盔", 36f * s, buffY, 30f * s, 0xFFFFC21F.toInt(), shadowDx, shadowDy)
-            buffY += 44f * s
+        if (game.helmetLayers > 0) {
+            val hl = if (game.helmetLayers >= 2) "头盔 x2" else "头盔"
+            pixText(canvas, hl, 36f * s, buffY, 30f * s, 0xFFFFC21F.toInt(), shadowDx, shadowDy)
+            buffY += 40f * s
         }
         if (game.magnetTime > 0f) {
             pixText(canvas, "磁铁 ${game.magnetLeft()}s", 36f * s, buffY, 30f * s, 0xFFFF6B6B.toInt(), shadowDx, shadowDy)
-            buffY += 44f * s
+            buffY += 40f * s
         }
         if (game.doubleTime > 0f) {
             pixText(canvas, "加倍 ${game.doubleLeft()}s", 36f * s, buffY, 30f * s, 0xFFC77DFF.toInt(), shadowDx, shadowDy)
-            buffY += 44f * s
+            buffY += 40f * s
+        }
+        if (game.boostTime > 0f) {
+            pixText(canvas, "冲刺 ${game.boostLeft()}s", 36f * s, buffY, 30f * s, 0xFF4DE8FF.toInt(), shadowDx, shadowDy)
+            buffY += 40f * s
         }
         if (game.riding != null) {
             pixText(canvas, "滑索中", 36f * s, buffY, 30f * s, 0xFF7DEBA0.toInt(), shadowDx, shadowDy)
-            buffY += 44f * s
+            buffY += 40f * s
         }
-        // 按主导权重显示天气（过渡期显示占比大的那个）
         val wRain = weatherWeight(Game.W_RAIN)
         val wSnow = weatherWeight(Game.W_SNOW)
-        if (wRain > 0.5f) {
-            pixText(canvas, "雨", 36f * s, buffY, 30f * s, 0xFF9BB8E8.toInt(), shadowDx, shadowDy)
-        } else if (wSnow > 0.5f) {
-            pixText(canvas, "雪", 36f * s, buffY, 30f * s, 0xFFE8F2FF.toInt(), shadowDx, shadowDy)
+        when {
+            wRain > 0.5f -> {
+                pixText(canvas, "雨", 36f * s, buffY, 28f * s, 0xFF9BB8E8.toInt(), shadowDx, shadowDy)
+                buffY += 36f * s
+            }
+            wSnow > 0.5f -> {
+                pixText(canvas, "雪", 36f * s, buffY, 28f * s, 0xFFE8F2FF.toInt(), shadowDx, shadowDy)
+                buffY += 36f * s
+            }
         }
+        val night = game.nightAmount()
+        val dusk = game.duskAmount()
+        when {
+            night > 0.55f -> pixText(canvas, "夜晚", 36f * s, buffY, 28f * s, 0xFF9AA8D0.toInt(), shadowDx, shadowDy)
+            dusk > 0.4f -> pixText(canvas, "黄昏", 36f * s, buffY, 28f * s, 0xFFFFAA66.toInt(), shadowDx, shadowDy)
+        }
+
+        // 局内任务进度（左下）
+        if (game.state == Game.State.RUNNING) {
+            textPaint.textAlign = Paint.Align.LEFT
+            var qy = h - 40f * s
+            qy = drawQuestLine(
+                canvas,
+                "金币 ${min(game.coins, Game.QUEST_COINS)}/${Game.QUEST_COINS}",
+                game.questCoinsDone, 36f * s, qy, s, shadowDx, shadowDy
+            )
+            qy = drawQuestLine(
+                canvas,
+                "连击 ${min(game.bestComboRun, Game.QUEST_COMBO)}/${Game.QUEST_COMBO}",
+                game.questComboDone, 36f * s, qy, s, shadowDx, shadowDy
+            )
+            drawQuestLine(
+                canvas,
+                "距离 ${min(game.distance.toInt(), Game.QUEST_DIST)}/${Game.QUEST_DIST}",
+                game.questDistDone, 36f * s, qy, s, shadowDx, shadowDy
+            )
+        }
+
         textPaint.textAlign = Paint.Align.CENTER
 
-        // 跑酷中打破纪录的横幅
+        // 飘分（屏幕中部偏上）
+        if (game.state == Game.State.RUNNING && game.floatFlash > 0f && game.lastFloat.isNotEmpty()) {
+            val alpha = (min(1f, game.floatFlash / 0.35f) * 255).toInt()
+            val rise = (0.9f - game.floatFlash) * 30f * s
+            pixText(
+                canvas, game.lastFloat, w / 2f, h * 0.42f - rise, 36f * s,
+                (alpha shl 24) or (game.lastFloatColor and 0x00FFFFFF), shadowDx, shadowDy
+            )
+        }
+
+        // 连击升级横幅
+        if (game.state == Game.State.RUNNING && game.comboFlash > 0f) {
+            val t = 1.4f - game.comboFlash
+            val pop = 1f + 0.3f * (1f - min(1f, t * 5f))
+            val alpha = (min(1f, game.comboFlash / 0.4f) * 255).toInt()
+            pixText(
+                canvas, "连击 x${game.comboMult}！", w / 2f, h * 0.30f, 52f * s * pop,
+                (alpha shl 24) or 0x00FFC21F, shadowDx, shadowDy
+            )
+        }
+
+        // 任务完成横幅
+        if (game.questFlash > 0f && game.questFlashText.isNotEmpty()) {
+            val alpha = (min(1f, game.questFlash / 0.5f) * 255).toInt()
+            pixText(
+                canvas, game.questFlashText, w / 2f, h * 0.22f, 34f * s,
+                (alpha shl 24) or 0x007DEBA0, shadowDx, shadowDy
+            )
+        }
+
+        // 成就解锁横幅
+        if (game.achieveFlash > 0f && game.achieveFlashText.isNotEmpty()) {
+            val alpha = (min(1f, game.achieveFlash / 0.5f) * 255).toInt()
+            pixText(
+                canvas, game.achieveFlashText, w / 2f, h * 0.18f, 36f * s,
+                (alpha shl 24) or 0x00FFD426, shadowDx, shadowDy
+            )
+        }
+
+        // 破纪录
         if (game.state == Game.State.RUNNING && game.recordFlash > 0f) {
             val t = 2.6f - game.recordFlash
             val pop = 1f + 0.35f * (1f - min(1f, t * 5f))
@@ -169,21 +254,33 @@ class HudView(context: Context, private val game: Game) : View(context) {
         when (game.state) {
             Game.State.READY -> {
                 dim(canvas, w, h)
-                pixText(canvas, "汤姆猫跑酷", w / 2f, h * 0.34f, 78f * s, Color.WHITE, shadowDx, shadowDy)
-                pixText(canvas, "点击屏幕开始", w / 2f, h * 0.50f, 34f * s, Color.WHITE, shadowDx, shadowDy)
-                pixText(canvas, "左右滑动·换道    上滑·跳跃    下滑·铲滑", w / 2f, h * 0.61f, 27f * s, Color.WHITE, shadowDx, shadowDy)
-                pixText(canvas, "道具：磁铁吸金币 · 头盔抗撞 · 加倍得分", w / 2f, h * 0.69f, 27f * s, Color.WHITE, shadowDx, shadowDy)
-                pixText(canvas, "在地面对准绿色门架，走上索道跳过障碍！", w / 2f, h * 0.77f, 27f * s, Color.WHITE, shadowDx, shadowDy)
+                pixText(canvas, "汤姆猫跑酷", w / 2f, h * 0.28f, 78f * s, Color.WHITE, shadowDx, shadowDy)
+                pixText(canvas, "点击屏幕开始", w / 2f, h * 0.42f, 34f * s, Color.WHITE, shadowDx, shadowDy)
+                pixText(canvas, "左右滑动·换道    上滑·跳跃    下滑·铲滑", w / 2f, h * 0.52f, 26f * s, Color.WHITE, shadowDx, shadowDy)
+                pixText(canvas, "道具：磁铁 · 头盔 · 加倍 · 闪电冲刺", w / 2f, h * 0.59f, 26f * s, Color.WHITE, shadowDx, shadowDy)
+                pixText(canvas, "连击吃金币加分倍率 · 完成局内任务拿奖励", w / 2f, h * 0.66f, 26f * s, Color.WHITE, shadowDx, shadowDy)
+                pixText(
+                    canvas, "成就 ${game.achieveCount}/4  ·  累计金币 ${game.totalCoins}",
+                    w / 2f, h * 0.73f, 26f * s, 0xFFFFD54A.toInt(), shadowDx, shadowDy
+                )
                 drawColorButton(canvas, w, h)
             }
             Game.State.DEAD -> {
                 dim(canvas, w, h)
-                pixText(canvas, "游戏结束", w / 2f, h * 0.34f, 70f * s, Color.WHITE, shadowDx, shadowDy)
+                pixText(canvas, "游戏结束", w / 2f, h * 0.28f, 70f * s, Color.WHITE, shadowDx, shadowDy)
                 val record = if (game.score >= game.highScore && game.score > 0) "  新纪录！" else ""
-                pixText(canvas, "得分 ${game.score}$record", w / 2f, h * 0.48f, 38f * s, Color.WHITE, shadowDx, shadowDy)
-                pixText(canvas, "金币 ${game.coins}", w / 2f, h * 0.57f, 30f * s, 0xFFFFD54A.toInt(), shadowDx, shadowDy)
+                pixText(canvas, "得分 ${game.score}$record", w / 2f, h * 0.40f, 38f * s, Color.WHITE, shadowDx, shadowDy)
+                pixText(canvas, "金币 ${game.coins}", w / 2f, h * 0.48f, 30f * s, 0xFFFFD54A.toInt(), shadowDx, shadowDy)
+                val qd = (if (game.questCoinsDone) 1 else 0) +
+                    (if (game.questComboDone) 1 else 0) +
+                    (if (game.questDistDone) 1 else 0)
+                pixText(canvas, "本局任务 $qd/3  ·  最高连击 ${game.bestComboRun}", w / 2f, h * 0.56f, 28f * s, 0xFF7DEBA0.toInt(), shadowDx, shadowDy)
+                pixText(
+                    canvas, "成就 ${game.achieveCount}/4",
+                    w / 2f, h * 0.63f, 28f * s, 0xFFFFD426.toInt(), shadowDx, shadowDy
+                )
                 if (game.deadTime > 0.6f) {
-                    pixText(canvas, "点击屏幕再来一次", w / 2f, h * 0.68f, 30f * s, Color.WHITE, shadowDx, shadowDy)
+                    pixText(canvas, "点击屏幕再来一次", w / 2f, h * 0.72f, 30f * s, Color.WHITE, shadowDx, shadowDy)
                 }
                 drawColorButton(canvas, w, h)
             }
@@ -191,7 +288,16 @@ class HudView(context: Context, private val game: Game) : View(context) {
         }
     }
 
-    /** 整像素字号/坐标 + 硬阴影，保证离屏位图边缘是锐利色块 */
+    private fun drawQuestLine(
+        canvas: Canvas, text: String, done: Boolean,
+        x: Float, y: Float, s: Float, sdx: Float, sdy: Float
+    ): Float {
+        val color = if (done) 0xFF7DEBA0.toInt() else 0xAAFFFFFF.toInt()
+        val label = if (done) "√ $text" else "· $text"
+        pixText(canvas, label, x, y, 22f * s, color, sdx, sdy)
+        return y - 28f * s
+    }
+
     private fun pixText(
         canvas: Canvas, text: String, x: Float, y: Float, size: Float, color: Int,
         shadowDx: Float, shadowDy: Float
@@ -205,7 +311,6 @@ class HudView(context: Context, private val game: Game) : View(context) {
         canvas.drawText(text, ix, iy, textPaint)
     }
 
-    /** 像素风直角按钮（离屏坐标系） */
     private fun drawColorButton(canvas: Canvas, w: Float, h: Float) {
         val s = h / 720f
         val bw = 320f * s
@@ -221,12 +326,11 @@ class HudView(context: Context, private val game: Game) : View(context) {
         btnPaint.color = 0xCC222C38.toInt()
         canvas.drawRect(colorBtn, btnPaint)
         btnPaint.style = Paint.Style.STROKE
-        btnPaint.strokeWidth = 1f  // 离屏 1px 描边，放大后才是粗像素边
+        btnPaint.strokeWidth = 1f
         btnPaint.color = 0xAAFFFFFF.toInt()
         canvas.drawRect(colorBtn, btnPaint)
         btnPaint.style = Paint.Style.FILL
 
-        // 颜色小方块
         val idx = game.catColor % COLOR_NAMES.size
         btnPaint.color = COLOR_CHIPS[idx]
         val cs = (15f * s).toInt().coerceAtLeast(2).toFloat()

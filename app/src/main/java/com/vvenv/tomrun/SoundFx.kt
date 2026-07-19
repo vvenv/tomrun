@@ -19,7 +19,7 @@ import kotlin.random.Random
 class SoundFx(context: Context) {
 
     private val pool = SoundPool.Builder()
-        .setMaxStreams(5)
+        .setMaxStreams(6)
         .setAudioAttributes(
             AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_GAME)
@@ -57,6 +57,41 @@ class SoundFx(context: Context) {
                 tone(990f, 990f, 0.24f, 0.55f, decay = 1.4f)
             )
         )
+        // 连击升级：上行琶音
+        load(
+            context, Game.EV_COMBO, "combo",
+            concat(
+                tone(880f, 880f, 0.05f, 0.45f),
+                tone(1100f, 1100f, 0.05f, 0.45f),
+                tone(1320f, 1320f, 0.12f, 0.55f, decay = 1.5f)
+            )
+        )
+        // 冲刺启动：嗖的一声扫频
+        load(context, Game.EV_BOOST, "boost", tone(200f, 1600f, 0.28f, 0.50f))
+        // 撞碎障碍：噪声 + 低频
+        load(
+            context, Game.EV_SMASH, "smash",
+            concat(noise(0.08f, 0.55f), tone(180f, 90f, 0.12f, 0.45f, square = true))
+        )
+        // 任务完成：短号角
+        load(
+            context, Game.EV_QUEST, "quest",
+            concat(
+                tone(523f, 523f, 0.08f, 0.5f),
+                tone(659f, 659f, 0.08f, 0.5f),
+                tone(784f, 1046f, 0.22f, 0.55f, decay = 1.3f)
+            )
+        )
+        // 成就解锁：更华丽的号角
+        load(
+            context, Game.EV_ACHIEVE, "achieve",
+            concat(
+                tone(523f, 523f, 0.07f, 0.5f),
+                tone(659f, 659f, 0.07f, 0.5f),
+                tone(784f, 784f, 0.07f, 0.5f),
+                tone(1046f, 1046f, 0.28f, 0.6f, decay = 1.2f)
+            )
+        )
     }
 
     fun play(event: Int) {
@@ -66,11 +101,9 @@ class SoundFx(context: Context) {
 
     fun release() = pool.release()
 
-    // ---------- 波形合成 ----------
     companion object {
         private const val SR = 22050
 
-        /** 正弦/方波扫频音；decay 越大衰减越快 */
         private fun tone(
             f0: Float, f1: Float, dur: Float, vol: Float,
             square: Boolean = false, decay: Float = 1f
@@ -91,7 +124,6 @@ class SoundFx(context: Context) {
             return out
         }
 
-        /** 白噪声（碰撞/碎裂声） */
         private fun noise(dur: Float, vol: Float): ShortArray {
             val n = (SR * dur).toInt()
             val out = ShortArray(n)
@@ -129,12 +161,12 @@ class SoundFx(context: Context) {
             o.write("WAVE".toByteArray())
             o.write("fmt ".toByteArray())
             o.writeIntLE(16)
-            o.writeShortLE(1)          // PCM
-            o.writeShortLE(1)          // 单声道
+            o.writeShortLE(1)
+            o.writeShortLE(1)
             o.writeIntLE(SR)
-            o.writeIntLE(SR * 2)       // 字节率
-            o.writeShortLE(2)          // 块对齐
-            o.writeShortLE(16)         // 位深
+            o.writeIntLE(SR * 2)
+            o.writeShortLE(2)
+            o.writeShortLE(16)
             o.write("data".toByteArray())
             o.writeIntLE(dataSize)
             for (s in pcm) o.writeShortLE(s.toInt())

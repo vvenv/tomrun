@@ -1,8 +1,13 @@
 package com.vvenv.tomrun
 
 import android.app.Activity
+import android.content.Context
 import android.opengl.GLSurfaceView
+import android.os.Build
 import android.os.Bundle
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.view.View
 import android.view.WindowManager
 import android.widget.FrameLayout
@@ -12,6 +17,7 @@ class MainActivity : Activity() {
     private lateinit var glView: GLSurfaceView
     private val game = Game()
     private var soundFx: SoundFx? = null
+    private var vibrator: Vibrator? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -19,7 +25,27 @@ class MainActivity : Activity() {
 
         game.attachPrefs(getSharedPreferences("tomrun", MODE_PRIVATE))
         soundFx = SoundFx(this)
-        game.onEvent = { event -> soundFx?.play(event) }
+        vibrator = if (Build.VERSION.SDK_INT >= 31) {
+            val vm = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
+            vm.defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+        }
+
+        game.onEvent = { event ->
+            soundFx?.play(event)
+            // 事件自带 hapticPulse；再按事件补一档保底
+            val pulse = when (event) {
+                Game.EV_COIN, Game.EV_JUMP, Game.EV_SLIDE -> Game.HAPTIC_LIGHT
+                Game.EV_POWER, Game.EV_COMBO, Game.EV_BOOST, Game.EV_SMASH,
+                Game.EV_QUEST, Game.EV_ACHIEVE, Game.EV_ZIP, Game.EV_RECORD -> Game.HAPTIC_MED
+                Game.EV_SHIELD, Game.EV_DIE -> Game.HAPTIC_HEAVY
+                else -> 0
+            }
+            val fromGame = game.consumeHaptic()
+            vibrate(maxOf(pulse, fromGame))
+        }
 
         glView = GLSurfaceView(this).apply {
             setEGLContextClientVersion(2)
@@ -32,6 +58,32 @@ class MainActivity : Activity() {
         root.addView(HudView(this, game))
         setContentView(root)
         hideSystemUi()
+    }
+
+    private fun vibrate(level: Int) {
+        if (level <= 0) return
+        val v = vibrator ?: return
+        if (!v.hasVibrator()) return
+        val ms = when (level) {
+            Game.HAPTIC_LIGHT -> 12L
+            Game.HAPTIC_MED -> 28L
+            else -> 55L
+        }
+        val amp = when (level) {
+            Game.HAPTIC_LIGHT -> 40
+            Game.HAPTIC_MED -> 110
+            else -> 220
+        }
+        try {
+            if (Build.VERSION.SDK_INT >= 26) {
+                v.vibrate(VibrationEffect.createOneShot(ms, amp))
+            } else {
+                @Suppress("DEPRECATION")
+                v.vibrate(ms)
+            }
+        } catch (_: Exception) {
+            // 部分设备可能拒绝振动，忽略即可
+        }
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -56,7 +108,6 @@ class MainActivity : Activity() {
         soundFx = null
     }
 
-    /** 优先申请 4x MSAA，不支持则回退普通配置 */
     private class MsaaConfigChooser : GLSurfaceView.EGLConfigChooser {
         override fun chooseConfig(
             egl: javax.microedition.khronos.egl.EGL10,
@@ -69,7 +120,7 @@ class MainActivity : Activity() {
                 javax.microedition.khronos.egl.EGL10.EGL_GREEN_SIZE, 8,
                 javax.microedition.khronos.egl.EGL10.EGL_BLUE_SIZE, 8,
                 javax.microedition.khronos.egl.EGL10.EGL_DEPTH_SIZE, 16,
-                javax.microedition.khronos.egl.EGL10.EGL_RENDERABLE_TYPE, 4 /* ES2 */,
+                javax.microedition.khronos.egl.EGL10.EGL_RENDERABLE_TYPE, 4,
                 javax.microedition.khronos.egl.EGL10.EGL_SAMPLE_BUFFERS, 1,
                 javax.microedition.khronos.egl.EGL10.EGL_SAMPLES, 4,
                 javax.microedition.khronos.egl.EGL10.EGL_NONE
