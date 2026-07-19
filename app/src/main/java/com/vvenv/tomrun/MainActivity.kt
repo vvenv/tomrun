@@ -39,8 +39,9 @@ class MainActivity : Activity() {
             val pulse = when (event) {
                 Game.EV_COIN, Game.EV_JUMP, Game.EV_SLIDE -> Game.HAPTIC_LIGHT
                 Game.EV_POWER, Game.EV_COMBO, Game.EV_BOOST, Game.EV_SMASH,
-                Game.EV_QUEST, Game.EV_ACHIEVE, Game.EV_ZIP, Game.EV_RECORD -> Game.HAPTIC_MED
-                Game.EV_SHIELD, Game.EV_DIE -> Game.HAPTIC_HEAVY
+                Game.EV_QUEST, Game.EV_ACHIEVE, Game.EV_ZIP, Game.EV_RECORD,
+                Game.EV_BUY -> Game.HAPTIC_MED
+                Game.EV_SHIELD, Game.EV_DIE, Game.EV_PORTAL -> Game.HAPTIC_HEAVY
                 else -> 0
             }
             val fromGame = game.consumeHaptic()

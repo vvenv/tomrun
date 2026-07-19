@@ -92,6 +92,21 @@ class SoundFx(context: Context) {
                 tone(1046f, 1046f, 0.28f, 0.6f, decay = 1.2f)
             )
         )
+        // 穿越传送门：上扬扫频 + 闪亮琶音
+        load(
+            context, Game.EV_PORTAL, "portal",
+            concat(
+                tone(300f, 1200f, 0.22f, 0.50f),
+                tone(1046f, 1046f, 0.06f, 0.45f),
+                tone(1318f, 1318f, 0.06f, 0.45f),
+                tone(1568f, 1568f, 0.16f, 0.50f, decay = 1.5f)
+            )
+        )
+        // 购买成功：清脆"叮咚"
+        load(
+            context, Game.EV_BUY, "buy",
+            concat(tone(988f, 988f, 0.06f, 0.5f), tone(1319f, 1319f, 0.16f, 0.55f, decay = 1.8f))
+        )
     }
 
     fun play(event: Int) {

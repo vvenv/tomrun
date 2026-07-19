@@ -51,8 +51,23 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
     private val edgeCol = FloatArray(4) { 1f }
     private val cloudCol = FloatArray(4) { 1f }
     private var wSun = 1f
+    private var wRain = 0f
+    private var wSnow = 0f
     private var nightAmt = 0f
     private var duskAmt = 0f
+
+    // 平行宇宙调色板混合
+    private val palPrev = Array(6) { FloatArray(4) { 1f } }
+    private val palCur = Array(6) { FloatArray(4) { 1f } }
+    private var meadowW = 1f          // 草原世界权重（含过渡）
+    private var scenePhase = 0f       // 与速度无关的场景动画时钟
+
+    // 宇宙环境粒子（气泡 / 火星 / 糖屑 / 星尘）
+    private val arand = java.util.Random(7)
+    private val ambX = FloatArray(70) { arand.nextFloat() * 24f - 12f }
+    private val ambY = FloatArray(70) { arand.nextFloat() * 12f }
+    private val ambZ = FloatArray(70) { arand.nextFloat() * 50f - 45f }
+    private val ambSeed = FloatArray(70) { arand.nextFloat() * 6.28f }
 
     // 雨 / 雪粒子
     private val prand = java.util.Random(42)
@@ -200,6 +215,108 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         private val RAIN_DROP = floatArrayOf(0.62f, 0.74f, 0.95f, 0.55f)
         private val SNOW_FLAKE = floatArrayOf(0.98f, 0.98f, 1.0f, 0.9f)
 
+        // 平行宇宙配色 [sky, grass, grassDark, road, edge, cloud]；草原(0)占位走天气混色
+        private val UNI_PAL = arrayOf(
+            arrayOf(
+                floatArrayOf(0f, 0f, 0f, 1f), floatArrayOf(0f, 0f, 0f, 1f),
+                floatArrayOf(0f, 0f, 0f, 1f), floatArrayOf(0f, 0f, 0f, 1f),
+                floatArrayOf(0f, 0f, 0f, 1f), floatArrayOf(0f, 0f, 0f, 1f)
+            ),
+            arrayOf( // 水下：深海蓝绿 + 沙路
+                floatArrayOf(0.05f, 0.32f, 0.52f, 1f),
+                floatArrayOf(0.10f, 0.42f, 0.47f, 1f),
+                floatArrayOf(0.07f, 0.33f, 0.39f, 1f),
+                floatArrayOf(0.72f, 0.64f, 0.42f, 1f),
+                floatArrayOf(0.88f, 0.84f, 0.72f, 1f),
+                floatArrayOf(0.55f, 0.85f, 0.95f, 1f)
+            ),
+            arrayOf( // 天空：云海 + 金色云路
+                floatArrayOf(0.55f, 0.82f, 1.0f, 1f),
+                floatArrayOf(0.90f, 0.93f, 0.98f, 1f),
+                floatArrayOf(0.78f, 0.84f, 0.94f, 1f),
+                floatArrayOf(0.97f, 0.90f, 0.72f, 1f),
+                floatArrayOf(1.0f, 0.80f, 0.35f, 1f),
+                floatArrayOf(1f, 1f, 1f, 1f)
+            ),
+            arrayOf( // 熔岩：暗红天 + 烬石路 + 岩浆描边
+                floatArrayOf(0.24f, 0.08f, 0.10f, 1f),
+                floatArrayOf(0.17f, 0.13f, 0.13f, 1f),
+                floatArrayOf(0.11f, 0.08f, 0.08f, 1f),
+                floatArrayOf(0.30f, 0.24f, 0.24f, 1f),
+                floatArrayOf(1.0f, 0.45f, 0.10f, 1f),
+                floatArrayOf(0.36f, 0.28f, 0.28f, 1f)
+            ),
+            arrayOf( // 糖果：棉花糖粉天 + 巧克力路
+                floatArrayOf(0.99f, 0.76f, 0.86f, 1f),
+                floatArrayOf(0.64f, 0.90f, 0.72f, 1f),
+                floatArrayOf(0.53f, 0.82f, 0.62f, 1f),
+                floatArrayOf(0.44f, 0.27f, 0.16f, 1f),
+                floatArrayOf(1.0f, 0.94f, 0.82f, 1f),
+                floatArrayOf(1.0f, 0.88f, 0.94f, 1f)
+            ),
+            arrayOf( // 星空：靛黑天 + 霓虹描边
+                floatArrayOf(0.05f, 0.04f, 0.13f, 1f),
+                floatArrayOf(0.28f, 0.26f, 0.42f, 1f),
+                floatArrayOf(0.20f, 0.18f, 0.33f, 1f),
+                floatArrayOf(0.19f, 0.17f, 0.36f, 1f),
+                floatArrayOf(0.30f, 0.90f, 1.0f, 1f),
+                floatArrayOf(0.45f, 0.30f, 0.70f, 1f)
+            )
+        )
+        private val PORTAL_RING = arrayOf(
+            floatArrayOf(1.0f, 0.40f, 0.45f, 0.95f),
+            floatArrayOf(1.0f, 0.80f, 0.25f, 0.95f),
+            floatArrayOf(0.40f, 0.95f, 0.50f, 0.95f),
+            floatArrayOf(0.35f, 0.70f, 1.0f, 0.95f),
+            floatArrayOf(0.75f, 0.45f, 1.0f, 0.95f)
+        )
+        // 水下
+        private val SEAWEED = floatArrayOf(0.14f, 0.62f, 0.42f, 1f)
+        private val CORAL_PINK = floatArrayOf(0.98f, 0.52f, 0.60f, 1f)
+        private val CORAL_ORANGE = floatArrayOf(0.98f, 0.62f, 0.30f, 1f)
+        private val FISH = arrayOf(
+            floatArrayOf(1.0f, 0.72f, 0.25f, 1f),
+            floatArrayOf(0.35f, 0.80f, 1.0f, 1f),
+            floatArrayOf(0.95f, 0.45f, 0.65f, 1f)
+        )
+        private val BUBBLE = floatArrayOf(0.78f, 0.93f, 1.0f, 0.5f)
+        // 天空
+        private val ISLAND_DIRT = floatArrayOf(0.55f, 0.40f, 0.26f, 1f)
+        private val ISLAND_DIRT_DK = floatArrayOf(0.42f, 0.30f, 0.19f, 1f)
+        private val RAINBOW = arrayOf(
+            floatArrayOf(1.0f, 0.38f, 0.40f, 0.8f),
+            floatArrayOf(1.0f, 0.80f, 0.25f, 0.8f),
+            floatArrayOf(0.40f, 0.90f, 0.45f, 0.8f),
+            floatArrayOf(0.40f, 0.65f, 1.0f, 0.8f)
+        )
+        private val BIRD = floatArrayOf(1f, 1f, 1f, 1f)
+        // 熔岩
+        private val OBSIDIAN = floatArrayOf(0.13f, 0.10f, 0.14f, 1f)
+        private val LAVA_GLOW = floatArrayOf(1.0f, 0.50f, 0.08f, 0.9f)
+        private val LAVA_CORE = floatArrayOf(1.0f, 0.85f, 0.25f, 0.95f)
+        private val EMBER = floatArrayOf(1.0f, 0.55f, 0.15f, 0.8f)
+        // 糖果
+        private val CANDY_STICK = floatArrayOf(0.98f, 0.97f, 0.94f, 1f)
+        private val CANDY_RED = floatArrayOf(0.96f, 0.30f, 0.35f, 1f)
+        private val LOLLIPOP = arrayOf(
+            floatArrayOf(0.98f, 0.45f, 0.65f, 1f),
+            floatArrayOf(0.45f, 0.80f, 0.98f, 1f),
+            floatArrayOf(0.65f, 0.90f, 0.40f, 1f)
+        )
+        private val GUMDROP = arrayOf(
+            floatArrayOf(0.95f, 0.55f, 0.75f, 1f),
+            floatArrayOf(0.60f, 0.85f, 0.55f, 1f),
+            floatArrayOf(0.98f, 0.85f, 0.40f, 1f)
+        )
+        // 星空
+        private val ASTEROID = floatArrayOf(0.42f, 0.40f, 0.48f, 1f)
+        private val CRYSTAL_CYAN = floatArrayOf(0.35f, 0.95f, 1.0f, 0.9f)
+        private val CRYSTAL_PURPLE = floatArrayOf(0.70f, 0.45f, 1.0f, 0.9f)
+        private val PLANET_A = floatArrayOf(0.80f, 0.50f, 0.90f, 1f)
+        private val PLANET_RING = floatArrayOf(0.95f, 0.85f, 0.55f, 0.9f)
+        private val PLANET_B = floatArrayOf(0.95f, 0.60f, 0.35f, 1f)
+        private val STARDUST = floatArrayOf(0.85f, 0.90f, 1.0f, 0.7f)
+
         private val MAGNET_RED = floatArrayOf(0.90f, 0.24f, 0.24f, 1f)
         private val MAGNET_TIP = floatArrayOf(0.92f, 0.92f, 0.95f, 1f)
         private val MAGNET_BLUE = floatArrayOf(0.25f, 0.65f, 1.0f, 1f)
@@ -247,6 +364,7 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         val dt = if (lastNanos == 0L) 0.016f else min((now - lastNanos) / 1e9f, 0.05f)
         lastNanos = now
         game.update(dt)
+        scenePhase += dt
 
         updateWeatherColors()
         GLES20.glClearColor(skyCol[0], skyCol[1], skyCol[2], 1f)
@@ -280,10 +398,12 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         drawScenery()
         drawStreetLamps()
         drawEntities()
+        drawPortal()
         drawParticles()
         drawCat(dt)
         drawSpeedLines(dt)
         drawWeather(dt)
+        drawAmbient(dt)
 
         GLES20.glDisableVertexAttribArray(aPos)
         GLES20.glDisableVertexAttribArray(aNormal)
@@ -302,24 +422,45 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         out[3] = 1f
     }
 
+    /** 草原按天气混色，其余宇宙用专属调色板 */
+    private fun fillUniversePalette(uni: Int, out: Array<FloatArray>) {
+        if (uni == Game.UNI_MEADOW) {
+            mix3(out[0], SKY, RAIN_SKY, SNOW_SKY, wSun, wRain, wSnow)
+            mix3(out[1], GRASS, GRASS_R, GRASS_S, wSun, wRain, wSnow)
+            mix3(out[2], GRASS_DARK, GRASS_DR, GRASS_DS, wSun, wRain, wSnow)
+            mix3(out[3], ROAD, ROAD_R, ROAD_S, wSun, wRain, wSnow)
+            mix3(out[4], ROAD_EDGE, EDGE_R, EDGE_S, wSun, wRain, wSnow)
+            mix3(out[5], CLOUD, CLOUD_R, CLOUD, wSun, wRain, wSnow)
+        } else {
+            for (i in 0..5) System.arraycopy(UNI_PAL[uni][i], 0, out[i], 0, 4)
+        }
+    }
+
     private fun updateWeatherColors() {
         wSun = weatherWeight(Game.W_SUNNY)
-        val wr = weatherWeight(Game.W_RAIN)
-        val ws = weatherWeight(Game.W_SNOW)
-        nightAmt = game.nightAmount()
-        duskAmt = game.duskAmount()
+        wRain = weatherWeight(Game.W_RAIN)
+        wSnow = weatherWeight(Game.W_SNOW)
 
-        mix3(skyCol, SKY, RAIN_SKY, SNOW_SKY, wSun, wr, ws)
-        mix3(grassCol, GRASS, GRASS_R, GRASS_S, wSun, wr, ws)
-        mix3(grassDarkCol, GRASS_DARK, GRASS_DR, GRASS_DS, wSun, wr, ws)
-        mix3(roadCol, ROAD, ROAD_R, ROAD_S, wSun, wr, ws)
-        mix3(edgeCol, ROAD_EDGE, EDGE_R, EDGE_S, wSun, wr, ws)
-        mix3(cloudCol, CLOUD, CLOUD_R, CLOUD, wSun, wr, ws)
+        val blend = game.universeBlend
+        val cur = game.universe
+        val prev = game.universePrev
+        meadowW = (if (cur == Game.UNI_MEADOW) blend else 0f) +
+            (if (prev == Game.UNI_MEADOW) 1f - blend else 0f)
+
+        // 特殊宇宙自带光照氛围，昼夜影响减弱
+        nightAmt = game.nightAmount() * (0.3f + 0.7f * meadowW)
+        duskAmt = game.duskAmount() * (0.3f + 0.7f * meadowW)
+
+        fillUniversePalette(prev, palPrev)
+        fillUniversePalette(cur, palCur)
+        val outs = arrayOf(skyCol, grassCol, grassDarkCol, roadCol, edgeCol, cloudCol)
+        for (i in outs.indices) {
+            for (k in 0..2) outs[i][k] = palPrev[i][k] + (palCur[i][k] - palPrev[i][k]) * blend
+            outs[i][3] = 1f
+        }
 
         // 昼夜：夜晚压暗并偏蓝紫；黄昏加暖橙
-        for (arr in arrayOf(skyCol, grassCol, grassDarkCol, roadCol, edgeCol, cloudCol)) {
-            applyDayNight(arr)
-        }
+        for (arr in outs) applyDayNight(arr)
     }
 
     private fun applyDayNight(c: FloatArray) {
@@ -339,8 +480,9 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
     private fun setSkyFog() = setFog(skyCol[0] + 0.08f, skyCol[1] + 0.05f, skyCol[2] + 0.02f)
 
     private fun drawWeather(dt: Float) {
-        val wr = weatherWeight(Game.W_RAIN)
-        val ws = weatherWeight(Game.W_SNOW)
+        // 雨雪只属于草原世界
+        val wr = weatherWeight(Game.W_RAIN) * meadowW
+        val ws = weatherWeight(Game.W_SNOW) * meadowW
         mMode = 2
         if (wr > 0.02f) {
             val n = (rainX.size * wr).toInt()
@@ -369,47 +511,67 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
 
     private fun setFog(r: Float, g: Float, b: Float) = GLES20.glUniform3f(uFog, min(1f, r), min(1f, g), min(1f, b))
 
-    // ---------- 天空：太阳/月亮/星星 + 远山 ----------
+    // ---------- 天空：太阳/月亮/星星/行星 + 远山 ----------
     private fun drawSky() {
         Matrix.setIdentityM(model, 0)
         stack.clear()
+        val uni = game.universe
 
         mMode = 2
+        val brightSky = uni == Game.UNI_MEADOW || uni == Game.UNI_SKY || uni == Game.UNI_CANDY
         val dayVis = (1f - nightAmt).coerceIn(0f, 1f)
-        if (dayVis > 0.05f && wSun > 0.05f) {
+        if (brightSky && dayVis > 0.05f && wSun > 0.05f) {
             setFog(SUN[0], SUN[1], SUN[2])
             pushModel(20f, 26f - nightAmt * 18f, -110f)
             val k = 7f * wSun * dayVis
             drawPart(0f, 0f, 0f, k, k, k, SUN)
             popModel()
         }
-        if (nightAmt > 0.15f) {
+        val starry = nightAmt > 0.15f || uni == Game.UNI_SPACE
+        if (nightAmt > 0.15f && uni != Game.UNI_SPACE) {
             setFog(MOON[0], MOON[1], MOON[2])
             pushModel(-18f, 24f, -110f)
             val k = 5f * nightAmt
             drawPart(0f, 0f, 0f, k, k, k, MOON)
             popModel()
-            // 星星
-            for (i in 0 until 18) {
-                val x = -70f + i * 8.5f + (i % 3) * 3f
-                val y = 14f + (i * 7 % 11)
-                val tw = 0.25f + 0.15f * abs(sin(game.dayPhase * 40f + i))
-                drawBox(x, y, -130f, tw, tw, tw, STAR)
+        }
+        if (uni == Game.UNI_SPACE) {
+            // 环状大行星 + 橙色小行星
+            setSkyFog()
+            pushModel(22f, 24f, -120f)
+            Matrix.rotateM(model, 0, 18f, 0f, 0f, 1f)
+            drawPart(0f, 0f, 0f, 8f, 8f, 8f, PLANET_A)
+            drawPart(0f, 0f, 0f, 15f, 0.7f, 4f, PLANET_RING)
+            popModel()
+            drawBox(-26f, 29f, -130f, 3.6f, 3.6f, 3.6f, PLANET_B)
+        }
+        if (starry) {
+            setSkyFog()
+            val rows = if (uni == Game.UNI_SPACE) 2 else 1
+            for (r in 0 until rows) {
+                for (i in 0 until 18) {
+                    val x = -70f + i * 8.5f + (i % 3) * 3f + r * 4f
+                    val y = 14f + (i * 7 % 11) + r * 9f
+                    val tw = 0.25f + 0.15f * abs(sin(game.dayPhase * 40f + i + r * 3))
+                    drawBox(x, y, -130f, tw, tw, tw, STAR)
+                }
             }
         }
         setSkyFog()
 
         mMode = 0
-        for (i in 0 until 7) {
-            val x = -90f + i * 30f + (i % 3) * 8f
-            if (abs(x) < 16f) continue
-            val h = 26f + (i % 3) * 10f
-            val mc = floatArrayOf(MOUNTAIN[0], MOUNTAIN[1], MOUNTAIN[2], 1f)
-            applyDayNight(mc)
-            pushModel(x, 0f, -180f)
-            drawPart(0f, h * 0.14f, 0f, h * 1.9f, h * 0.28f, h, mc)
-            drawPart(0f, h * 0.38f, 0f, h * 1.1f, h * 0.22f, h * 0.8f, mc)
-            popModel()
+        if (meadowW > 0.35f) {
+            for (i in 0 until 7) {
+                val x = -90f + i * 30f + (i % 3) * 8f
+                if (abs(x) < 16f) continue
+                val h = 26f + (i % 3) * 10f
+                val mc = floatArrayOf(MOUNTAIN[0], MOUNTAIN[1], MOUNTAIN[2], 1f)
+                applyDayNight(mc)
+                pushModel(x, 0f, -180f)
+                drawPart(0f, h * 0.14f, 0f, h * 1.9f, h * 0.28f, h, mc)
+                drawPart(0f, h * 0.38f, 0f, h * 1.1f, h * 0.22f, h * 0.8f, mc)
+                popModel()
+            }
         }
     }
 
@@ -430,8 +592,20 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         }
     }
 
-    // ---------- 路边景物 ----------
+    // ---------- 路边景物：按宇宙分发 ----------
     private fun drawScenery() {
+        when (game.universe) {
+            Game.UNI_WATER -> drawSceneryWater()
+            Game.UNI_SKY -> drawScenerySky()
+            Game.UNI_LAVA -> drawSceneryLava()
+            Game.UNI_CANDY -> drawSceneryCandy()
+            Game.UNI_SPACE -> drawScenerySpace()
+            else -> drawSceneryMeadow()
+        }
+        drawClouds()
+    }
+
+    private fun drawSceneryMeadow() {
         scroll(17f, game.distance) { m, z ->
             val side = if (mod(m, 2) == 0) -1f else 1f
             val x = side * (6.8f + mod(m * 37, 40) / 10f)
@@ -463,6 +637,193 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
             drawPart(0f, 0f, 0f, 0.2f, 0.2f, 0.2f, FLOWER[mod(m, 3)])
             popModel()
         }
+    }
+
+    /** 水下：摇摆海草 + 珊瑚 + 头顶游鱼 */
+    private fun drawSceneryWater() {
+        scroll(11f, game.distance) { m, z ->
+            val side = if (mod(m, 2) == 0) -1f else 1f
+            val x = side * (5.6f + mod(m * 37, 45) / 10f)
+            val k = 0.8f + mod(m * 53, 50) / 100f
+            pushModel(x, 0f, z)
+            for (j in 0..3) {
+                val sway = sin(scenePhase * 1.8f + m + j * 0.8f) * 0.22f * j
+                drawPart(sway, 0.4f + j * 0.75f * k, 0f, 0.32f * k, 0.8f * k, 0.2f, SEAWEED)
+            }
+            popModel()
+        }
+        scroll(19f, game.distance) { m, z ->
+            val side = if (mod(m, 2) == 0) 1f else -1f
+            val x = side * (6.5f + mod(m * 29, 38) / 10f)
+            val c = if (mod(m, 2) == 0) CORAL_PINK else CORAL_ORANGE
+            pushModel(x, 0f, z)
+            drawPart(0f, 0.5f, 0f, 0.35f, 1.0f, 0.35f, c)
+            drawPart(0.35f, 0.9f, 0f, 0.25f, 0.7f, 0.25f, c)
+            drawPart(-0.3f, 0.75f, 0f, 0.22f, 0.5f, 0.22f, c)
+            popModel()
+        }
+        // 鱼群横游（含头顶穿过跑道）
+        scroll(16f, game.distance * 0.6f) { m, z ->
+            val fy = 2.4f + mod(m * 13, 30) / 10f
+            val ph = scenePhase * 0.5f + m * 1.7f
+            val fx = sin(ph) * 9f
+            val dir = if (cos(ph) > 0f) 1f else -1f
+            val fc = FISH[mod(m, 3)]
+            pushModel(fx, fy + sin(scenePhase * 2f + m) * 0.15f, z)
+            drawPart(0f, 0f, 0f, 0.55f, 0.3f, 0.22f, fc)
+            drawPart(-dir * 0.38f, 0.05f, 0f, 0.2f, 0.26f, 0.1f, fc)
+            popModel()
+        }
+    }
+
+    /** 天空：漂浮岛 + 彩虹拱桥 + 飞鸟 */
+    private fun drawScenerySky() {
+        scroll(15f, game.distance) { m, z ->
+            val side = if (mod(m, 2) == 0) -1f else 1f
+            val x = side * (7.5f + mod(m * 41, 60) / 10f)
+            val k = 0.8f + mod(m * 31, 60) / 100f
+            val fy = -0.2f + mod(m * 23, 25) / 10f
+            val bob = sin(scenePhase * 0.8f + m) * 0.25f
+            pushModel(x, fy + bob, z)
+            drawPart(0f, 0.55f, 0f, 2.6f * k, 0.5f, 2.2f * k, GRASS)
+            drawPart(0f, 0.1f, 0f, 2.0f * k, 0.6f, 1.7f * k, ISLAND_DIRT)
+            drawPart(0f, -0.35f, 0f, 1.2f * k, 0.5f, 1.0f * k, ISLAND_DIRT_DK)
+            drawPart(0.5f * k, 1.05f, 0f, 0.18f, 0.6f, 0.18f, TREE_TRUNK)
+            drawPart(0.5f * k, 1.65f, 0f, 0.7f * k, 0.7f, 0.7f * k, TREE_LEAF)
+            popModel()
+        }
+        // 远景彩虹拱桥
+        mMode = 2
+        scroll(95f, game.distance * 0.7f) { m, z ->
+            val side = if (mod(m, 2) == 0) -1f else 1f
+            pushModel(side * 12f, 0f, z - 55f)
+            for (band in RAINBOW.indices) {
+                val rr = 20f + band * 1.5f
+                for (seg in 0..8) {
+                    val a = Math.PI.toFloat() * seg / 8f
+                    drawPart(cos(a) * rr, sin(a) * rr * 0.6f, 0f, 1.8f, 1.4f, 0.8f, RAINBOW[band])
+                }
+            }
+            popModel()
+        }
+        mMode = 0
+        // 小鸟
+        scroll(21f, game.distance * 0.9f) { m, z ->
+            val side = if (mod(m, 2) == 0) -1f else 1f
+            val x = side * (4.5f + mod(m * 19, 40) / 10f)
+            val y = 4.5f + mod(m * 27, 30) / 10f
+            val flap = sin(scenePhase * 6f + m) * 0.28f
+            pushModel(x, y, z)
+            drawPart(0f, 0f, 0f, 0.34f, 0.18f, 0.3f, BIRD)
+            drawPart(-0.3f, flap, 0f, 0.3f, 0.08f, 0.22f, BIRD)
+            drawPart(0.3f, flap, 0f, 0.3f, 0.08f, 0.22f, BIRD)
+            popModel()
+        }
+    }
+
+    /** 熔岩：黑曜石尖岩 + 发光岩浆池 + 远景火山 */
+    private fun drawSceneryLava() {
+        scroll(14f, game.distance) { m, z ->
+            val side = if (mod(m, 2) == 0) -1f else 1f
+            val x = side * (5.8f + mod(m * 37, 40) / 10f)
+            val k = 0.7f + mod(m * 53, 60) / 100f
+            pushModel(x, 0f, z)
+            drawPart(0f, 0.8f * k, 0f, 0.9f * k, 1.6f * k, 0.9f * k, OBSIDIAN)
+            drawPart(0.2f * k, 1.9f * k, 0f, 0.5f * k, 0.9f * k, 0.5f * k, OBSIDIAN)
+            drawPart(0.2f * k, 2.5f * k, 0f, 0.22f * k, 0.5f * k, 0.22f * k, OBSIDIAN)
+            popModel()
+        }
+        mMode = 2
+        scroll(9f, game.distance) { m, z ->
+            val side = if (mod(m, 2) == 0) 1f else -1f
+            val x = side * (6.2f + mod(m * 29, 45) / 10f)
+            val k = 0.8f + mod(m * 41, 50) / 100f
+            val pulse = 0.75f + 0.25f * sin(scenePhase * 2.5f + m)
+            val glow = floatArrayOf(LAVA_GLOW[0] * pulse, LAVA_GLOW[1] * pulse, LAVA_GLOW[2], 0.9f)
+            drawBox(x, 0.06f, z, 1.6f * k, 0.12f, 1.3f * k, glow)
+            drawBox(x, 0.10f, z, 0.8f * k, 0.1f, 0.6f * k, LAVA_CORE)
+        }
+        // 远景火山：黑锥 + 发光火山口
+        scroll(70f, game.distance * 0.6f) { m, z ->
+            val side = if (mod(m, 2) == 0) -1f else 1f
+            val x = side * (22f + mod(m * 23, 90) / 10f)
+            pushModel(x, 0f, z - 60f)
+            drawPart(0f, 5f, 0f, 22f, 10f, 14f, OBSIDIAN)
+            drawPart(0f, 12f, 0f, 12f, 6f, 9f, OBSIDIAN)
+            drawPart(0f, 15.4f, 0f, 5f, 1.4f, 4f, LAVA_GLOW)
+            popModel()
+        }
+        mMode = 0
+    }
+
+    /** 糖果：棒棒糖树 + 软糖丛 + 拐杖糖 */
+    private fun drawSceneryCandy() {
+        scroll(13f, game.distance) { m, z ->
+            val side = if (mod(m, 2) == 0) -1f else 1f
+            val x = side * (6.4f + mod(m * 37, 42) / 10f)
+            val k = 0.8f + mod(m * 53, 50) / 100f
+            val c = LOLLIPOP[mod(m, 3)]
+            pushModel(x, 0f, z)
+            drawPart(0f, 1.1f * k, 0f, 0.22f, 2.2f * k, 0.22f, CANDY_STICK)
+            drawPart(0f, 2.7f * k, 0f, 1.5f * k, 1.5f * k, 0.5f, c)
+            drawPart(0f, 2.7f * k, 0.05f, 0.8f * k, 0.8f * k, 0.5f, CANDY_STICK)
+            popModel()
+        }
+        scroll(8.5f, game.distance) { m, z ->
+            val side = if (mod(m, 2) == 0) 1f else -1f
+            val x = side * (5.2f + mod(m * 29, 30) / 10f)
+            val k = 0.6f + mod(m * 41, 45) / 100f
+            val c = GUMDROP[mod(m, 3)]
+            pushModel(x, 0f, z)
+            drawPart(0f, 0.35f * k, 0f, 1.0f * k, 0.7f * k, 1.0f * k, c)
+            drawPart(0f, 0.75f * k, 0f, 0.6f * k, 0.35f * k, 0.6f * k, c)
+            popModel()
+        }
+        scroll(23f, game.distance) { m, z ->
+            val side = if (mod(m, 2) == 0) -1f else 1f
+            val x = side * (7.8f + mod(m * 19, 35) / 10f)
+            pushModel(x, 0f, z)
+            for (j in 0..5) {
+                drawPart(0f, 0.3f + j * 0.55f, 0f, 0.3f, 0.55f, 0.3f,
+                    if (j % 2 == 0) CANDY_RED else CANDY_STICK)
+            }
+            drawPart(0.32f, 3.4f, 0f, 0.6f, 0.3f, 0.3f, CANDY_RED)
+            popModel()
+        }
+    }
+
+    /** 星空：漂浮陨石 + 霓虹水晶 */
+    private fun drawScenerySpace() {
+        scroll(17f, game.distance) { m, z ->
+            val side = if (mod(m, 2) == 0) -1f else 1f
+            val x = side * (6.5f + mod(m * 37, 55) / 10f)
+            val k = 0.6f + mod(m * 53, 60) / 100f
+            val fy = 1.2f + mod(m * 23, 32) / 10f
+            val bob = sin(scenePhase * 0.6f + m) * 0.35f
+            pushModel(x, fy + bob, z)
+            Matrix.rotateM(model, 0, scenePhase * 12f + m * 40f, 0.3f, 1f, 0.2f)
+            drawPart(0f, 0f, 0f, 1.1f * k, 0.9f * k, 1.0f * k, ASTEROID)
+            drawPart(0.4f * k, 0.3f * k, 0f, 0.5f * k, 0.45f * k, 0.5f * k, ASTEROID)
+            popModel()
+        }
+        mMode = 2
+        scroll(12f, game.distance) { m, z ->
+            val side = if (mod(m, 2) == 0) 1f else -1f
+            val x = side * (5.5f + mod(m * 29, 38) / 10f)
+            val k = 0.7f + mod(m * 41, 55) / 100f
+            val pulse = 0.7f + 0.3f * sin(scenePhase * 3f + m * 1.3f)
+            val c = if (mod(m, 2) == 0) CRYSTAL_CYAN else CRYSTAL_PURPLE
+            val col = floatArrayOf(c[0] * pulse, c[1] * pulse, c[2] * pulse, 0.9f)
+            pushModel(x, 0f, z)
+            drawPart(0f, 0.8f * k, 0f, 0.45f * k, 1.6f * k, 0.45f * k, col)
+            drawPart(0f, 1.9f * k, 0f, 0.22f * k, 0.7f * k, 0.22f * k, col)
+            drawPart(0.4f * k, 0.5f * k, 0f, 0.28f * k, 1.0f * k, 0.28f * k, col)
+            popModel()
+        }
+        mMode = 0
+    }
+
+    private fun drawClouds() {
         mMode = 2
         scroll(31f, game.distance * 0.45f) { m, z ->
             val side = if (mod(m, 2) == 0) -1f else 1f
@@ -478,9 +839,81 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         mMode = 0
     }
 
-    /** 夜间路灯：保持跑道可读性 */
+    /** 宇宙环境粒子：气泡 / 火星 / 糖屑 / 星尘 */
+    private fun drawAmbient(dt: Float) {
+        val uni = game.universe
+        if (uni == Game.UNI_MEADOW || uni == Game.UNI_SKY) return
+        val strength = if (game.universePrev == Game.UNI_MEADOW) game.universeBlend else 1f
+        if (strength < 0.05f) return
+        mMode = 2
+        val n = (ambX.size * strength).toInt()
+        for (i in 0 until n) {
+            when (uni) {
+                Game.UNI_WATER -> {
+                    ambY[i] += 1.3f * dt
+                    if (ambY[i] > 12f) ambY[i] -= 12f
+                    val sway = sin(scenePhase * 1.5f + ambSeed[i]) * 0.4f
+                    val k = 0.08f + 0.05f * abs(sin(ambSeed[i] * 3f))
+                    drawBox(camX + ambX[i] + sway, ambY[i], ambZ[i], k, k, k, BUBBLE)
+                }
+                Game.UNI_LAVA -> {
+                    ambY[i] += 2.2f * dt
+                    if (ambY[i] > 12f) ambY[i] -= 12f
+                    val fl = 0.5f + 0.5f * abs(sin(scenePhase * 5f + ambSeed[i]))
+                    val col = floatArrayOf(1f, 0.45f + 0.35f * fl, 0.1f, 0.55f + 0.3f * fl)
+                    val k = 0.07f + 0.05f * fl
+                    drawBox(camX + ambX[i], ambY[i], ambZ[i], k, k, k, col)
+                }
+                Game.UNI_CANDY -> {
+                    ambY[i] -= 1.0f * dt
+                    if (ambY[i] < 0f) ambY[i] += 12f
+                    val sway = sin(scenePhase * 1.2f + ambSeed[i]) * 0.5f
+                    val c = PORTAL_RING[i % PORTAL_RING.size]
+                    drawBox(camX + ambX[i] + sway, ambY[i], ambZ[i], 0.09f, 0.09f, 0.09f, c)
+                }
+                Game.UNI_SPACE -> {
+                    ambZ[i] += 2.5f * dt
+                    if (ambZ[i] > 6f) ambZ[i] -= 50f
+                    val tw = 0.4f + 0.6f * abs(sin(scenePhase * 4f + ambSeed[i]))
+                    val col = floatArrayOf(STARDUST[0], STARDUST[1], STARDUST[2], 0.7f * tw)
+                    val k = 0.06f + 0.04f * tw
+                    drawBox(camX + ambX[i], ambY[i], ambZ[i], k, k, k, col)
+                }
+            }
+        }
+        mMode = 0
+    }
+
+    /** 传送门：门柱 + 旋转彩环 + 目标宇宙色门芯 */
+    private fun drawPortal() {
+        if (!game.portalActive) return
+        val z = game.portalZ
+        if (z < -220f || z > 4f) return
+        pushModel(0f, 0f, z)
+        drawPart(-4.2f, 2.6f, 0f, 0.5f, 5.2f, 0.5f, GANTRY)
+        drawPart(4.2f, 2.6f, 0f, 0.5f, 5.2f, 0.5f, GANTRY)
+        drawPart(0f, 5.4f, 0f, 8.9f, 0.5f, 0.5f, GANTRY)
+        popModel()
+
+        mMode = 2
+        val spin = scenePhase * 2.2f
+        for (i in 0 until 12) {
+            val a = spin + i * (2f * Math.PI.toFloat() / 12f)
+            val px = cos(a) * 3.4f
+            val py = 2.7f + sin(a) * 2.1f
+            drawBox(px, py, z, 0.42f, 0.42f, 0.42f, PORTAL_RING[i % PORTAL_RING.size])
+        }
+        val tc = if (game.portalTarget == Game.UNI_MEADOW) SKY else UNI_PAL[game.portalTarget][0]
+        val pulse = 0.30f + 0.10f * sin(scenePhase * 3f)
+        drawBox(0f, 2.7f, z + 0.1f, 7.4f, 4.6f, 0.12f,
+            floatArrayOf(min(1f, tc[0] + 0.25f), min(1f, tc[1] + 0.25f), min(1f, tc[2] + 0.3f), pulse))
+        drawBox(0f, 2.7f, z + 0.2f, 5.0f, 3.2f, 0.1f, floatArrayOf(1f, 1f, 1f, pulse * 0.55f))
+        mMode = 0
+    }
+
+    /** 夜间路灯：保持跑道可读性（仅草原世界） */
     private fun drawStreetLamps() {
-        if (nightAmt < 0.2f) return
+        if (nightAmt < 0.2f || meadowW < 0.5f) return
         mMode = 2
         scroll(22f, game.distance) { m, z ->
             val side = if (mod(m, 2) == 0) -1f else 1f

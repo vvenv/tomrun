@@ -62,6 +62,21 @@ class Game {
         const val Q_JUMP = 3
         const val Q_SLIDE = 4
         const val Q_SMASH = 5
+        const val Q_PORTAL = 6
+
+        // 平行宇宙
+        const val UNI_MEADOW = 0
+        const val UNI_WATER = 1
+        const val UNI_SKY = 2
+        const val UNI_LAVA = 3
+        const val UNI_CANDY = 4
+        const val UNI_SPACE = 5
+        const val UNIVERSE_COUNT = 6
+        val UNIVERSE_NAMES = arrayOf("草原世界", "水下世界", "天空世界", "熔岩世界", "糖果世界", "星空世界")
+        val UNIVERSE_PERKS = arrayOf("", "水中漂浮跳", "跳得更高", "金币分数x2", "钱包金币x2", "超低重力")
+        val UNI_GRAVITY = floatArrayOf(1f, 0.45f, 0.85f, 1f, 1f, 0.35f)
+        val UNI_JUMP = floatArrayOf(1f, 0.82f, 1.15f, 1f, 1f, 0.80f)
+        const val PORTAL_FIRST = 320f
 
         // 成就类别
         const val A_COINS = 0
@@ -89,6 +104,19 @@ class Game {
         val COLOR_NAMES = arrayOf("蓝灰", "橘黄", "乌黑", "粉红")
         val TRAIL_NAMES = arrayOf("无尾迹", "青色", "金色", "彩虹")
 
+        // 小屋：房屋主体 / 屋顶 / 院子装饰
+        val HOUSE_NAMES = arrayOf("小木屋", "砖瓦房", "双层小楼", "梦幻城堡")
+        val HOUSE_PRICES = intArrayOf(0, 800, 2000, 4500)
+        val ROOF_NAMES = arrayOf("红屋顶", "青屋顶", "紫屋顶", "金屋顶")
+        val ROOF_PRICES = intArrayOf(0, 250, 600, 1200)
+        val DECO_NAMES = arrayOf("花坛", "木栅栏", "信箱", "秋千", "猫爬架", "小泳池", "望远镜", "彩旗")
+        val DECO_PRICES = intArrayOf(150, 200, 250, 400, 550, 700, 900, 1200)
+        const val HOME_TAB_HOUSE = 0
+        const val HOME_TAB_ROOF = 1
+        const val HOME_TAB_DECO = 2
+        // 小屋能量等级门槛（按已购总价值）与开局奖励
+        val HOME_LEVEL_SCORE = intArrayOf(600, 2200, 5000)
+
         // 音效事件
         const val EV_JUMP = 0
         const val EV_SLIDE = 1
@@ -103,6 +131,8 @@ class Game {
         const val EV_SMASH = 10
         const val EV_QUEST = 11
         const val EV_ACHIEVE = 12
+        const val EV_PORTAL = 13
+        const val EV_BUY = 14
 
         const val W_SUNNY = 0
         const val W_RAIN = 1
@@ -116,6 +146,7 @@ class Game {
         const val PANEL_MAIN = 0
         const val PANEL_SHOP = 1
         const val PANEL_ACHIEVE = 2
+        const val PANEL_HOME = 3
     }
 
     class Entity(val kind: Int, val lane: Int, var z: Float, var y: Float = 0f) {
@@ -154,6 +185,8 @@ class Game {
     @Volatile var coins = 0          // 本局拾取（计分用）
     @Volatile var highScore = 0
     @Volatile var deadTime = 0f
+    @Volatile var immortalMode = false
+        private set
 
     // 永久钱包（外观货币）与本局净赚
     @Volatile var wallet = 0
@@ -200,6 +233,31 @@ class Game {
     @Volatile var trailStyle = 0
     private var ownedColors = 1   // bit0 免费
     private var ownedTrails = 1
+
+    // 平行宇宙
+    @Volatile var universe = UNI_MEADOW
+    @Volatile var universePrev = UNI_MEADOW
+    @Volatile var universeBlend = 1f
+    @Volatile var portalActive = false
+    @Volatile var portalZ = 0f
+    @Volatile var portalTarget = UNI_WATER
+    @Volatile var portalFlash = 0f
+    @Volatile var totalPortals = 0
+    @Volatile var universesSeen = 1
+    private var seenMask = 1          // bit0 草原
+    private var portalGap = PORTAL_FIRST
+    private var runPortals = 0
+
+    // 小屋
+    @Volatile var houseStyle = 0
+    @Volatile var roofStyle = 0
+    private var ownedHouses = 1       // bit0 免费小木屋
+    private var ownedRoofs = 1
+    private var ownedDecos = 0
+    @Volatile var homeTab = HOME_TAB_HOUSE
+    @Volatile var homeBrowseHouse = 0
+    @Volatile var homeBrowseRoof = 0
+    @Volatile var homeBrowseDeco = 0
 
     // 菜单
     @Volatile var menuPanel = PANEL_MAIN
@@ -284,10 +342,54 @@ class Game {
         if (!ownsTrail(trailStyle)) trailStyle = 0
         shopBrowseColor = catColor
         shopBrowseTrail = trailStyle
+
+        totalPortals = p.getInt("totalPortals", 0)
+        seenMask = p.getInt("seenUniverses", 1) or 1
+        universesSeen = Integer.bitCount(seenMask)
+
+        ownedHouses = p.getInt("ownedHouses", 1) or 1
+        ownedRoofs = p.getInt("ownedRoofs", 1) or 1
+        ownedDecos = p.getInt("ownedDecos", 0)
+        houseStyle = p.getInt("houseStyle", 0).coerceIn(0, HOUSE_NAMES.size - 1)
+        roofStyle = p.getInt("roofStyle", 0).coerceIn(0, ROOF_NAMES.size - 1)
+        if (!ownsHouse(houseStyle)) houseStyle = 0
+        if (!ownsRoof(roofStyle)) roofStyle = 0
+        homeBrowseHouse = houseStyle
+        homeBrowseRoof = roofStyle
     }
 
     fun ownsColor(i: Int) = (ownedColors and (1 shl i)) != 0
     fun ownsTrail(i: Int) = (ownedTrails and (1 shl i)) != 0
+    fun ownsHouse(i: Int) = (ownedHouses and (1 shl i)) != 0
+    fun ownsRoof(i: Int) = (ownedRoofs and (1 shl i)) != 0
+    fun ownsDeco(i: Int) = (ownedDecos and (1 shl i)) != 0
+    fun seenUniverse(i: Int) = (seenMask and (1 shl i)) != 0
+
+    fun decoOwnedCount(): Int = Integer.bitCount(ownedDecos)
+
+    /** 小屋繁荣值：已购项目总价值 */
+    fun homeScore(): Int {
+        var sum = 0
+        for (i in 1 until HOUSE_PRICES.size) if (ownsHouse(i)) sum += HOUSE_PRICES[i]
+        for (i in 1 until ROOF_PRICES.size) if (ownsRoof(i)) sum += ROOF_PRICES[i]
+        for (i in DECO_PRICES.indices) if (ownsDeco(i)) sum += DECO_PRICES[i]
+        return sum
+    }
+
+    /** 小屋能量 0~3 级：开局分别赠送 磁铁 / +头盔 / +加倍 */
+    fun homeLevel(): Int {
+        val sc = homeScore()
+        var lv = 0
+        for (t in HOME_LEVEL_SCORE) if (sc >= t) lv++
+        return lv
+    }
+
+    fun homeLevelDesc(lv: Int = homeLevel()): String = when (lv) {
+        0 -> "装扮小屋可获开局奖励"
+        1 -> "开局奖励：磁铁5s"
+        2 -> "开局奖励：磁铁+头盔"
+        else -> "开局奖励：磁铁+头盔+加倍"
+    }
 
     @Synchronized fun switchMenuPanel(panel: Int) {
         if (state == State.RUNNING) return
@@ -319,6 +421,7 @@ class Game {
         ownedColors = ownedColors or (1 shl i)
         catColor = i
         persistCosmetics()
+        emit(EV_BUY, HAPTIC_MED)
         return "购买成功：${COLOR_NAMES[i]}"
     }
 
@@ -336,7 +439,76 @@ class Game {
         ownedTrails = ownedTrails or (1 shl i)
         trailStyle = i
         persistCosmetics()
+        emit(EV_BUY, HAPTIC_MED)
         return "购买成功：${TRAIL_NAMES[i]}"
+    }
+
+    // ---------- 小屋 ----------
+    @Synchronized fun switchHomeTab(tab: Int) {
+        if (state == State.RUNNING) return
+        homeTab = tab.coerceIn(HOME_TAB_HOUSE, HOME_TAB_DECO)
+    }
+
+    @Synchronized fun browseHome(delta: Int) {
+        if (state == State.RUNNING) return
+        when (homeTab) {
+            HOME_TAB_HOUSE -> homeBrowseHouse =
+                (homeBrowseHouse + delta + HOUSE_NAMES.size) % HOUSE_NAMES.size
+            HOME_TAB_ROOF -> homeBrowseRoof =
+                (homeBrowseRoof + delta + ROOF_NAMES.size) % ROOF_NAMES.size
+            else -> homeBrowseDeco =
+                (homeBrowseDeco + delta + DECO_NAMES.size) % DECO_NAMES.size
+        }
+    }
+
+    /** 购买 / 装备当前浏览的小屋项目；返回提示文案 */
+    @Synchronized fun buyOrEquipHome(): String {
+        if (state == State.RUNNING) return ""
+        when (homeTab) {
+            HOME_TAB_HOUSE -> {
+                val i = homeBrowseHouse
+                if (ownsHouse(i)) {
+                    houseStyle = i
+                    persistHome()
+                    return "已入住 ${HOUSE_NAMES[i]}"
+                }
+                val price = HOUSE_PRICES[i]
+                if (wallet < price) return "金币不足（需 $price）"
+                wallet -= price
+                ownedHouses = ownedHouses or (1 shl i)
+                houseStyle = i
+                persistHome()
+                emit(EV_BUY, HAPTIC_MED)
+                return "乔迁新居：${HOUSE_NAMES[i]}！"
+            }
+            HOME_TAB_ROOF -> {
+                val i = homeBrowseRoof
+                if (ownsRoof(i)) {
+                    roofStyle = i
+                    persistHome()
+                    return "已换上 ${ROOF_NAMES[i]}"
+                }
+                val price = ROOF_PRICES[i]
+                if (wallet < price) return "金币不足（需 $price）"
+                wallet -= price
+                ownedRoofs = ownedRoofs or (1 shl i)
+                roofStyle = i
+                persistHome()
+                emit(EV_BUY, HAPTIC_MED)
+                return "购买成功：${ROOF_NAMES[i]}"
+            }
+            else -> {
+                val i = homeBrowseDeco
+                if (ownsDeco(i)) return "${DECO_NAMES[i]} 已摆放在院子里"
+                val price = DECO_PRICES[i]
+                if (wallet < price) return "金币不足（需 $price）"
+                wallet -= price
+                ownedDecos = ownedDecos or (1 shl i)
+                persistHome()
+                emit(EV_BUY, HAPTIC_MED)
+                return "已摆上：${DECO_NAMES[i]}"
+            }
+        }
     }
 
     fun consumeHaptic(): Int {
@@ -420,6 +592,17 @@ class Game {
     }
 
     // ---------- 输入 ----------
+    /** Debug 测试开关：仅当前进程内有效，重启后自动关闭。 */
+    @Synchronized fun toggleImmortalMode(): Boolean {
+        if (!BuildConfig.DEBUG) {
+            immortalMode = false
+            return false
+        }
+        if (state == State.RUNNING) return immortalMode
+        immortalMode = !immortalMode
+        return immortalMode
+    }
+
     @Synchronized fun onTap() {
         when (state) {
             State.READY -> {
@@ -462,7 +645,7 @@ class Game {
     private fun jump() {
         if (riding != null) return
         if (onGround) {
-            velY = JUMP_V
+            velY = JUMP_V * UNI_JUMP[universe]
             slideTimer = 0f
             runJumps++
             bumpQuest(Q_JUMP, 1)
@@ -496,7 +679,20 @@ class Game {
         wavesSincePower = 0
         menuPanel = PANEL_MAIN
         zipGap = 90f + Random.nextFloat() * 80f
+        universe = UNI_MEADOW
+        universePrev = UNI_MEADOW
+        universeBlend = 1f
+        portalActive = false
+        portalFlash = 0f
+        portalGap = PORTAL_FIRST + Random.nextFloat() * 120f
+        runPortals = 0
         rollQuests()
+        // 小屋能量：开局按等级赠送 buff
+        val hl = homeLevel()
+        if (hl >= 1) magnetTime = 5f
+        if (hl >= 2) helmetLayers = 1
+        if (hl >= 3) doubleTime = 5f
+        if (hl >= 1) enqueueBanner("小屋能量 Lv$hl！${homeLevelDesc(hl)}", 0xFF7DEBA0.toInt(), 2.0f)
         var z = -45f
         while (z > SPAWN_Z) {
             spawnWave(z, early = true)
@@ -519,6 +715,8 @@ class Game {
         tickFeedback(dt)
         tickBanners(dt)
         if (shake > 0f) shake = (shake - dt * 5f).coerceAtLeast(0f)
+        if (portalFlash > 0f) portalFlash -= dt
+        if (universeBlend < 1f) universeBlend = min(1f, universeBlend + dt / 1.5f)
         if (state == State.DEAD) {
             deadTime += dt
             return
@@ -575,7 +773,7 @@ class Game {
                 catY = nextGroundY
                 velY = 0f
             } else if (!onGround || velY > 0f) {
-                velY -= GRAVITY * dt
+                velY -= GRAVITY * UNI_GRAVITY[universe] * dt
                 catY += velY * dt
                 if (catY <= groundY) { catY = groundY; velY = 0f }
             }
@@ -626,6 +824,19 @@ class Game {
         if (zipGap <= 0f && ziplines.isEmpty() && distance > 400f) {
             spawnZipline()
             zipGap = 160f + Random.nextFloat() * 160f
+        }
+
+        // 传送门：随世界前移，穿过即切换平行宇宙
+        if (portalActive) {
+            portalZ += dz
+            if (portalZ >= 0.4f) enterPortal()
+        } else {
+            portalGap -= dz
+            if (portalGap <= 0f) {
+                portalActive = true
+                portalZ = SPAWN_Z
+                portalTarget = rollUniverse()
+            }
         }
 
         checkCollision()
@@ -695,6 +906,38 @@ class Game {
             weatherTimer = 25f + Random.nextFloat() * 20f
         }
         if (weatherBlend < 1f) weatherBlend = min(1f, weatherBlend + dt / 2.5f)
+    }
+
+    // ---------- 平行宇宙 ----------
+    /** 随机挑一个不同于当前的宇宙 */
+    private fun rollUniverse(): Int {
+        var next = Random.nextInt(UNIVERSE_COUNT)
+        if (next == universe) next = (next + 1 + Random.nextInt(UNIVERSE_COUNT - 1)) % UNIVERSE_COUNT
+        return next
+    }
+
+    private fun enterPortal() {
+        portalActive = false
+        universePrev = universe
+        universe = portalTarget
+        universeBlend = 0f
+        portalFlash = 1.0f
+        portalGap = 480f + Random.nextFloat() * 260f
+        runPortals++
+        totalPortals++
+        val perk = UNIVERSE_PERKS[universe]
+        val text = if (perk.isEmpty()) "回到${UNIVERSE_NAMES[universe]}！"
+        else "穿越到${UNIVERSE_NAMES[universe]}！$perk"
+        enqueueBanner(text, 0xFF4DE8FF.toInt(), 2.6f)
+        if (seenMask and (1 shl universe) == 0) {
+            seenMask = seenMask or (1 shl universe)
+            universesSeen = Integer.bitCount(seenMask)
+            enqueueBanner("宇宙图鉴 +1：${UNIVERSE_NAMES[universe]}（$universesSeen/$UNIVERSE_COUNT）", 0xFFFFD426.toInt(), 2.6f)
+        }
+        pushFloat("穿越！", 0xFF4DE8FF.toInt())
+        shake = 0.30f
+        spawnBurst(catX, 1.4f, 0f, floatArrayOf(0.6f, 0.85f, 1f, 1f), 16)
+        emit(EV_PORTAL, HAPTIC_HEAVY)
     }
 
     // ---------- 生成 ----------
@@ -825,7 +1068,7 @@ class Game {
                         smashObstacle(e)
                         continue
                     }
-                    if (helmetLayers > 0) {
+                    if (!immortalMode && helmetLayers > 0) {
                         helmetLayers--
                         invulnTime = 1f
                         shake = 0.45f
@@ -843,11 +1086,12 @@ class Game {
 
     private fun collectCoin(e: Entity) {
         // 加倍只影响本局计分金币数量，钱包按 1:1 拾取计入本局赚取
-        val scoreGained = if (doubleTime > 0f) 2 else 1
+        // 熔岩世界：计分金币 x2；糖果世界：钱包金币 x2
+        var scoreGained = if (doubleTime > 0f) 2 else 1
+        if (universe == UNI_LAVA) scoreGained *= 2
         coins += scoreGained
         sessionPickupCoins += 1
-        // 钱包：每枚实体金币 +1（加倍不刷钱包）
-        grantWallet(1)
+        grantWallet(if (universe == UNI_CANDY) 2 else 1)
 
         val prevMult = comboMult
         combo++
@@ -935,7 +1179,7 @@ class Game {
         quests.clear()
         val tier = playerTier()
         val pool = mutableListOf(
-            Q_COINS, Q_DIST, Q_COMBO, Q_JUMP, Q_SLIDE, Q_SMASH
+            Q_COINS, Q_DIST, Q_COMBO, Q_JUMP, Q_SLIDE, Q_SMASH, Q_PORTAL
         )
         pool.shuffle()
         for (i in 0 until 3) {
@@ -954,6 +1198,7 @@ class Game {
             Q_COMBO -> Quest(type, scale(20, 40, 70), scoreR(200, 300, 450), walletR(20, 35, 55), "最高连击")
             Q_JUMP -> Quest(type, scale(8, 15, 25), scoreR(120, 180, 260), walletR(12, 20, 35), "跳跃次数")
             Q_SLIDE -> Quest(type, scale(5, 10, 16), scoreR(120, 180, 260), walletR(12, 20, 35), "铲滑次数")
+            Q_PORTAL -> Quest(type, scale(1, 2, 3), scoreR(150, 240, 360), walletR(15, 28, 45), "穿越传送门")
             else -> Quest(type, scale(3, 6, 12), scoreR(160, 240, 360), walletR(16, 28, 45), "撞碎障碍")
         }
     }
@@ -977,6 +1222,7 @@ class Game {
                 Q_JUMP -> runJumps
                 Q_SLIDE -> runSlides
                 Q_SMASH -> runSmashes
+                Q_PORTAL -> runPortals
                 else -> 0
             }
             q.progress = cur.coerceAtMost(q.target)
@@ -1063,6 +1309,17 @@ class Game {
             ?.apply()
     }
 
+    private fun persistHome() {
+        prefs?.edit()
+            ?.putInt("wallet", wallet)
+            ?.putInt("ownedHouses", ownedHouses)
+            ?.putInt("ownedRoofs", ownedRoofs)
+            ?.putInt("ownedDecos", ownedDecos)
+            ?.putInt("houseStyle", houseStyle)
+            ?.putInt("roofStyle", roofStyle)
+            ?.apply()
+    }
+
     private fun persistAll() {
         val p = prefs ?: return
         val ed = p.edit()
@@ -1076,6 +1333,13 @@ class Game {
             .putInt("ownedTrails", ownedTrails)
             .putInt("catColor", catColor)
             .putInt("trailStyle", trailStyle)
+            .putInt("totalPortals", totalPortals)
+            .putInt("seenUniverses", seenMask)
+            .putInt("ownedHouses", ownedHouses)
+            .putInt("ownedRoofs", ownedRoofs)
+            .putInt("ownedDecos", ownedDecos)
+            .putInt("houseStyle", houseStyle)
+            .putInt("roofStyle", roofStyle)
         for (i in 0 until ACHIEVE_CATS) ed.putInt("achieveLv$i", achieveLevels[i])
         ed.apply()
     }
@@ -1093,6 +1357,15 @@ class Game {
     }
 
     private fun die() {
+        if (immortalMode && BuildConfig.DEBUG) {
+            invulnTime = 1f
+            shake = 0.45f
+            resetCombo()
+            spawnBurst(catX, catY + 1f, 0f, floatArrayOf(0.3f, 0.95f, 1f, 1f), 8)
+            pushFloat("不死", 0xFF4DE8FF.toInt())
+            emit(EV_SHIELD, HAPTIC_HEAVY)
+            return
+        }
         state = State.DEAD
         deadTime = 0f
         shake = 0.28f
