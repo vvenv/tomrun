@@ -69,6 +69,31 @@ class HudView(context: Context, private val game: Game) : View(context) {
         canvas.drawText("金币 ${game.coins}", w - 36f * s, 106f * s, textPaint)
         textPaint.color = Color.WHITE
         canvas.drawText("最高 ${game.highScore}", w - 36f * s, 142f * s, textPaint)
+
+        // 左上角：生效中的道具
+        textPaint.textAlign = Paint.Align.LEFT
+        textPaint.textSize = 30f * s
+        var buffY = 66f * s
+        if (game.helmet) {
+            textPaint.color = 0xFFFFC21F.toInt()
+            canvas.drawText("⛑ 头盔", 36f * s, buffY, textPaint)
+            buffY += 44f * s
+        }
+        if (game.magnetTime > 0f) {
+            textPaint.color = 0xFFFF6B6B.toInt()
+            canvas.drawText("🧲 磁铁 ${game.magnetLeft()}s", 36f * s, buffY, textPaint)
+            buffY += 44f * s
+        }
+        if (game.doubleTime > 0f) {
+            textPaint.color = 0xFFC77DFF.toInt()
+            canvas.drawText("✦ 加倍 ${game.doubleLeft()}s", 36f * s, buffY, textPaint)
+            buffY += 44f * s
+        }
+        if (game.riding != null) {
+            textPaint.color = 0xFF7DEBA0.toInt()
+            canvas.drawText("⚡ 滑索中", 36f * s, buffY, textPaint)
+        }
+        textPaint.color = Color.WHITE
         textPaint.textAlign = Paint.Align.CENTER
 
         when (game.state) {
@@ -80,7 +105,8 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 canvas.drawText("点击屏幕开始", w / 2f, h * 0.50f, textPaint)
                 textPaint.textSize = 27f * s
                 canvas.drawText("左右滑动·换道    上滑·跳跃    下滑·铲滑", w / 2f, h * 0.61f, textPaint)
-                canvas.drawText("躲开障碍，吃金币！", w / 2f, h * 0.69f, textPaint)
+                canvas.drawText("道具：磁铁吸金币 · 头盔抗撞 · 加倍得分", w / 2f, h * 0.69f, textPaint)
+                canvas.drawText("在地面对准绿色门架，走上索道跳过障碍！", w / 2f, h * 0.77f, textPaint)
             }
             Game.State.DEAD -> {
                 dim(canvas)

@@ -113,6 +113,16 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         private val CAT = floatArrayOf(0.52f, 0.58f, 0.70f, 1f)
         private val CAT_DARK = floatArrayOf(0.36f, 0.42f, 0.55f, 1f)
         private val CAT_WHITE = floatArrayOf(0.95f, 0.95f, 0.92f, 1f)
+
+        // 道具与索道
+        private val MAGNET_RED = floatArrayOf(0.90f, 0.24f, 0.24f, 1f)
+        private val MAGNET_TIP = floatArrayOf(0.92f, 0.92f, 0.95f, 1f)
+        private val HELMET_Y = floatArrayOf(1.0f, 0.76f, 0.12f, 1f)
+        private val DOUBLE_P = floatArrayOf(0.62f, 0.30f, 0.90f, 1f)
+        private val DOUBLE_CORE = floatArrayOf(1.0f, 0.84f, 0.10f, 1f)
+        private val CABLE = floatArrayOf(0.25f, 0.26f, 0.30f, 1f)
+        private val GANTRY = floatArrayOf(0.55f, 0.58f, 0.64f, 1f)
+        private val GANTRY_IN = floatArrayOf(0.30f, 0.75f, 0.35f, 1f)
     }
 
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
@@ -153,8 +163,9 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         setFog(SKY[0] + 0.09f, SKY[1] + 0.05f, SKY[2] + 0.02f)
 
         camX += (game.catX * 0.55f - camX) * min(1f, dt * 6f)
-        val eyeY = 3.6f + game.catY * 0.3f
-        Matrix.setLookAtM(view, 0, camX, eyeY, 7.4f, camX * 0.5f, 1.5f, -8f, 0f, 1f, 0f)
+        val eyeY = 3.6f + game.catY * 0.22f
+        val centerY = 1.5f + game.catY * 0.25f
+        Matrix.setLookAtM(view, 0, camX, eyeY, 7.4f, camX * 0.5f, centerY, -8f, 0f, 1f, 0f)
         Matrix.multiplyMM(vp, 0, proj, 0, view, 0)
 
         drawSky()
@@ -272,15 +283,54 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
     // ---------- 实体 ----------
     private fun drawEntities() {
         synchronized(game) {
+            for (zip in game.ziplines) drawZipline(zip)
             for (e in game.entities) {
-                val x = Game.LANE_X[e.lane]
+                val x = e.x
                 when (e.kind) {
                     Game.COIN -> {
                         e.spin += 3f
-                        if (e.z < 1.5f) drawShadow(x, e.z, 0.5f)
+                        if (e.z < 1.5f && e.y < 2f) drawShadow(x, e.z, 0.5f)
                         pushModel(x, e.y, e.z)
                         Matrix.rotateM(model, 0, e.spin, 0f, 1f, 0f)
                         drawPart(0f, 0f, 0f, 0.62f, 0.62f, 0.2f, GOLD)
+                        popModel()
+                    }
+                    Game.P_MAGNET -> {
+                        e.spin += 2f
+                        if (e.z < 1.5f) drawShadow(x, e.z, 0.5f)
+                        pushModel(x, e.y + sin(e.spin * 0.05f) * 0.12f, e.z)
+                        Matrix.rotateM(model, 0, e.spin, 0f, 1f, 0f)
+                        // U 形磁铁：开口朝下
+                        drawPart(0f, 0.22f, 0f, 0.56f, 0.2f, 0.2f, MAGNET_RED)
+                        drawPart(-0.19f, -0.05f, 0f, 0.18f, 0.4f, 0.2f, MAGNET_RED)
+                        drawPart(0.19f, -0.05f, 0f, 0.18f, 0.4f, 0.2f, MAGNET_RED)
+                        drawPart(-0.19f, -0.3f, 0f, 0.18f, 0.12f, 0.2f, MAGNET_TIP)
+                        drawPart(0.19f, -0.3f, 0f, 0.18f, 0.12f, 0.2f, MAGNET_TIP)
+                        popModel()
+                    }
+                    Game.P_HELMET -> {
+                        e.spin += 2f
+                        if (e.z < 1.5f) drawShadow(x, e.z, 0.5f)
+                        pushModel(x, e.y + sin(e.spin * 0.05f) * 0.12f, e.z)
+                        Matrix.rotateM(model, 0, e.spin, 0f, 1f, 0f)
+                        // 安全帽：帽体 + 帽檐
+                        drawPart(0f, 0.1f, 0f, 0.5f, 0.34f, 0.5f, HELMET_Y)
+                        drawPart(0f, 0.24f, 0f, 0.3f, 0.14f, 0.34f, HELMET_Y)
+                        drawPart(0f, -0.1f, 0f, 0.72f, 0.1f, 0.72f, HELMET_Y)
+                        popModel()
+                    }
+                    Game.P_DOUBLE -> {
+                        e.spin += 3f
+                        if (e.z < 1.5f) drawShadow(x, e.z, 0.5f)
+                        pushModel(x, e.y + sin(e.spin * 0.05f) * 0.12f, e.z)
+                        Matrix.rotateM(model, 0, e.spin, 0f, 1f, 0f)
+                        // 紫色宝石壳 + 金色核心
+                        drawPart(0f, 0f, 0f, 0.55f, 0.55f, 0.55f, DOUBLE_P)
+                        pushModel(0f, 0f, 0f)
+                        Matrix.rotateM(model, 0, 45f, 0f, 1f, 0f)
+                        Matrix.rotateM(model, 0, 45f, 1f, 0f, 0f)
+                        drawPart(0f, 0f, 0f, 0.42f, 0.42f, 0.42f, DOUBLE_CORE)
+                        popModel()
                         popModel()
                     }
                     Game.OBST_LOW -> {
@@ -311,6 +361,28 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         }
     }
 
+    /** 高空索道：入口/出口门架 + 钢缆 */
+    private fun drawZipline(zip: Game.Zip) {
+        val x = Game.LANE_X[zip.lane]
+        val h = Game.CABLE_H
+        // 钢缆
+        val midZ = (zip.entryZ + zip.exitZ) / 2f
+        drawBox(x, h, midZ, 0.06f, 0.06f, zip.length, CABLE)
+        // 门架：入口绿色（提示可进入），出口灰色
+        drawGantry(x, zip.entryZ, GANTRY_IN)
+        drawGantry(x, zip.exitZ, GANTRY)
+    }
+
+    private fun drawGantry(x: Float, z: Float, color: FloatArray) {
+        if (z < -200f || z > 10f) return
+        val h = Game.CABLE_H
+        pushModel(x, 0f, z)
+        drawPart(-1.0f, h / 2f, 0f, 0.16f, h, 0.16f, color)
+        drawPart(1.0f, h / 2f, 0f, 0.16f, h, 0.16f, color)
+        drawPart(0f, h + 0.1f, 0f, 2.3f, 0.2f, 0.2f, color)
+        popModel()
+    }
+
     /** 方形软阴影贴地投影 */
     private fun drawShadow(x: Float, z: Float, size: Float) {
         mMode = 1
@@ -333,11 +405,19 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
             Matrix.rotateM(model, 0, -65f, 1f, 0f, 0f)
             Matrix.translateM(model, 0, 0f, 0.3f, 0.3f)
         }
+        val ridingZip = g.riding != null
         val lean = (Game.LANE_X[g.lane] - g.catX) * 9f
         Matrix.rotateM(model, 0, -lean, 0f, 0f, 1f)
         Matrix.scaleM(model, 0, 1f, squash, 1f)
-        if (!g.onGround && g.state == Game.State.RUNNING) {
+        if (!g.onGround && !ridingZip && g.state == Game.State.RUNNING) {
             Matrix.rotateM(model, 0, if (g.velY > 0) 14f else -10f, 1f, 0f, 0f)
+        }
+
+        if (ridingZip) {
+            // 抓着滑轮吊在钢缆下
+            val grip = Game.CABLE_H - g.catY
+            drawPart(0f, (2.1f + grip) / 2f, -0.2f, 0.1f, grip - 2.05f, 0.1f, CAT_DARK)
+            drawPart(0f, grip - 0.1f, -0.2f, 0.3f, 0.2f, 0.24f, GANTRY)
         }
 
         // 尾巴：三节方块阶梯
@@ -378,6 +458,11 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         drawPart(-0.3f, 0.52f, 0f, 0.24f, 0.26f, 0.14f, CAT_DARK)
         drawPart(0.3f, 0.52f, 0f, 0.24f, 0.26f, 0.14f, CAT_DARK)
         drawPart(0f, -0.15f, -0.4f, 0.5f, 0.32f, 0.14f, CAT_WHITE)
+        if (g.helmet) {
+            // 护盾头盔
+            drawPart(0f, 0.5f, 0f, 0.96f, 0.3f, 0.9f, HELMET_Y)
+            drawPart(0f, 0.34f, -0.08f, 1.06f, 0.1f, 1.04f, HELMET_Y)
+        }
         popModel()
 
         popModel()
