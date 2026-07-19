@@ -18,6 +18,8 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+            // 用 debug 签名，方便直接 adb install 分发试玩
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
     compileOptions {

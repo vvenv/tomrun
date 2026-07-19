@@ -4,33 +4,35 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- 背景 -->
-    <path android:fillColor="#FF8ECDF2"
+    <!-- 天空背景 -->
+    <path android:fillColor="#FF6BCCF2"
         android:pathData="M0,0h108v108h-108z"/>
-    <!-- 猫头 -->
-    <path android:fillColor="#FF6E7B8B"
-        android:pathData="M54,30 m-24,4 a24,22 0 1,0 48,0 a24,22 0 1,0 -48,0"/>
+    <!-- 像素猫头（方块） -->
+    <path android:fillColor="#FF8594B3"
+        android:pathData="M30,34h48v40h-48z"/>
     <!-- 耳朵 -->
-    <path android:fillColor="#FF6E7B8B"
-        android:pathData="M32,26 L38,8 L48,20 Z"/>
-    <path android:fillColor="#FF6E7B8B"
-        android:pathData="M76,26 L70,8 L60,20 Z"/>
-    <!-- 白脸 -->
-    <path android:fillColor="#FFF5F5F0"
-        android:pathData="M54,44 m-16,0 a16,13 0 1,0 32,0 a16,13 0 1,0 -32,0"/>
+    <path android:fillColor="#FF5C6B8C"
+        android:pathData="M32,22h12v12h-12z"/>
+    <path android:fillColor="#FF5C6B8C"
+        android:pathData="M64,22h12v12h-12z"/>
     <!-- 眼睛 -->
     <path android:fillColor="#FFFFFFFF"
-        android:pathData="M45,30 m-7,0 a7,9 0 1,0 14,0 a7,9 0 1,0 -14,0"/>
+        android:pathData="M38,44h10v10h-10z"/>
     <path android:fillColor="#FFFFFFFF"
-        android:pathData="M63,30 m-7,0 a7,9 0 1,0 14,0 a7,9 0 1,0 -14,0"/>
-    <path android:fillColor="#FF3B7A3B"
-        android:pathData="M45,32 m-3,0 a3,4 0 1,0 6,0 a3,4 0 1,0 -6,0"/>
-    <path android:fillColor="#FF3B7A3B"
-        android:pathData="M63,32 m-3,0 a3,4 0 1,0 6,0 a3,4 0 1,0 -6,0"/>
-    <!-- 鼻子 -->
+        android:pathData="M60,44h10v10h-10z"/>
+    <path android:fillColor="#FF2E7D32"
+        android:pathData="M42,47h5v5h-5z"/>
+    <path android:fillColor="#FF2E7D32"
+        android:pathData="M63,47h5v5h-5z"/>
+    <!-- 白口鼻 + 粉鼻子 -->
+    <path android:fillColor="#FFF5F5F0"
+        android:pathData="M44,60h20v12h-20z"/>
     <path android:fillColor="#FFE8A0A8"
-        android:pathData="M54,41 m-3.5,0 a3.5,3 0 1,0 7,0 a3.5,3 0 1,0 -7,0"/>
+        android:pathData="M50,58h8v6h-8z"/>
     <!-- 地面 -->
-    <path android:fillColor="#FF7BB661"
+    <path android:fillColor="#FF57BD47"
         android:pathData="M0,84h108v24h-108z"/>
+    <!-- 金币 -->
+    <path android:fillColor="#FFFFD426"
+        android:pathData="M84,64h12v12h-12z"/>
 </vector>
