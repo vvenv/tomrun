@@ -485,7 +485,9 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 pixText(canvas, "点击屏幕再来一次", w / 2f, h * 0.94f, 28f * s, Color.WHITE, sdx, sdy)
             }
         } else {
-            pixText(canvas, "${game.characterName}的世界", w / 2f, h * 0.24f, 72f * s, Color.WHITE, sdx, sdy)
+            val worldTitle = "${game.characterName}的世界"
+            val worldTitleSize = fittedTextSize(worldTitle, 72f * s, w * 0.64f, 36f * s)
+            pixText(canvas, worldTitle, w / 2f, h * 0.24f, worldTitleSize, Color.WHITE, sdx, sdy)
             pixText(canvas, "点击屏幕开始", w / 2f, h * 0.36f, 32f * s, Color.WHITE, sdx, sdy)
             pixText(canvas, "左右换道 · 上滑跳跃 · 下滑铲滑", w / 2f, h * 0.44f, 24f * s, Color.WHITE, sdx, sdy)
             pixText(canvas, "传送门穿越平行宇宙 · 金币装扮小屋", w / 2f, h * 0.51f, 24f * s, Color.WHITE, sdx, sdy)
@@ -495,10 +497,14 @@ class HudView(context: Context, private val game: Game) : View(context) {
             canvas, "成就 ${game.achieveCount}/15  ·  ${game.nextAchieveHint()}",
             w / 2f, h * 0.61f, 24f * s, 0xFFFFD426.toInt(), sdx, sdy
         )
+        val codexLine = if (game.codexComplete()) {
+            "宇宙图鉴 ${Game.UNIVERSE_COUNT}/${Game.UNIVERSE_COUNT} 全收集！ ·  累计穿越 ${game.totalPortals} 次"
+        } else {
+            "宇宙图鉴 ${game.universesSeen}/${Game.UNIVERSE_COUNT}（集齐奖 ${Game.CODEX_REWARD}） ·  累计穿越 ${game.totalPortals} 次"
+        }
         pixText(
-            canvas,
-            "宇宙图鉴 ${game.universesSeen}/${Game.UNIVERSE_COUNT}  ·  累计穿越 ${game.totalPortals} 次",
-            w / 2f, h * 0.665f, 24f * s, 0xFF4DE8FF.toInt(), sdx, sdy
+            canvas, codexLine, w / 2f, h * 0.665f, 24f * s,
+            if (game.codexComplete()) 0xFFFFD426.toInt() else 0xFF4DE8FF.toInt(), sdx, sdy
         )
 
         // 商店 / 小屋 / 成就 按钮
@@ -524,7 +530,9 @@ class HudView(context: Context, private val game: Game) : View(context) {
 
     // ---------- 小屋 ----------
     private fun drawHome(canvas: Canvas, w: Float, h: Float, s: Float, sdx: Float, sdy: Float) {
-        pixText(canvas, "${game.characterName}的小屋", w / 2f, h * 0.075f, 48f * s, Color.WHITE, sdx, sdy)
+        val homeTitle = "${game.characterName}的小屋"
+        val homeTitleSize = fittedTextSize(homeTitle, 48f * s, w * 0.72f, 24f * s)
+        pixText(canvas, homeTitle, w / 2f, h * 0.075f, homeTitleSize, Color.WHITE, sdx, sdy)
 
         // 浏览预览：房屋 / 屋顶标签页直接预览浏览项
         val house = if (game.homeTab == Game.HOME_TAB_HOUSE) game.homeBrowseHouse else game.houseStyle
@@ -604,10 +612,19 @@ class HudView(context: Context, private val game: Game) : View(context) {
             w / 2f, h * 0.855f, 24f * s, 0xFF7DEBA0.toInt(), sdx, sdy
         )
 
-        btnBack.set(w / 2f - 100f * s, h * 0.92f - 26f * s, w / 2f + 100f * s, h * 0.92f + 26f * s)
+        val bottomY = h * 0.92f
+        val bottomW = 180f * s
+        val bottomGap = 16f * s
+        btnBack.set(
+            w / 2f - bottomGap / 2f - bottomW, bottomY - 26f * s,
+            w / 2f - bottomGap / 2f, bottomY + 26f * s
+        )
         drawBtn(canvas, btnBack, "返回", s)
-        btnRename.set(w / 2f + 116f * s, h * 0.92f - 26f * s, w / 2f + 216f * s, h * 0.92f + 26f * s)
-        drawBtn(canvas, btnRename, "改名", s)
+        btnRename.set(
+            w / 2f + bottomGap / 2f, bottomY - 26f * s,
+            w / 2f + bottomGap / 2f + bottomW, bottomY + 26f * s
+        )
+        drawBtn(canvas, btnRename, "角色改名", s)
     }
 
     private data class HomeRow(val name: String, val price: Int, val status: String, val action: String)
@@ -1284,6 +1301,17 @@ class HudView(context: Context, private val game: Game) : View(context) {
         btnPaint.style = Paint.Style.FILL
         textPaint.textAlign = Paint.Align.CENTER
         pixText(canvas, label, r.centerX(), r.centerY() + 8f * s, 24f * s, Color.WHITE, 1f, 1f)
+    }
+
+    private fun fittedTextSize(text: String, preferredSize: Float, maxWidth: Float, minSize: Float): Float {
+        var steps = (preferredSize / FONT_PX).roundToInt().coerceAtLeast(1)
+        val minSteps = (minSize / FONT_PX).roundToInt().coerceAtLeast(1)
+        while (steps > minSteps) {
+            textPaint.textSize = (steps * FONT_PX).toFloat()
+            if (textPaint.measureText(text) <= maxWidth) break
+            steps--
+        }
+        return (steps * FONT_PX).toFloat()
     }
 
     private fun pixText(

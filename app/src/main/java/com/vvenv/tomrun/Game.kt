@@ -77,6 +77,8 @@ class Game {
         val UNI_GRAVITY = floatArrayOf(1f, 0.45f, 0.85f, 1f, 1f, 0.35f)
         val UNI_JUMP = floatArrayOf(1f, 0.82f, 1.15f, 1f, 1f, 0.80f)
         const val PORTAL_FIRST = 320f
+        // 宇宙图鉴集齐一次性大奖
+        const val CODEX_REWARD = 1000
 
         // 成就类别
         const val A_COINS = 0
@@ -266,6 +268,7 @@ class Game {
     @Volatile var totalPortals = 0
     @Volatile var universesSeen = 1
     private var seenMask = 1          // bit0 草原
+    private var codexRewarded = false
     private var portalGap = PORTAL_FIRST
     private var runPortals = 0
 
@@ -389,6 +392,7 @@ class Game {
         totalPortals = p.getInt("totalPortals", 0)
         seenMask = p.getInt("seenUniverses", 1) or 1
         universesSeen = Integer.bitCount(seenMask)
+        codexRewarded = p.getBoolean("codexRewarded", false)
 
         ownedHouses = p.getInt("ownedHouses", 1) or 1
         ownedRoofs = p.getInt("ownedRoofs", 1) or 1
@@ -409,6 +413,7 @@ class Game {
     fun ownsRoof(i: Int) = (ownedRoofs and (1 shl i)) != 0
     fun ownsDeco(i: Int) = (ownedDecos and (1 shl i)) != 0
     fun seenUniverse(i: Int) = (seenMask and (1 shl i)) != 0
+    fun codexComplete() = universesSeen >= UNIVERSE_COUNT
 
     fun decoOwnedCount(): Int = Integer.bitCount(ownedDecos)
 
@@ -1072,6 +1077,22 @@ class Game {
             seenMask = seenMask or (1 shl universe)
             universesSeen = Integer.bitCount(seenMask)
             enqueueBanner("宇宙图鉴 +1：${UNIVERSE_NAMES[universe]}（$universesSeen/$UNIVERSE_COUNT）", 0xFFFFD426.toInt(), 2.6f)
+            // 集齐 6 大宇宙：一次性大奖
+            if (!codexRewarded && universesSeen >= UNIVERSE_COUNT) {
+                codexRewarded = true
+                grantWallet(CODEX_REWARD)
+                enqueueBanner(
+                    "六大宇宙全部探索完成！大奖 +$CODEX_REWARD 金币！",
+                    0xFFFFD426.toInt(), 3.6f
+                )
+                pushFloat("+$CODEX_REWARD 金币！", 0xFFFFD426.toInt())
+                // 彩色庆祝礼花
+                spawnBurst(catX, 2.0f, 0f, floatArrayOf(1f, 0.84f, 0.10f, 1f), 14)
+                spawnBurst(catX - 1.2f, 1.5f, -1f, floatArrayOf(1f, 0.40f, 0.45f, 1f), 10)
+                spawnBurst(catX + 1.2f, 1.5f, -1f, floatArrayOf(0.35f, 0.70f, 1f, 1f), 10)
+                emit(EV_ACHIEVE, HAPTIC_HEAVY)
+                persistAll()   // 立即落盘，大奖不丢
+            }
         }
         pushFloat("穿越！", 0xFF4DE8FF.toInt())
         shake = 0.30f
@@ -1482,6 +1503,7 @@ class Game {
             .putInt("hatStyle", hatStyle)
             .putInt("totalPortals", totalPortals)
             .putInt("seenUniverses", seenMask)
+            .putBoolean("codexRewarded", codexRewarded)
             .putInt("ownedHouses", ownedHouses)
             .putInt("ownedRoofs", ownedRoofs)
             .putInt("ownedDecos", ownedDecos)
