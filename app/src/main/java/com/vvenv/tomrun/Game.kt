@@ -654,12 +654,12 @@ class Game {
     }
 
     /** 庭院随机事件奖励：只进入永久钱包，不计入跑酷局内收入。 */
-    @Synchronized fun grantYardCoins(amount: Int): String {
+    @Synchronized fun grantYardCoins(amount: Int, message: String? = null): String {
         if (amount <= 0) return ""
         wallet += amount
         persistHome()
         emit(EV_COIN, HAPTIC_LIGHT)
-        return "小猫在庭院里捡到了 $amount 枚金币！"
+        return message ?: "小猫在庭院里捡到了 $amount 枚金币！"
     }
 
     fun consumeHaptic(): Int {

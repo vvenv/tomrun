@@ -58,6 +58,8 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private val btnShop = RectF()
     private val btnHome = RectF()
     private val btnAchieve = RectF()
+    private val btnHelp = RectF()
+    private var showHelp = false
     private val btnBack = RectF()
     private val btnShopTabs = arrayOf(RectF(), RectF(), RectF(), RectF())
     private val btnShopL = RectF()
@@ -135,6 +137,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         private const val POSE_SNIFF = 4
         private const val POSE_LOOKUP = 5
         private const val POSE_JUMP = 6
+        private const val POSE_SWIM = 7
         private const val YARD_EVENT_NONE = -1
         private const val YARD_EVENT_COINS = 0
     }
@@ -196,11 +199,16 @@ class HudView(context: Context, private val game: Game) : View(context) {
 
         when (game.menuPanel) {
             Game.PANEL_MAIN -> {
+                if (showHelp) {
+                    showHelp = false
+                    return
+                }
                 if (handleSecretTitleTap(x, y)) return
                 when {
-                    btnShop.contains(x, y) -> game.switchMenuPanel(Game.PANEL_SHOP)
-                    btnHome.contains(x, y) -> game.switchMenuPanel(Game.PANEL_HOME)
-                    btnAchieve.contains(x, y) -> game.switchMenuPanel(Game.PANEL_ACHIEVE)
+                    btnHelp.contains(x, y) -> showHelp = true
+                    btnShop.contains(x, y) -> { showHelp = false; game.switchMenuPanel(Game.PANEL_SHOP) }
+                    btnHome.contains(x, y) -> { showHelp = false; game.switchMenuPanel(Game.PANEL_HOME) }
+                    btnAchieve.contains(x, y) -> { showHelp = false; game.switchMenuPanel(Game.PANEL_ACHIEVE) }
                     else -> game.onTap()
                 }
             }
@@ -317,12 +325,14 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val sdx = 1f
         val sdy = 1f
 
-        // 右上角
+        // 右上角：跑酷中只保留核心的得分与金币，最高分/钱包在菜单里再展示
         textPaint.textAlign = Paint.Align.RIGHT
         pixText(canvas, "得分 ${game.score}", w - 36f * s, 66f * s, 42f * s, Color.WHITE, sdx, sdy)
         pixText(canvas, "金币 ${game.coins}", w - 36f * s, 106f * s, 28f * s, 0xFFFFD54A.toInt(), sdx, sdy)
-        pixText(canvas, "最高 ${game.highScore}", w - 36f * s, 142f * s, 28f * s, Color.WHITE, sdx, sdy)
-        pixText(canvas, "钱包 ${game.wallet}", w - 36f * s, 178f * s, 26f * s, 0xFFFFC21F.toInt(), sdx, sdy)
+        if (game.state != Game.State.RUNNING) {
+            pixText(canvas, "最高 ${game.highScore}", w - 36f * s, 142f * s, 28f * s, Color.WHITE, sdx, sdy)
+            pixText(canvas, "钱包 ${game.wallet}", w - 36f * s, 178f * s, 26f * s, 0xFFFFC21F.toInt(), sdx, sdy)
+        }
         if (game.state == Game.State.RUNNING && game.combo > 0) {
             val cColor = when {
                 game.comboMult >= 5 -> 0xFFFF6B6B.toInt()
@@ -332,7 +342,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
             val next = game.comboToNext()
             val line = if (next > 0) "连击 ${game.combo} x${game.comboMult}  差$next"
             else "连击 ${game.combo} x${game.comboMult} MAX"
-            pixText(canvas, line, w - 36f * s, 214f * s, 26f * s, cColor, sdx, sdy)
+            pixText(canvas, line, w - 36f * s, 142f * s, 26f * s, cColor, sdx, sdy)
         }
 
         // 顶部中央：当前宇宙
@@ -378,13 +388,13 @@ class HudView(context: Context, private val game: Game) : View(context) {
             var qy = h - 36f * s
             for (i in game.quests.indices.reversed()) {
                 val q = game.quests[i]
-                val color = if (q.done) 0xFF7DEBA0.toInt() else 0xAAFFFFFF.toInt()
+                val color = if (q.done) 0xFF7DEBA0.toInt() else 0xDDFFFFFF.toInt()
                 val mark = if (q.done) "√" else "·"
                 pixText(
                     canvas, "$mark ${q.label} ${q.progress}/${q.target}",
-                    36f * s, qy, 22f * s, color, sdx, sdy
+                    36f * s, qy, 24f * s, color, sdx, sdy
                 )
-                qy -= 28f * s
+                qy -= 32f * s
             }
         }
 
@@ -394,7 +404,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
             val rise = (0.9f - game.floatFlash) * 18f * s
             textPaint.textAlign = Paint.Align.RIGHT
             pixText(
-                canvas, game.lastFloat, w - 36f * s, 254f * s - rise, 26f * s,
+                canvas, game.lastFloat, w - 36f * s, 182f * s - rise, 26f * s,
                 (alpha shl 24) or (game.lastFloatColor and 0x00FFFFFF), sdx, sdy
             )
         }
@@ -485,38 +495,22 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private fun drawMainMenu(canvas: Canvas, w: Float, h: Float, s: Float, sdx: Float, sdy: Float) {
         val dead = game.state == Game.State.DEAD
         if (dead) {
-            pixText(canvas, "游戏结束", w / 2f, h * 0.26f, 64f * s, Color.WHITE, sdx, sdy)
+            pixText(canvas, "游戏结束", w / 2f, h * 0.27f, 64f * s, Color.WHITE, sdx, sdy)
             val record = if (game.score >= game.highScore && game.score > 0) "  新纪录！" else ""
-            pixText(canvas, "得分 ${game.score}$record", w / 2f, h * 0.36f, 36f * s, Color.WHITE, sdx, sdy)
-            pixText(canvas, "本局金币 ${game.coins}  ·  钱包 +${game.runWalletEarn}", w / 2f, h * 0.44f, 28f * s, 0xFFFFD54A.toInt(), sdx, sdy)
+            pixText(canvas, "得分 ${game.score}$record", w / 2f, h * 0.38f, 36f * s, Color.WHITE, sdx, sdy)
+            pixText(canvas, "本局金币 ${game.coins}  ·  钱包 +${game.runWalletEarn}", w / 2f, h * 0.46f, 28f * s, 0xFFFFD54A.toInt(), sdx, sdy)
             val qd = game.quests.count { it.done }
-            pixText(canvas, "任务 $qd/3  ·  最高连击 ${game.bestComboRun}", w / 2f, h * 0.51f, 26f * s, 0xFF7DEBA0.toInt(), sdx, sdy)
+            pixText(canvas, "任务 $qd/3  ·  最高连击 ${game.bestComboRun}", w / 2f, h * 0.53f, 26f * s, 0xFF7DEBA0.toInt(), sdx, sdy)
             if (game.deadTime > 0.6f) {
-                // 放到底部，避开 0.61h 起的成就/图鉴信息与按钮区
                 pixText(canvas, "点击屏幕再来一次", w / 2f, h * 0.94f, 28f * s, Color.WHITE, sdx, sdy)
             }
         } else {
             val worldTitle = "${game.characterName}的世界"
             val worldTitleSize = fittedTextSize(worldTitle, 72f * s, w * 0.64f, 36f * s)
-            pixText(canvas, worldTitle, w / 2f, h * 0.24f, worldTitleSize, Color.WHITE, sdx, sdy)
-            pixText(canvas, "点击屏幕开始", w / 2f, h * 0.36f, 32f * s, Color.WHITE, sdx, sdy)
-            pixText(canvas, "左右换道 · 上滑跳跃 · 下滑铲滑", w / 2f, h * 0.44f, 24f * s, Color.WHITE, sdx, sdy)
-            pixText(canvas, "传送门穿越平行宇宙 · 金币装扮小屋", w / 2f, h * 0.51f, 24f * s, Color.WHITE, sdx, sdy)
+            pixText(canvas, worldTitle, w / 2f, h * 0.30f, worldTitleSize, Color.WHITE, sdx, sdy)
+            val blink = if (kotlin.math.sin(homePhase * 3f) > -0.3f) 255 else 120
+            pixText(canvas, "点击屏幕开始", w / 2f, h * 0.46f, 32f * s, withAlpha(Color.WHITE, blink), sdx, sdy)
         }
-
-        pixText(
-            canvas, "成就 ${game.achieveCount}/15  ·  ${game.nextAchieveHint()}",
-            w / 2f, h * 0.61f, 24f * s, 0xFFFFD426.toInt(), sdx, sdy
-        )
-        val codexLine = if (game.codexComplete()) {
-            "宇宙图鉴 ${Game.UNIVERSE_COUNT}/${Game.UNIVERSE_COUNT} 全收集！ ·  累计穿越 ${game.totalPortals} 次"
-        } else {
-            "宇宙图鉴 ${game.universesSeen}/${Game.UNIVERSE_COUNT}（集齐奖 ${Game.CODEX_REWARD}） ·  累计穿越 ${game.totalPortals} 次"
-        }
-        pixText(
-            canvas, codexLine, w / 2f, h * 0.665f, 24f * s,
-            if (game.codexComplete()) 0xFFFFD426.toInt() else 0xFF4DE8FF.toInt(), sdx, sdy
-        )
 
         // 商店 / 小屋 / 成就 按钮
         val bw = 148f * s
@@ -530,13 +524,50 @@ class HudView(context: Context, private val game: Game) : View(context) {
         drawBtn(canvas, btnHome, "小屋", s)
         drawBtn(canvas, btnAchieve, "成就", s)
 
-        // 当前装备提示
+        // 左下角玩法帮助入口
+        val helpSize = 52f * s
+        btnHelp.set(36f * s, h - 36f * s - helpSize, 36f * s + helpSize, h - 36f * s)
+        drawBtn(canvas, btnHelp, "?", s)
+
+        // 一行浅色小字概览：图鉴与成就进度
         pixText(
             canvas,
-            "装备：${Game.COLOR_NAMES[game.catColor]} · ${Game.TRAIL_NAMES[game.trailStyle]}" +
-                "  ·  小屋能量 Lv${game.homeLevel()}",
-            w / 2f, h * 0.86f, 24f * s, 0xFFAAAAAA.toInt(), sdx, sdy
+            "成就 ${game.achieveCount}/15  ·  宇宙图鉴 ${game.universesSeen}/${Game.UNIVERSE_COUNT}",
+            w / 2f, h * 0.86f, 24f * s, 0xCCAAAAAA.toInt(), sdx, sdy
         )
+
+        if (showHelp) drawHelpOverlay(canvas, w, h, s, sdx, sdy)
+    }
+
+    private fun drawHelpOverlay(canvas: Canvas, w: Float, h: Float, s: Float, sdx: Float, sdy: Float) {
+        dim(canvas, w, h)
+        val pw = min(w * 0.72f, 560f * s)
+        val top = h * 0.16f
+        val bottom = h * 0.84f
+        btnPaint.style = Paint.Style.FILL
+        btnPaint.color = 0xF21C2634.toInt()
+        canvas.drawRect(w / 2f - pw / 2f, top, w / 2f + pw / 2f, bottom, btnPaint)
+        btnPaint.style = Paint.Style.STROKE
+        btnPaint.strokeWidth = 1f
+        btnPaint.color = 0xFFFFD426.toInt()
+        canvas.drawRect(w / 2f - pw / 2f, top, w / 2f + pw / 2f, bottom, btnPaint)
+        btnPaint.style = Paint.Style.FILL
+
+        pixText(canvas, "玩法说明", w / 2f, top + 56f * s, 36f * s, 0xFFFFD426.toInt(), sdx, sdy)
+        val lines = arrayOf(
+            "左右滑动 换道",
+            "上滑或点击 跳跃",
+            "下滑 铲滑",
+            "传送门 穿越平行宇宙",
+            "金币 购买装扮与小屋",
+            "小屋能量 提供开局奖励"
+        )
+        var ly = top + 116f * s
+        for (line in lines) {
+            pixText(canvas, line, w / 2f, ly, 26f * s, Color.WHITE, sdx, sdy)
+            ly += 44f * s
+        }
+        pixText(canvas, "点击任意处关闭", w / 2f, bottom - 28f * s, 22f * s, 0xFFAAAAAA.toInt(), sdx, sdy)
     }
 
     // ---------- 小屋 ----------
@@ -857,7 +888,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
     // ---------- 庭院猫 ----------
     /**
      * 状态机：站立张望 → 走向目标（散步点或已购装饰）→ 互动 → 继续。
-     * 互动：花坛嗅花 / 信箱抬头张望 / 秋千跟着荡 / 猫爬架两段跳上顶层蹲坐 / 泳池边喝水；
+     * 互动：花坛嗅花 / 信箱抬头张望 / 秋千跟着荡 / 猫爬架两段跳上顶层蹲坐 / 跳进泳池游泳；
      * 拥有的装饰越多，行为越丰富。
      */
     private fun updateYardCat(dt: Float, bound: Float) {
@@ -911,6 +942,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
                         catTimer = when (catDeco) {
                             3 -> 4.5f      // 秋千
                             4 -> 99f       // 爬架由分段控制
+                            5 -> 7f        // 泳池由分段控制
                             else -> 3.2f
                         }
                         catDir = if (catDeco == 0) -1f else 1f   // 面向装饰
@@ -932,6 +964,16 @@ class HudView(context: Context, private val game: Game) : View(context) {
                         catStage++
                         if (catStage > 4) endYardPlay()
                     }
+                } else if (catDeco == 5) {
+                    // 泳池：跃入 → 来回划水 → 爬回岸边；跃入瞬间偶有溅起金币
+                    if (catStage == 0 && catStageT >= 0.5f) {
+                        catStage = 1
+                        if (catRnd.nextFloat() < 0.4f) {
+                            val n = 1 + catRnd.nextInt(4)
+                            showToast(game.grantYardCoins(n, "游泳溅起了 $n 枚金币！"))
+                        }
+                    }
+                    if (catStageT > 6.5f) endYardPlay()
                 } else if (catTimer <= 0f) {
                     endYardPlay()
                 }
@@ -1033,7 +1075,40 @@ class HudView(context: Context, private val game: Game) : View(context) {
             when (catDeco) {
                 0 -> pose = POSE_SNIFF
                 2 -> pose = POSE_LOOKUP
-                5 -> pose = if (kotlin.math.sin(homePhase * 1.4f) > 0f) POSE_SNIFF else POSE_STAND
+                5 -> { // 跳进泳池游泳：跃入 → 来回划水 → 爬回岸边
+                    val edgeX = 82f
+                    val left = 124f
+                    val right = 226f
+                    val surfaceY = gy + 40f * s
+                    when {
+                        catStageT < 0.5f -> {          // 从池边跃入水中
+                            val p = (catStageT / 0.5f).coerceIn(0f, 1f)
+                            x = cx + (edgeX + (left - edgeX) * p) * s
+                            footY = gy + (surfaceY - gy) * p -
+                                kotlin.math.sin(p * Math.PI.toFloat()) * 22f * s
+                            pose = POSE_JUMP
+                        }
+                        catStageT < 6f -> {            // 在水里来回划水
+                            val st = catStageT - 0.5f
+                            val swim = kotlin.math.sin(st * 1.1f) * 0.5f + 0.5f
+                            x = cx + (left + (right - left) * swim) * s
+                            catDir = if (kotlin.math.cos(st * 1.1f) >= 0f) 1f else -1f
+                            footY = surfaceY
+                            pose = POSE_SWIM
+                        }
+                        else -> {                      // 爬回岸边
+                            val p = ((catStageT - 6f) / 0.5f).coerceIn(0f, 1f)
+                            val fromX = left + (right - left) *
+                                (kotlin.math.sin(5.5f * 1.1f) * 0.5f + 0.5f)
+                            x = cx + (fromX + (edgeX - fromX) * p) * s
+                            footY = surfaceY + (gy - surfaceY) * p -
+                                kotlin.math.sin(p * Math.PI.toFloat()) * 22f * s
+                            pose = POSE_JUMP
+                            catDir = -1f
+                        }
+                    }
+                    catX = (x - cx) / s
+                }
                 3 -> { // 坐上秋千跟着荡
                     val sway = kotlin.math.sin(homePhase * 1.6f) * 10f * s
                     x = cx - 280f * s + sway * 1.2f
@@ -1143,6 +1218,34 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 rc(2f, -6f, 10f, 0f, paw)
                 if (scarf > 0) rc(-4f, -30f, 16f, -24f, scC)  // 颈圈
                 if (hat > 0) hatAt(-4f, -50f)
+            }
+            POSE_SWIM -> {
+                val paddle = kotlin.math.sin(t * 12f)
+                val ripC = 0xFF9AD9F5.toInt()
+                val splash = 0xFFCDEBFA.toInt()
+                // 身体周围扩散的水面涟漪
+                rc(-30f, -1f, -16f, 2f, ripC)
+                rc(14f, -1f, 30f, 2f, ripC)
+                // 露出水面的后背与翘起的尾巴尖
+                rc(-16f, -6f, 8f, 2f, c)
+                val tw = paddle * 4f
+                rc(-24f + tw, -10f, -14f + tw, -4f, cd)
+                // 抬出水面的头
+                rc(6f, -22f, 28f, -4f, c)
+                rc(8f, -28f, 14f, -22f, cd)               // 耳
+                rc(22f, -28f, 28f, -22f, cd)
+                rc(13f, -15f, 16f, -12f, eye)             // 眼
+                rc(22f, -15f, 25f, -12f, eye)
+                rc(27f, -12f, 30f, -9f, 0xFFF7A8B8.toInt()) // 鼻尖
+                // 划水的前爪与溅起的水花
+                val pawDy = -2f + paddle * 3f
+                rc(2f, pawDy, 10f, pawDy + 5f, paw)
+                if (paddle > 0.4f) {
+                    rc(11f, -7f, 14f, -4f, splash)
+                    rc(15f, -10f, 17f, -7f, splash)
+                }
+                if (scarf > 0) rc(6f, -9f, 24f, -3f, scC) // 贴水面的围巾
+                if (hat > 0) hatAt(6f, -22f)
             }
             else -> {
                 val walk = pose == POSE_WALK
@@ -1329,8 +1432,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private fun drawPauseOverlay(canvas: Canvas, w: Float, h: Float, s: Float, sdx: Float, sdy: Float) {
         dim(canvas, w, h)
         dim(canvas, w, h)   // 双层压暗，突出暂停菜单
-        pixText(canvas, "已暂停", w / 2f, h * 0.32f, 64f * s, Color.WHITE, sdx, sdy)
-        pixText(canvas, "喝口水，休息一下吧", w / 2f, h * 0.40f, 26f * s, 0xFFAAD5FF.toInt(), sdx, sdy)
+        pixText(canvas, "已暂停", w / 2f, h * 0.34f, 64f * s, Color.WHITE, sdx, sdy)
 
         btnResume.set(w / 2f - 150f * s, h * 0.48f, w / 2f + 150f * s, h * 0.48f + 56f * s)
         drawBtn(canvas, btnResume, "继续跑酷", s)
@@ -1405,8 +1507,9 @@ class HudView(context: Context, private val game: Game) : View(context) {
         textPaint.textSize = (steps * FONT_PX).toFloat()
         val ix = x.roundToInt().toFloat()
         val iy = y.roundToInt().toFloat()
-        textPaint.color = 0x88000000.toInt()
-        canvas.drawText(text, ix + shadowDx, iy + shadowDy, textPaint)
+        // 阴影按点阵像素尺寸偏移，高分屏上依旧清晰可辨
+        textPaint.color = 0xAA000000.toInt()
+        canvas.drawText(text, ix + shadowDx * steps, iy + shadowDy * steps, textPaint)
         textPaint.color = color
         canvas.drawText(text, ix, iy, textPaint)
     }
