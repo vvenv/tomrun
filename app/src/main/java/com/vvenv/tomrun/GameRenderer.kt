@@ -152,8 +152,6 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         private val TREE_TRUNK = floatArrayOf(0.48f, 0.30f, 0.14f, 1f)
         private val BUSH = floatArrayOf(0.24f, 0.60f, 0.26f, 1f)
         private val ROCK = floatArrayOf(0.60f, 0.59f, 0.56f, 1f)
-        private val WOOD = floatArrayOf(0.82f, 0.52f, 0.20f, 1f)
-        private val WOOD_DARK = floatArrayOf(0.62f, 0.37f, 0.12f, 1f)
         private val METAL = floatArrayOf(0.55f, 0.58f, 0.64f, 1f)
         private val GOLD = floatArrayOf(1.0f, 0.84f, 0.10f, 1f)
         private val CLOUD = floatArrayOf(1f, 1f, 1f, 1f)
@@ -268,7 +266,7 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
                 floatArrayOf(1.0f, 0.45f, 0.10f, 1f),
                 floatArrayOf(0.36f, 0.28f, 0.28f, 1f)
             ),
-            arrayOf( // 糖果：棉花糖粉天 + 深巧克力路（压暗，和木障碍 WOOD_DARK 拉开）
+            arrayOf( // 糖果：棉花糖粉天 + 深巧克力路（压暗，和糖果障碍色拉开）
                 floatArrayOf(0.99f, 0.76f, 0.86f, 1f),
                 floatArrayOf(0.64f, 0.90f, 0.72f, 1f),
                 floatArrayOf(0.53f, 0.82f, 0.62f, 1f),
@@ -354,6 +352,19 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         private val RAMP_EDGE = floatArrayOf(0.76f, 0.38f, 0.05f, 1f)
         private val CONCRETE = floatArrayOf(0.64f, 0.66f, 0.64f, 1f)
         private val WARNING = floatArrayOf(0.94f, 0.28f, 0.10f, 1f)
+
+        // 障碍材质：草原=真实马路道具，其余宇宙沿用各自景物调色
+        private val BARRIER_RED = floatArrayOf(0.90f, 0.24f, 0.20f, 1f)   // 水马 / 道闸红条
+        private val BARRIER_WHITE = floatArrayOf(0.95f, 0.95f, 0.92f, 1f) // 反光白条
+        private val CONE_ORANGE = floatArrayOf(0.97f, 0.45f, 0.10f, 1f)   // 施工路障桶
+        private val GATE_BOX = floatArrayOf(0.88f, 0.78f, 0.20f, 1f)      // 道闸机箱黄
+        private val RAINBOW_SOLID = arrayOf(                              // 天空世界彩虹横杆
+            floatArrayOf(0.95f, 0.35f, 0.40f, 1f),
+            floatArrayOf(0.98f, 0.72f, 0.25f, 1f),
+            floatArrayOf(0.45f, 0.85f, 0.45f, 1f),
+            floatArrayOf(0.40f, 0.65f, 1.0f, 1f),
+            floatArrayOf(0.70f, 0.45f, 1.0f, 1f)
+        )
     }
 
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
@@ -1020,29 +1031,9 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
                         drawPart(0f, 0.15f, 0.02f, 0.18f, 0.45f, 0.18f, BOOST_CORE)
                         popModel()
                     }
-                    Game.OBST_LOW -> {
-                        pushModel(x, 0f, e.z)
-                        drawPart(-0.85f, 0.45f, 0f, 0.16f, 0.9f, 0.16f, WOOD_DARK)
-                        drawPart(0.85f, 0.45f, 0f, 0.16f, 0.9f, 0.16f, WOOD_DARK)
-                        drawPart(0f, 0.72f, 0f, 1.9f, 0.2f, 0.1f, WOOD)
-                        drawPart(0f, 0.38f, 0f, 1.9f, 0.2f, 0.1f, WOOD)
-                        popModel()
-                    }
-                    Game.OBST_BAR -> {
-                        pushModel(x, 0f, e.z)
-                        drawPart(-0.95f, 1.1f, 0f, 0.18f, 2.2f, 0.18f, METAL)
-                        drawPart(0.95f, 1.1f, 0f, 0.18f, 2.2f, 0.18f, METAL)
-                        drawPart(0f, 1.75f, 0f, 2.1f, 0.9f, 0.35f, WOOD)
-                        drawPart(0f, 1.75f, 0.03f, 1.9f, 0.7f, 0.35f, WOOD_DARK)
-                        popModel()
-                    }
-                    Game.OBST_BLOCK -> {
-                        pushModel(x, 0f, e.z)
-                        drawPart(0f, 1.1f, 0f, 1.9f, 2.2f, 1.2f, WOOD)
-                        drawPart(0f, 1.1f, 0.02f, 1.7f, 2.0f, 1.2f, WOOD_DARK)
-                        drawPart(0f, 2.14f, 0f, 1.96f, 0.14f, 1.26f, WOOD_DARK)
-                        popModel()
-                    }
+                    Game.OBST_LOW -> drawObstLow(x, e.z)
+                    Game.OBST_BAR -> drawObstBar(x, e.z)
+                    Game.OBST_BLOCK -> drawObstBlock(x, e.z)
                     Game.OBST_RAMP -> drawRamp(x, e.z)
                 }
             }
@@ -1066,6 +1057,152 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         drawPart(0f, 0.62f, 0f, 1.9f, 1.24f, 0.72f, CONCRETE)
         for (i in -2..2) {
             drawPart(i * 0.38f, 0.72f, -0.37f, 0.18f, 0.28f, 0.05f, if (i % 2 == 0) WARNING else DASH)
+        }
+        popModel()
+    }
+
+    /** 发光装饰块（自发光，不受光照/雾影响后立即复位 mMode） */
+    private fun glowPart(x: Float, y: Float, z: Float, sx: Float, sy: Float, sz: Float, color: FloatArray) {
+        mMode = 2
+        drawPart(x, y, z, sx, sy, sz, color)
+        mMode = 0
+    }
+
+    /** 矮障碍（需跳过）：草原=施工水马，其余宇宙主题化 */
+    private fun drawObstLow(x: Float, z: Float) {
+        pushModel(x, 0f, z)
+        when (game.universe) {
+            Game.UNI_WATER -> {
+                drawPart(0f, 0.34f, 0f, 1.9f, 0.68f, 0.62f, CORAL_ORANGE)
+                drawPart(-0.5f, 0.62f, 0f, 0.42f, 0.5f, 0.42f, CORAL_PINK)
+                drawPart(0.52f, 0.55f, 0f, 0.4f, 0.4f, 0.4f, CORAL_PINK)
+                drawPart(0f, 0.5f, 0f, 0.3f, 0.72f, 0.3f, SEAWEED)
+            }
+            Game.UNI_SKY -> {
+                drawPart(0f, 0.36f, 0f, 1.9f, 0.5f, 0.72f, ISLAND_DIRT)
+                drawPart(0f, 0.16f, 0f, 1.5f, 0.4f, 0.6f, ISLAND_DIRT_DK)
+                drawPart(0f, 0.64f, 0f, 1.94f, 0.16f, 0.76f, GRASS)
+            }
+            Game.UNI_LAVA -> {
+                drawPart(0f, 0.4f, 0f, 1.9f, 0.72f, 0.7f, OBSIDIAN)
+                drawPart(-0.55f, 0.58f, 0f, 0.4f, 0.44f, 0.4f, OBSIDIAN)
+                glowPart(0f, 0.42f, 0.06f, 1.7f, 0.14f, 0.72f, LAVA_GLOW)
+                glowPart(0f, 0.42f, 0.06f, 0.5f, 0.2f, 0.74f, LAVA_CORE)
+            }
+            Game.UNI_CANDY -> {
+                drawPart(0f, 0.34f, 0f, 1.88f, 0.66f, 0.56f, CANDY_STICK)
+                drawPart(0f, 0.7f, 0f, 1.94f, 0.16f, 0.62f, CANDY_RED)
+                for (i in -1..1) drawPart(i * 0.62f, 0.34f, 0.02f, 0.16f, 0.66f, 0.6f, CANDY_RED)
+            }
+            Game.UNI_SPACE -> {
+                drawPart(0f, 0.4f, 0f, 1.9f, 0.7f, 0.7f, ASTEROID)
+                drawPart(-0.5f, 0.6f, 0f, 0.4f, 0.4f, 0.4f, ASTEROID)
+                glowPart(0f, 0.42f, 0.06f, 1.7f, 0.16f, 0.72f, CRYSTAL_CYAN)
+            }
+            else -> { // 草原：塑料水马（白身红顶红竖纹 + 混凝土底座）
+                drawPart(0f, 0.06f, 0f, 1.9f, 0.12f, 0.62f, CONCRETE)
+                drawPart(0f, 0.36f, 0f, 1.86f, 0.6f, 0.5f, BARRIER_WHITE)
+                drawPart(0f, 0.72f, 0f, 1.94f, 0.18f, 0.58f, BARRIER_RED)
+                for (i in -1..1) drawPart(i * 0.62f, 0.36f, 0.02f, 0.12f, 0.6f, 0.54f, BARRIER_RED)
+            }
+        }
+        popModel()
+    }
+
+    /** 悬空障碍（需下滑钻过）：草原=道闸横杆，其余宇宙主题化 */
+    private fun drawObstBar(x: Float, z: Float) {
+        pushModel(x, 0f, z)
+        when (game.universe) {
+            Game.UNI_WATER -> {
+                drawPart(-0.95f, 1.0f, 0f, 0.3f, 2.0f, 0.3f, CORAL_ORANGE)
+                drawPart(0.95f, 1.0f, 0f, 0.3f, 2.0f, 0.3f, CORAL_ORANGE)
+                drawPart(0f, 1.85f, 0f, 2.1f, 0.5f, 0.42f, CORAL_PINK)
+                for (i in -2..2) drawPart(i * 0.4f, 1.42f, 0f, 0.14f, 0.5f, 0.14f, SEAWEED)
+            }
+            Game.UNI_SKY -> {
+                drawPart(-0.95f, 1.0f, 0f, 0.26f, 2.0f, 0.26f, ISLAND_DIRT)
+                drawPart(0.95f, 1.0f, 0f, 0.26f, 2.0f, 0.26f, ISLAND_DIRT)
+                for (i in RAINBOW_SOLID.indices) {
+                    drawPart(-0.8f + i * 0.4f, 1.8f, 0f, 0.42f, 0.36f, 0.4f, RAINBOW_SOLID[i])
+                }
+            }
+            Game.UNI_LAVA -> {
+                drawPart(-0.95f, 1.0f, 0f, 0.3f, 2.0f, 0.3f, OBSIDIAN)
+                drawPart(0.95f, 1.0f, 0f, 0.3f, 2.0f, 0.3f, OBSIDIAN)
+                drawPart(0f, 1.82f, 0f, 2.1f, 0.55f, 0.4f, OBSIDIAN)
+                glowPart(0f, 1.56f, 0.06f, 1.9f, 0.14f, 0.42f, LAVA_GLOW)
+                glowPart(0f, 1.56f, 0.06f, 1.6f, 0.18f, 0.44f, LAVA_CORE)
+            }
+            Game.UNI_CANDY -> {
+                drawPart(-0.95f, 1.0f, 0f, 0.28f, 2.0f, 0.28f, CANDY_STICK)
+                drawPart(0.95f, 1.0f, 0f, 0.28f, 2.0f, 0.28f, CANDY_STICK)
+                for (i in -2..2) {
+                    drawPart(i * 0.42f, 1.8f, 0f, 0.44f, 0.4f, 0.4f, if (i % 2 == 0) CANDY_RED else CANDY_STICK)
+                }
+            }
+            Game.UNI_SPACE -> {
+                drawPart(-0.95f, 1.0f, 0f, 0.28f, 2.0f, 0.28f, ASTEROID)
+                drawPart(0.95f, 1.0f, 0f, 0.28f, 2.0f, 0.28f, ASTEROID)
+                drawPart(0f, 1.82f, 0f, 2.1f, 0.24f, 0.3f, ASTEROID)
+                glowPart(0f, 1.64f, 0.02f, 2.0f, 0.16f, 0.34f, CRYSTAL_CYAN)
+                glowPart(0f, 2.0f, 0.02f, 2.0f, 0.12f, 0.34f, CRYSTAL_PURPLE)
+            }
+            else -> { // 草原：停车道闸（黄机箱 + 红白横杆）
+                drawPart(-1.0f, 0.72f, 0f, 0.36f, 1.44f, 0.36f, GATE_BOX)
+                drawPart(-1.0f, 1.5f, 0f, 0.44f, 0.24f, 0.44f, METAL)
+                for (i in 0 until 5) {
+                    drawPart(-0.72f + i * 0.44f, 1.62f, 0f, 0.44f, 0.2f, 0.24f,
+                        if (i % 2 == 0) BARRIER_RED else BARRIER_WHITE)
+                }
+                drawPart(0.98f, 1.62f, 0f, 0.14f, 0.36f, 0.24f, CONCRETE)
+            }
+        }
+        popModel()
+    }
+
+    /** 实心障碍（需变道/冲刺撞碎）：草原=摞起的施工路障桶，其余宇宙主题化 */
+    private fun drawObstBlock(x: Float, z: Float) {
+        pushModel(x, 0f, z)
+        when (game.universe) {
+            Game.UNI_WATER -> {
+                drawPart(0f, 1.05f, 0f, 1.85f, 2.1f, 1.15f, CORAL_ORANGE)
+                drawPart(0f, 1.1f, 0.03f, 1.6f, 1.8f, 1.15f, CORAL_PINK)
+                drawPart(-0.4f, 2.2f, 0f, 0.4f, 0.6f, 0.4f, SEAWEED)
+                drawPart(0.4f, 2.15f, 0f, 0.3f, 0.5f, 0.3f, SEAWEED)
+            }
+            Game.UNI_SKY -> {
+                drawPart(0f, 1.0f, 0f, 1.85f, 2.0f, 1.15f, ISLAND_DIRT)
+                drawPart(0f, 0.45f, 0f, 1.6f, 0.9f, 1.1f, ISLAND_DIRT_DK)
+                drawPart(0f, 2.06f, 0f, 1.95f, 0.2f, 1.25f, GRASS)
+            }
+            Game.UNI_LAVA -> {
+                drawPart(0f, 1.05f, 0f, 1.85f, 2.1f, 1.15f, OBSIDIAN)
+                glowPart(-0.4f, 1.05f, 0.06f, 0.18f, 1.9f, 1.18f, LAVA_GLOW)
+                glowPart(0.4f, 1.05f, 0.06f, 0.18f, 1.9f, 1.18f, LAVA_GLOW)
+                glowPart(0f, 2.1f, 0f, 1.6f, 0.2f, 1.2f, LAVA_CORE)
+            }
+            Game.UNI_CANDY -> {
+                drawPart(0f, 1.05f, 0f, 1.85f, 2.1f, 1.15f, GUMDROP[0])
+                drawPart(0f, 1.1f, 0.03f, 1.5f, 1.7f, 1.15f, CANDY_STICK)
+                drawPart(0f, 2.18f, 0f, 1.7f, 0.3f, 1.2f, CANDY_RED)
+            }
+            Game.UNI_SPACE -> {
+                drawPart(0f, 1.05f, 0f, 1.85f, 2.1f, 1.15f, ASTEROID)
+                glowPart(0f, 1.05f, 0.06f, 0.2f, 1.9f, 1.18f, CRYSTAL_CYAN)
+                glowPart(-0.5f, 1.05f, 0.06f, 0.14f, 1.6f, 1.18f, CRYSTAL_PURPLE)
+                glowPart(0.5f, 1.05f, 0.06f, 0.14f, 1.6f, 1.18f, CRYSTAL_PURPLE)
+            }
+            else -> { // 草原：摞起的施工路障桶（橙身白反光环）
+                for (bx in floatArrayOf(-0.6f, 0f, 0.6f)) {
+                    drawPart(bx, 0.6f, 0.22f, 0.54f, 1.2f, 0.54f, CONE_ORANGE)
+                    drawPart(bx, 0.75f, 0.22f, 0.58f, 0.16f, 0.58f, BARRIER_WHITE)
+                    drawPart(bx, 0.42f, 0.22f, 0.58f, 0.16f, 0.58f, BARRIER_WHITE)
+                }
+                for (bx in floatArrayOf(-0.32f, 0.32f)) {
+                    drawPart(bx, 1.68f, -0.12f, 0.54f, 1.12f, 0.54f, CONE_ORANGE)
+                    drawPart(bx, 1.82f, -0.12f, 0.58f, 0.16f, 0.58f, BARRIER_WHITE)
+                }
+            }
         }
         popModel()
     }
