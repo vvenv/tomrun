@@ -377,44 +377,44 @@ class HudView(context: Context, private val game: Game) : View(context) {
             }
         }
 
-        textPaint.textAlign = Paint.Align.CENTER
-
-        // 飘分
+        // 飘分：收拢到右上角计分区下方，不遮挡赛道视线走廊
         if (game.state == Game.State.RUNNING && game.floatFlash > 0f && game.lastFloat.isNotEmpty()) {
             val alpha = (min(1f, game.floatFlash / 0.35f) * 255).toInt()
-            val rise = (0.9f - game.floatFlash) * 30f * s
+            val rise = (0.9f - game.floatFlash) * 18f * s
+            textPaint.textAlign = Paint.Align.RIGHT
             pixText(
-                canvas, game.lastFloat, w / 2f, h * 0.42f - rise, 36f * s,
+                canvas, game.lastFloat, w - 36f * s, 254f * s - rise, 26f * s,
                 (alpha shl 24) or (game.lastFloatColor and 0x00FFFFFF), sdx, sdy
             )
         }
+        textPaint.textAlign = Paint.Align.CENTER
 
-        // 连击升级
+        // 连击升级：上方通知带，缩小并远离障碍物出现区域
         if (game.state == Game.State.RUNNING && game.comboFlash > 0f) {
             val t = 1.4f - game.comboFlash
-            val pop = 1f + 0.3f * (1f - min(1f, t * 5f))
+            val pop = 1f + 0.25f * (1f - min(1f, t * 5f))
             val alpha = (min(1f, game.comboFlash / 0.4f) * 255).toInt()
             pixText(
-                canvas, "连击 x${game.comboMult}！", w / 2f, h * 0.30f, 52f * s * pop,
+                canvas, "连击 x${game.comboMult}！", w / 2f, h * 0.283f, 40f * s * pop,
                 (alpha shl 24) or 0x00FFC21F, sdx, sdy
             )
         }
 
-        // 通用横幅队列（任务/成就）
+        // 通用横幅队列（任务/成就/穿越）：上移出视线走廊
         if (game.bannerFlash > 0f && game.bannerText.isNotEmpty()) {
             val alpha = (min(1f, game.bannerFlash / 0.45f) * 255).toInt()
             pixText(
-                canvas, game.bannerText, w / 2f, h * 0.20f, 34f * s,
+                canvas, game.bannerText, w / 2f, h * 0.16f, 30f * s,
                 (alpha shl 24) or (game.bannerColor and 0x00FFFFFF), sdx, sdy
             )
         }
 
         if (game.state == Game.State.RUNNING && game.recordFlash > 0f) {
             val t = 2.6f - game.recordFlash
-            val pop = 1f + 0.35f * (1f - min(1f, t * 5f))
+            val pop = 1f + 0.3f * (1f - min(1f, t * 5f))
             val alpha = (min(1f, game.recordFlash / 0.5f) * 255).toInt()
             pixText(
-                canvas, "新纪录！", w / 2f, h * 0.24f, 64f * s * pop,
+                canvas, "新纪录！", w / 2f, h * 0.225f, 48f * s * pop,
                 (alpha shl 24) or 0x00FFD426, sdx, sdy
             )
         }
