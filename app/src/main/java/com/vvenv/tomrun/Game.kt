@@ -33,6 +33,23 @@ class Game {
 
         const val CABLE_H = 5.4f   // 索道钢缆高度
         const val RIDE_Y = 3.0f    // 滑索时猫的脚底高度
+
+        // 音效事件
+        const val EV_JUMP = 0
+        const val EV_SLIDE = 1
+        const val EV_COIN = 2
+        const val EV_POWER = 3
+        const val EV_SHIELD = 4
+        const val EV_DIE = 5
+        const val EV_ZIP = 6
+        const val EV_RECORD = 7
+
+        const val CAT_COLOR_COUNT = 4
+
+        // 天气
+        const val W_SUNNY = 0
+        const val W_RAIN = 1
+        const val W_SNOW = 2
     }
 
     class Entity(val kind: Int, val lane: Int, var z: Float, var y: Float = 0f) {
@@ -57,6 +74,18 @@ class Game {
     @Volatile var doubleTime = 0f
     @Volatile var helmet = false
     @Volatile var riding: Zip? = null
+
+    // 音效回调（MainActivity 注入）、跑酷中新纪录横幅、猫的颜色
+    @Volatile var onEvent: ((Int) -> Unit)? = null
+    @Volatile var recordFlash = 0f
+    @Volatile var catColor = 0
+    private var recordDone = false
+
+    // 天气：随机轮换，weatherBlend 从 0 到 1 平滑过渡到当前天气
+    @Volatile var weather = W_SUNNY
+    @Volatile var weatherPrev = W_SUNNY
+    @Volatile var weatherBlend = 1f
+    private var weatherTimer = 18f + Random.nextFloat() * 15f
 
     // 猫状态（GL 线程写，渲染直接读）
     var lane = 1
@@ -83,6 +112,16 @@ class Game {
     fun attachPrefs(p: SharedPreferences) {
         prefs = p
         highScore = p.getInt("high3d", 0)
+        catColor = p.getInt("catColor", 0) % CAT_COLOR_COUNT
+    }
+
+    fun cycleCatColor() {
+        catColor = (catColor + 1) % CAT_COLOR_COUNT
+        prefs?.edit()?.putInt("catColor", catColor)?.apply()
+    }
+
+    private fun emit(event: Int) {
+        onEvent?.invoke(event)
     }
 
     /** 磁铁/加倍的剩余秒数（HUD 显示用） */
@@ -108,6 +147,7 @@ class Game {
         } else {
             slideTimer = SLIDE_TIME
             if (!onGround) velY = -14f
+            emit(EV_SLIDE)
         }
     }
 
@@ -124,6 +164,7 @@ class Game {
         if (onGround) {
             velY = JUMP_V
             slideTimer = 0f
+            emit(EV_JUMP)
         }
     }
 
@@ -136,6 +177,7 @@ class Game {
         deadTime = 0f
         magnetTime = 0f; doubleTime = 0f; helmet = false
         riding = null; scoreBoost = 0f; invulnTime = 0f
+        recordFlash = 0f; recordDone = false
         zipGap = 90f + Random.nextFloat() * 80f
         // 预填充开局的障碍，避免前 150 米空跑
         var z = -45f
@@ -151,6 +193,7 @@ class Game {
     // ---------- 主更新（GL 线程） ----------
     @Synchronized fun update(dt: Float) {
         if (state == State.DEAD) { deadTime += dt; return }
+        tickWeather(dt)
         runPhase += dt * speed * 0.9f
         if (state != State.RUNNING) return
 
@@ -192,6 +235,7 @@ class Game {
                     abs(catX - LANE_X[lane]) < 0.6f
                 ) {
                     riding = zip
+                    emit(EV_ZIP)
                     break
                 }
             }
@@ -226,6 +270,27 @@ class Game {
 
         checkCollision()
         score = (distance + scoreBoost).toInt() + coins * 10
+
+        // 跑酷中打破纪录：弹横幅 + 号角音（首局最高分为 0 时不提示）
+        if (recordFlash > 0f) recordFlash -= dt
+        if (!recordDone && highScore > 0 && score > highScore) {
+            recordDone = true
+            recordFlash = 2.6f
+            emit(EV_RECORD)
+        }
+    }
+
+    private fun tickWeather(dt: Float) {
+        weatherTimer -= dt
+        if (weatherTimer <= 0f) {
+            weatherPrev = weather
+            var next = Random.nextInt(3)
+            if (next == weather) next = (next + 1) % 3
+            weather = next
+            weatherBlend = 0f
+            weatherTimer = 25f + Random.nextFloat() * 20f
+        }
+        if (weatherBlend < 1f) weatherBlend = min(1f, weatherBlend + dt / 2.5f)
     }
 
     private fun spawnZipline() {
@@ -296,6 +361,7 @@ class Game {
                     if (abs(e.z) < 1.2f && dx * dx + dy * dy < radius * radius) {
                         e.taken = true
                         coins += if (doubleTime > 0f) 2 else 1
+                        emit(EV_COIN)
                     }
                 }
                 P_MAGNET, P_HELMET, P_DOUBLE -> {
@@ -306,6 +372,7 @@ class Game {
                             P_HELMET -> helmet = true
                             P_DOUBLE -> doubleTime = 10f
                         }
+                        emit(EV_POWER)
                     }
                 }
                 else -> {
@@ -322,6 +389,7 @@ class Game {
                         if (helmet) {
                             helmet = false
                             invulnTime = 1f
+                            emit(EV_SHIELD)
                         } else {
                             die()
                             return
@@ -335,6 +403,7 @@ class Game {
     private fun die() {
         state = State.DEAD
         deadTime = 0f
+        emit(EV_DIE)
         if (score > highScore) {
             highScore = score
             prefs?.edit()?.putInt("high3d", score)?.apply()

@@ -38,6 +38,26 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
     private var camX = 0f
     private var mMode = 0
 
+    // 天气混合后的场景配色（每帧计算）
+    private val skyCol = FloatArray(4) { 1f }
+    private val grassCol = FloatArray(4) { 1f }
+    private val grassDarkCol = FloatArray(4) { 1f }
+    private val roadCol = FloatArray(4) { 1f }
+    private val edgeCol = FloatArray(4) { 1f }
+    private val cloudCol = FloatArray(4) { 1f }
+    private var wSun = 1f
+
+    // 雨 / 雪粒子（围绕相机的循环粒子域）
+    private val prand = java.util.Random(42)
+    private val rainX = FloatArray(110) { prand.nextFloat() * 26f - 13f }
+    private val rainY = FloatArray(110) { prand.nextFloat() * 15f }
+    private val rainZ = FloatArray(110) { prand.nextFloat() * 46f - 40f }
+    private val snowX = FloatArray(100) { prand.nextFloat() * 26f - 13f }
+    private val snowY = FloatArray(100) { prand.nextFloat() * 15f }
+    private val snowZ = FloatArray(100) { prand.nextFloat() * 46f - 40f }
+    private val snowSeed = FloatArray(100) { prand.nextFloat() * 6.28f }
+    private var snowPhase = 0f
+
     companion object {
         private const val VSH = """
             attribute vec3 aPos;
@@ -110,11 +130,37 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
             floatArrayOf(0.98f, 0.55f, 0.65f, 1f),
             floatArrayOf(1.0f, 0.82f, 0.25f, 1f)
         )
-        private val CAT = floatArrayOf(0.52f, 0.58f, 0.70f, 1f)
-        private val CAT_DARK = floatArrayOf(0.36f, 0.42f, 0.55f, 1f)
+        // 猫的四种配色：蓝灰 / 橘黄 / 乌黑 / 粉红（主色 + 深色条纹）
+        private val CAT_MAIN = arrayOf(
+            floatArrayOf(0.52f, 0.58f, 0.70f, 1f),
+            floatArrayOf(0.95f, 0.62f, 0.26f, 1f),
+            floatArrayOf(0.30f, 0.30f, 0.35f, 1f),
+            floatArrayOf(0.96f, 0.66f, 0.76f, 1f)
+        )
+        private val CAT_DK = arrayOf(
+            floatArrayOf(0.36f, 0.42f, 0.55f, 1f),
+            floatArrayOf(0.76f, 0.42f, 0.12f, 1f),
+            floatArrayOf(0.16f, 0.16f, 0.21f, 1f),
+            floatArrayOf(0.82f, 0.47f, 0.60f, 1f)
+        )
         private val CAT_WHITE = floatArrayOf(0.95f, 0.95f, 0.92f, 1f)
 
         // 道具与索道
+        // 天气变体配色：晴 / 雨 / 雪
+        private val RAIN_SKY = floatArrayOf(0.44f, 0.51f, 0.62f, 1f)
+        private val SNOW_SKY = floatArrayOf(0.72f, 0.78f, 0.86f, 1f)
+        private val GRASS_R = floatArrayOf(0.26f, 0.55f, 0.24f, 1f)
+        private val GRASS_S = floatArrayOf(0.84f, 0.88f, 0.93f, 1f)
+        private val GRASS_DR = floatArrayOf(0.20f, 0.45f, 0.19f, 1f)
+        private val GRASS_DS = floatArrayOf(0.75f, 0.80f, 0.87f, 1f)
+        private val ROAD_R = floatArrayOf(0.28f, 0.27f, 0.32f, 1f)
+        private val ROAD_S = floatArrayOf(0.52f, 0.54f, 0.60f, 1f)
+        private val EDGE_R = floatArrayOf(0.60f, 0.59f, 0.56f, 1f)
+        private val EDGE_S = floatArrayOf(0.86f, 0.87f, 0.90f, 1f)
+        private val CLOUD_R = floatArrayOf(0.58f, 0.61f, 0.67f, 1f)
+        private val RAIN_DROP = floatArrayOf(0.62f, 0.74f, 0.95f, 0.55f)
+        private val SNOW_FLAKE = floatArrayOf(0.98f, 0.98f, 1.0f, 0.9f)
+
         private val MAGNET_RED = floatArrayOf(0.90f, 0.24f, 0.24f, 1f)
         private val MAGNET_TIP = floatArrayOf(0.92f, 0.92f, 0.95f, 1f)
         private val HELMET_Y = floatArrayOf(1.0f, 0.76f, 0.12f, 1f)
@@ -156,11 +202,13 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         lastNanos = now
         game.update(dt)
 
+        updateWeatherColors()
+        GLES20.glClearColor(skyCol[0], skyCol[1], skyCol[2], 1f)
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
         GLES20.glUseProgram(program)
         GLES20.glEnableVertexAttribArray(aPos)
         GLES20.glEnableVertexAttribArray(aNormal)
-        setFog(SKY[0] + 0.09f, SKY[1] + 0.05f, SKY[2] + 0.02f)
+        setSkyFog()
 
         camX += (game.catX * 0.55f - camX) * min(1f, dt * 6f)
         val eyeY = 3.6f + game.catY * 0.22f
@@ -173,9 +221,67 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         drawScenery()
         drawEntities()
         drawCat()
+        drawWeather(dt)
 
         GLES20.glDisableVertexAttribArray(aPos)
         GLES20.glDisableVertexAttribArray(aNormal)
+    }
+
+    // ---------- 天气 ----------
+    private fun weatherWeight(type: Int): Float {
+        var w = 0f
+        if (game.weather == type) w += game.weatherBlend
+        if (game.weatherPrev == type) w += 1f - game.weatherBlend
+        return w
+    }
+
+    private fun mix3(out: FloatArray, a: FloatArray, b: FloatArray, c: FloatArray, wa: Float, wb: Float, wc: Float) {
+        for (i in 0..2) out[i] = a[i] * wa + b[i] * wb + c[i] * wc
+        out[3] = 1f
+    }
+
+    private fun updateWeatherColors() {
+        wSun = weatherWeight(Game.W_SUNNY)
+        val wr = weatherWeight(Game.W_RAIN)
+        val ws = weatherWeight(Game.W_SNOW)
+        mix3(skyCol, SKY, RAIN_SKY, SNOW_SKY, wSun, wr, ws)
+        mix3(grassCol, GRASS, GRASS_R, GRASS_S, wSun, wr, ws)
+        mix3(grassDarkCol, GRASS_DARK, GRASS_DR, GRASS_DS, wSun, wr, ws)
+        mix3(roadCol, ROAD, ROAD_R, ROAD_S, wSun, wr, ws)
+        mix3(edgeCol, ROAD_EDGE, EDGE_R, EDGE_S, wSun, wr, ws)
+        mix3(cloudCol, CLOUD, CLOUD_R, CLOUD, wSun, wr, ws)
+    }
+
+    private fun setSkyFog() = setFog(skyCol[0] + 0.08f, skyCol[1] + 0.05f, skyCol[2] + 0.02f)
+
+    /** 雨丝 / 雪花粒子：围绕相机的循环域，随天气权重淡入淡出 */
+    private fun drawWeather(dt: Float) {
+        val wr = weatherWeight(Game.W_RAIN)
+        val ws = weatherWeight(Game.W_SNOW)
+        mMode = 2
+        if (wr > 0.02f) {
+            val n = (rainX.size * wr).toInt()
+            for (i in rainX.indices) {
+                rainY[i] -= 26f * dt
+                if (rainY[i] < 0f) rainY[i] += 15f
+                if (i < n) {
+                    drawBox(camX + rainX[i], rainY[i], rainZ[i], 0.04f, 0.7f, 0.04f, RAIN_DROP)
+                }
+            }
+        }
+        if (ws > 0.02f) {
+            snowPhase += dt
+            val n = (snowX.size * ws).toInt()
+            for (i in snowX.indices) {
+                snowY[i] -= 3.2f * dt
+                if (snowY[i] < 0f) snowY[i] += 15f
+                if (i < n) {
+                    val sway = sin(snowPhase * 1.7f + snowSeed[i]) * 0.6f
+                    drawBox(camX + snowX[i] + sway, snowY[i], snowZ[i], 0.11f, 0.11f, 0.11f, SNOW_FLAKE)
+                }
+            }
+        }
+        mMode = 0
     }
 
     private fun setFog(r: Float, g: Float, b: Float) = GLES20.glUniform3f(uFog, min(1f, r), min(1f, g), min(1f, b))
@@ -185,13 +291,16 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         Matrix.setIdentityM(model, 0)
         stack.clear()
 
-        // 太阳：无光照、不受雾影响
-        setFog(SUN[0], SUN[1], SUN[2])
-        mMode = 2
-        pushModel(20f, 26f, -110f)
-        drawPart(0f, 0f, 0f, 7f, 7f, 7f, SUN)
-        popModel()
-        setFog(SKY[0] + 0.09f, SKY[1] + 0.05f, SKY[2] + 0.02f)
+        // 太阳：只在晴天出现（转阴时缩小淡出），无光照、不受雾影响
+        if (wSun > 0.05f) {
+            setFog(SUN[0], SUN[1], SUN[2])
+            mMode = 2
+            pushModel(20f, 26f, -110f)
+            val k = 7f * wSun
+            drawPart(0f, 0f, 0f, k, k, k, SUN)
+            popModel()
+            setSkyFog()
+        }
 
         mMode = 0
         for (i in 0 until 7) {
@@ -207,13 +316,13 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
 
     // ---------- 跑道 ----------
     private fun drawTrack() {
-        drawBox(-30.5f, -0.55f, -110f, 53f, 1f, 260f, GRASS)
-        drawBox(30.5f, -0.55f, -110f, 53f, 1f, 260f, GRASS)
-        drawBox(-5.6f, -0.53f, -110f, 2.4f, 1.02f, 260f, GRASS_DARK)
-        drawBox(5.6f, -0.53f, -110f, 2.4f, 1.02f, 260f, GRASS_DARK)
-        drawBox(0f, -0.5f, -110f, 8.2f, 1f, 260f, ROAD)
-        drawBox(-4.35f, -0.42f, -110f, 0.5f, 1.06f, 260f, ROAD_EDGE)
-        drawBox(4.35f, -0.42f, -110f, 0.5f, 1.06f, 260f, ROAD_EDGE)
+        drawBox(-30.5f, -0.55f, -110f, 53f, 1f, 260f, grassCol)
+        drawBox(30.5f, -0.55f, -110f, 53f, 1f, 260f, grassCol)
+        drawBox(-5.6f, -0.53f, -110f, 2.4f, 1.02f, 260f, grassDarkCol)
+        drawBox(5.6f, -0.53f, -110f, 2.4f, 1.02f, 260f, grassDarkCol)
+        drawBox(0f, -0.5f, -110f, 8.2f, 1f, 260f, roadCol)
+        drawBox(-4.35f, -0.42f, -110f, 0.5f, 1.06f, 260f, edgeCol)
+        drawBox(4.35f, -0.42f, -110f, 0.5f, 1.06f, 260f, edgeCol)
 
         scroll(5f, game.distance) { _, z ->
             for (x in floatArrayOf(-1.1f, 1.1f)) {
@@ -263,9 +372,9 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
             val y = 11f + mod(m * 19, 60) / 10f
             val k = 1.1f + mod(m * 13, 60) / 100f
             pushModel(x, y, z)
-            drawPart(0f, 0f, 0f, 3.2f * k, 1.3f * k, 1.5f * k, CLOUD)
-            drawPart(1.7f * k, 0.5f * k, 0f, 2.0f * k, 1.1f * k, 1.3f * k, CLOUD)
-            drawPart(-1.7f * k, 0.4f * k, 0f, 1.8f * k, 1.0f * k, 1.2f * k, CLOUD)
+            drawPart(0f, 0f, 0f, 3.2f * k, 1.3f * k, 1.5f * k, cloudCol)
+            drawPart(1.7f * k, 0.5f * k, 0f, 2.0f * k, 1.1f * k, 1.3f * k, cloudCol)
+            drawPart(-1.7f * k, 0.4f * k, 0f, 1.8f * k, 1.0f * k, 1.2f * k, cloudCol)
             popModel()
         }
         mMode = 0
@@ -405,6 +514,9 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
             Matrix.rotateM(model, 0, -65f, 1f, 0f, 0f)
             Matrix.translateM(model, 0, 0f, 0.3f, 0.3f)
         }
+        val c = CAT_MAIN[game.catColor % CAT_MAIN.size]
+        val cd = CAT_DK[game.catColor % CAT_DK.size]
+
         val ridingZip = g.riding != null
         val lean = (Game.LANE_X[g.lane] - g.catX) * 9f
         Matrix.rotateM(model, 0, -lean, 0f, 0f, 1f)
@@ -416,15 +528,15 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         if (ridingZip) {
             // 抓着滑轮吊在钢缆下
             val grip = Game.CABLE_H - g.catY
-            drawPart(0f, (2.1f + grip) / 2f, -0.2f, 0.1f, grip - 2.05f, 0.1f, CAT_DARK)
+            drawPart(0f, (2.1f + grip) / 2f, -0.2f, 0.1f, grip - 2.05f, 0.1f, cd)
             drawPart(0f, grip - 0.1f, -0.2f, 0.3f, 0.2f, 0.24f, GANTRY)
         }
 
         // 尾巴：三节方块阶梯
         val wag = sin(g.runPhase * 0.7f) * 0.12f
-        drawPart(0.05f + wag, 1.15f, 0.75f, 0.2f, 0.2f, 0.3f, CAT)
-        drawPart(0.05f + wag * 2f, 1.45f, 0.9f, 0.18f, 0.34f, 0.18f, CAT)
-        drawPart(0.05f + wag * 3f, 1.72f, 0.9f, 0.2f, 0.24f, 0.2f, CAT_DARK)
+        drawPart(0.05f + wag, 1.15f, 0.75f, 0.2f, 0.2f, 0.3f, c)
+        drawPart(0.05f + wag * 2f, 1.45f, 0.9f, 0.18f, 0.34f, 0.18f, c)
+        drawPart(0.05f + wag * 3f, 1.72f, 0.9f, 0.2f, 0.24f, 0.2f, cd)
 
         // 四条腿
         for (i in 0 until 4) {
@@ -441,22 +553,22 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
             }
             pushModel(lx, 0.6f, lz)
             Matrix.rotateM(model, 0, swing, 1f, 0f, 0f)
-            drawPart(0f, -0.26f, 0f, 0.24f, 0.52f, 0.24f, if (left) CAT else CAT_DARK)
+            drawPart(0f, -0.26f, 0f, 0.24f, 0.52f, 0.24f, if (left) c else cd)
             drawPart(0f, -0.55f, 0f, 0.26f, 0.14f, 0.28f, CAT_WHITE)
             popModel()
         }
 
         // 方块身体 + 条纹
-        drawPart(0f, 0.85f, 0f, 0.95f, 0.8f, 1.35f, CAT)
-        drawPart(0f, 1.15f, 0.3f, 0.97f, 0.24f, 0.3f, CAT_DARK)
-        drawPart(0f, 1.15f, -0.25f, 0.97f, 0.24f, 0.3f, CAT_DARK)
+        drawPart(0f, 0.85f, 0f, 0.95f, 0.8f, 1.35f, c)
+        drawPart(0f, 1.15f, 0.3f, 0.97f, 0.24f, 0.3f, cd)
+        drawPart(0f, 1.15f, -0.25f, 0.97f, 0.24f, 0.3f, cd)
 
         // 方块头 + 耳朵 + 白口鼻
         pushModel(0f, 1.75f, -0.42f)
         if (g.state == Game.State.DEAD) Matrix.rotateM(model, 0, 25f, 1f, 0f, 0f)
-        drawPart(0f, 0f, 0f, 0.9f, 0.8f, 0.85f, CAT)
-        drawPart(-0.3f, 0.52f, 0f, 0.24f, 0.26f, 0.14f, CAT_DARK)
-        drawPart(0.3f, 0.52f, 0f, 0.24f, 0.26f, 0.14f, CAT_DARK)
+        drawPart(0f, 0f, 0f, 0.9f, 0.8f, 0.85f, c)
+        drawPart(-0.3f, 0.52f, 0f, 0.24f, 0.26f, 0.14f, cd)
+        drawPart(0.3f, 0.52f, 0f, 0.24f, 0.26f, 0.14f, cd)
         drawPart(0f, -0.15f, -0.4f, 0.5f, 0.32f, 0.14f, CAT_WHITE)
         if (g.helmet) {
             // 护盾头盔

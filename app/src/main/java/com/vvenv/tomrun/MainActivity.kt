@@ -11,12 +11,15 @@ class MainActivity : Activity() {
 
     private lateinit var glView: GLSurfaceView
     private val game = Game()
+    private var soundFx: SoundFx? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         game.attachPrefs(getSharedPreferences("tomrun", MODE_PRIVATE))
+        soundFx = SoundFx(this)
+        game.onEvent = { event -> soundFx?.play(event) }
 
         glView = GLSurfaceView(this).apply {
             setEGLContextClientVersion(2)
@@ -44,6 +47,13 @@ class MainActivity : Activity() {
     override fun onPause() {
         super.onPause()
         glView.onPause()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        game.onEvent = null
+        soundFx?.release()
+        soundFx = null
     }
 
     /** 优先申请 4x MSAA，不支持则回退普通配置 */
