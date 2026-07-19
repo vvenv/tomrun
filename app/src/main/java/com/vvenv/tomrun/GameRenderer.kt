@@ -69,6 +69,15 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
     private val lineY = FloatArray(28) { 0.4f + prand.nextFloat() * 3.5f }
     private val lineZ = FloatArray(28) { prand.nextFloat() * 30f - 28f }
 
+    // 尾迹历史采样（沿猫的真实轨迹）
+    private val trailX = FloatArray(48)
+    private val trailY = FloatArray(48)
+    private val trailZ = FloatArray(48)
+    private val trailAge = FloatArray(48)
+    private val trailSeed = FloatArray(48)
+    private var trailCount = 0
+    private var trailEmit = 0f
+
     companion object {
         private const val VSH = """
             attribute vec3 aPos;
@@ -140,6 +149,14 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         private val SHADOW = floatArrayOf(0.04f, 0.09f, 0.04f, 0.32f)
         private val SPEED_LINE = floatArrayOf(0.95f, 0.97f, 1.0f, 0.35f)
         private val BOOST_TRAIL = floatArrayOf(0.30f, 0.90f, 1.0f, 0.55f)
+        private val TRAIL_CYAN = floatArrayOf(0.30f, 0.90f, 1.0f, 0.55f)
+        private val TRAIL_GOLD = floatArrayOf(1.0f, 0.84f, 0.20f, 0.55f)
+        private val TRAIL_RAINBOW = arrayOf(
+            floatArrayOf(1.0f, 0.35f, 0.45f, 0.55f),
+            floatArrayOf(1.0f, 0.80f, 0.20f, 0.55f),
+            floatArrayOf(0.35f, 0.95f, 0.45f, 0.55f),
+            floatArrayOf(0.35f, 0.70f, 1.0f, 0.55f)
+        )
         private val FLOWER = arrayOf(
             floatArrayOf(1f, 1f, 1f, 1f),
             floatArrayOf(0.98f, 0.55f, 0.65f, 1f),
@@ -262,7 +279,7 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         drawStreetLamps()
         drawEntities()
         drawParticles()
-        drawCat()
+        drawCat(dt)
         drawSpeedLines(dt)
         drawWeather(dt)
 
@@ -657,23 +674,101 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         mMode = 0
     }
 
+    /**
+     * 体素尾迹：0 无 / 1 青 / 2 金 / 3 彩虹；冲刺时叠加强化。
+     * 采样猫的历史位置并随场景后移，尾迹沿真实轨迹弯曲（换道拐弯、跳跃拱起），
+     * 逐渐缩小淡出并轻微上飘；金色带闪光星屑，彩虹沿轨迹渐变流动。
+     */
+    private fun drawCosmeticTrail(g: Game, dt: Float) {
+        val style = g.trailStyle
+        val boost = g.boosting
+        if (style == 0 && !boost) {
+            trailCount = 0
+            return
+        }
+
+        val dz = g.speed * dt
+        // 已有采样点随世界后移 + 老化
+        for (i in 0 until trailCount) {
+            trailZ[i] += dz
+            trailAge[i] += dt
+        }
+        // 淘汰过老/出屏的点（保持队列前段有效即可，简单压缩）
+        var w = 0
+        val maxAge = if (boost) 0.55f else 0.42f
+        for (i in 0 until trailCount) {
+            if (trailAge[i] < maxAge && trailZ[i] < 8f) {
+                trailX[w] = trailX[i]; trailY[w] = trailY[i]
+                trailZ[w] = trailZ[i]; trailAge[w] = trailAge[i]
+                trailSeed[w] = trailSeed[i]
+                w++
+            }
+        }
+        trailCount = w
+
+        // 按间隔从尾巴尖端补充采样（冲刺时更密）
+        trailEmit -= dt
+        val emitGap = if (boost) 0.022f else 0.034f
+        if (trailEmit <= 0f && trailCount < trailX.size) {
+            trailEmit = emitGap
+            val i = trailCount++
+            // 与 drawCat 尾巴第三节对齐：尖端约 (0.05+wag*3, 1.72*squash, 0.9)
+            val bob = if (g.onGround) abs(sin(g.runPhase)) * 0.07f else 0f
+            val squash = if (g.sliding) 0.5f else 1f
+            val wag = sin(g.runPhase * 0.7f) * 0.12f
+            trailX[i] = g.catX + 0.05f + wag * 3f + (prand.nextFloat() - 0.5f) * 0.08f
+            trailY[i] = g.catY + bob + 1.72f * squash + (prand.nextFloat() - 0.5f) * 0.08f
+            trailZ[i] = 1.05f
+            trailAge[i] = 0f
+            trailSeed[i] = prand.nextFloat() * 6.28f
+        }
+
+        mMode = 2
+        for (i in 0 until trailCount) {
+            val t = (trailAge[i] / maxAge).coerceIn(0f, 1f)   // 0 新 → 1 将消失
+            val fade = (1f - t) * (1f - t)
+            val base = when (style) {
+                1 -> TRAIL_CYAN
+                2 -> TRAIL_GOLD
+                3 -> TRAIL_RAINBOW[((trailSeed[i] * 3f + trailAge[i] * 9f).toInt()) % TRAIL_RAINBOW.size]
+                else -> BOOST_TRAIL
+            }
+            val boostK = if (boost) 1.25f else 1f
+            val a = (0.62f * fade * boostK).coerceIn(0.05f, 0.75f)
+            val col = floatArrayOf(base[0], base[1], base[2], a)
+            // 尺寸随年龄缩小；轻微上飘 + 左右微摆
+            val size = (0.34f * (1f - t * 0.7f)) * boostK
+            val rise = t * 0.45f
+            val sway = sin(trailSeed[i] + trailAge[i] * 7f) * 0.07f * t
+            drawBox(trailX[i] + sway, trailY[i] + rise, trailZ[i], size, size * 0.9f, size, col)
+
+            // 金色：额外星屑闪光；彩虹：小亮点
+            if (style >= 2 && i % 3 == 0) {
+                val tw = 0.4f + 0.6f * abs(sin(trailSeed[i] * 5f + trailAge[i] * 18f))
+                val sp = floatArrayOf(1f, 1f, 0.92f, (a * tw).coerceAtMost(0.8f))
+                val ss = size * 0.35f
+                drawBox(
+                    trailX[i] - sway * 2f, trailY[i] + rise + 0.22f, trailZ[i],
+                    ss, ss, ss, sp
+                )
+            }
+        }
+        mMode = 0
+    }
+
     // ---------- 像素猫 ----------
-    private fun drawCat() {
+    private fun drawCat(dt: Float) {
         val g = game
         drawShadow(g.catX, 0f, 0.85f - min(g.catY * 0.10f, 0.3f))
 
         val squash = if (g.sliding) 0.5f else 1f
         val bob = if (g.onGround && g.state == Game.State.RUNNING) abs(sin(g.runPhase)) * 0.07f else 0f
 
-        // 冲刺尾迹
-        if (g.boosting && g.state == Game.State.RUNNING) {
-            mMode = 2
-            for (i in 1..4) {
-                val a = 0.45f - i * 0.08f
-                val col = floatArrayOf(BOOST_TRAIL[0], BOOST_TRAIL[1], BOOST_TRAIL[2], a)
-                drawBox(g.catX, g.catY + 0.9f, 0.35f * i, 0.5f - i * 0.05f, 0.7f, 0.2f, col)
-            }
-            mMode = 0
+        // 装备尾迹（冲刺时加长加密）
+        if (g.state == Game.State.RUNNING) {
+            drawCosmeticTrail(g, dt)
+        } else {
+            trailCount = 0
         }
 
         pushModel(g.catX, g.catY + bob, 0f)

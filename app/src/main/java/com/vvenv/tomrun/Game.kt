@@ -9,23 +9,22 @@ import kotlin.random.Random
 /**
  * 纯游戏逻辑（不含渲染）：三跑道无尽跑酷。
  * update() 在 GL 线程调用；滑动输入来自 UI 线程，方法内加锁。
- * HUD 只读取 @Volatile 字段。
+ * HUD 只读取 @Volatile 字段 / 只读列表快照。
  */
 class Game {
 
     enum class State { READY, RUNNING, DEAD }
 
     companion object {
-        // 实体类型
-        const val OBST_LOW = 0    // 矮栏：跳过
-        const val OBST_BAR = 1    // 高空横杆：铲滑过
-        const val OBST_BLOCK = 2  // 大箱子：必须换道
+        const val OBST_LOW = 0
+        const val OBST_BAR = 1
+        const val OBST_BLOCK = 2
         const val COIN = 3
-        const val P_MAGNET = 4    // 磁铁：吸金币
-        const val P_HELMET = 5    // 头盔：抗一次撞击
-        const val P_DOUBLE = 6    // 加倍：得分 x2
-        const val OBST_RAMP = 7   // 施工跳台：沿斜坡跑上去越过路障
-        const val P_BOOST = 8    // 闪电冲刺：加速 + 撞碎障碍
+        const val P_MAGNET = 4
+        const val P_HELMET = 5
+        const val P_DOUBLE = 6
+        const val OBST_RAMP = 7
+        const val P_BOOST = 8
 
         val LANE_X = floatArrayOf(-2.2f, 0f, 2.2f)
         const val SPAWN_Z = -150f
@@ -34,14 +33,20 @@ class Game {
         const val SLIDE_TIME = 0.75f
         const val RAMP_LENGTH = 9f
         const val RAMP_HEIGHT = 2.4f
+        const val CABLE_H = 5.4f
+        const val RIDE_Y = 3.0f
 
-        const val CABLE_H = 5.4f   // 索道钢缆高度
-        const val RIDE_Y = 3.0f    // 滑索时猫的脚底高度
+        // 速度：慢起步，约 70 秒接近上限
+        const val SPEED_START = 12f
+        const val SPEED_MAX = 28f
+        const val SPEED_RAMP = 0.22f     // 每秒加速
+        const val BOOST_MULT = 1.25f
 
-        // 连击 / 道具上限
+        // 连击阈值：x2/x3/x4/x5
         const val COMBO_WINDOW = 1.6f
-        const val COMBO_STEP = 5
+        val COMBO_THRESH = intArrayOf(5, 12, 22, 35)
         const val COMBO_MAX_MULT = 5
+
         const val MAGNET_BASE = 8f
         const val DOUBLE_BASE = 10f
         const val BOOST_BASE = 6f
@@ -50,12 +55,41 @@ class Game {
         const val BOOST_CAP = 12f
         const val HELMET_MAX = 2
 
-        // 局内任务目标
-        const val QUEST_COINS = 50
-        const val QUEST_COMBO = 15
-        const val QUEST_DIST = 800
+        // 任务类型
+        const val Q_COINS = 0
+        const val Q_DIST = 1
+        const val Q_COMBO = 2
+        const val Q_JUMP = 3
+        const val Q_SLIDE = 4
+        const val Q_SMASH = 5
 
-        // 音效 / 反馈事件
+        // 成就类别
+        const val A_COINS = 0
+        const val A_DIST = 1
+        const val A_QUESTS = 2
+        const val A_COMBO = 3
+        const val A_SCORE = 4
+        const val ACHIEVE_CATS = 5
+        val ACHIEVE_TARGETS = arrayOf(
+            intArrayOf(200, 1000, 5000),       // 累计金币
+            intArrayOf(2000, 10000, 50000),    // 累计距离
+            intArrayOf(5, 25, 100),            // 任务数
+            intArrayOf(15, 30, 50),            // 最高连击
+            intArrayOf(1000, 5000, 15000)      // 最高分
+        )
+        val ACHIEVE_NAMES = arrayOf("金币收藏家", "长跑健将", "任务达人", "连击大师", "得分王")
+        val ACHIEVE_TIERS = arrayOf("铜", "银", "金")
+        val ACHIEVE_REWARDS = intArrayOf(100, 250, 500)
+
+        // 外观：4 色 + 4 尾迹（0 免费）
+        const val CAT_COLOR_COUNT = 4
+        const val TRAIL_COUNT = 4
+        val COLOR_PRICES = intArrayOf(0, 300, 800, 1500)
+        val TRAIL_PRICES = intArrayOf(0, 500, 1200, 2500)
+        val COLOR_NAMES = arrayOf("蓝灰", "橘黄", "乌黑", "粉红")
+        val TRAIL_NAMES = arrayOf("无尾迹", "青色", "金色", "彩虹")
+
+        // 音效事件
         const val EV_JUMP = 0
         const val EV_SLIDE = 1
         const val EV_COIN = 2
@@ -70,17 +104,18 @@ class Game {
         const val EV_QUEST = 11
         const val EV_ACHIEVE = 12
 
-        const val CAT_COLOR_COUNT = 8
-
-        // 天气
         const val W_SUNNY = 0
         const val W_RAIN = 1
         const val W_SNOW = 2
 
-        // 反馈强度（振动分级）
         const val HAPTIC_LIGHT = 1
         const val HAPTIC_MED = 2
         const val HAPTIC_HEAVY = 3
+
+        // 菜单面板
+        const val PANEL_MAIN = 0
+        const val PANEL_SHOP = 1
+        const val PANEL_ACHIEVE = 2
     }
 
     class Entity(val kind: Int, val lane: Int, var z: Float, var y: Float = 0f) {
@@ -89,28 +124,41 @@ class Game {
         var spin = Random.nextFloat() * 360f
     }
 
-    /** 高空索道：entryZ 是入口（先到达玩家），钢缆向远处延伸 length */
     class Zip(val lane: Int, var entryZ: Float, val length: Float) {
         val exitZ get() = entryZ - length
     }
 
-    /** HUD 飘分 / 提示条目 */
     class FloatText(val text: String, val color: Int, var life: Float = 1.1f, var y: Float = 0f)
 
-    /** 渲染用体素粒子 */
     class Particle(
         var x: Float, var y: Float, var z: Float,
         var vx: Float, var vy: Float, var vz: Float,
         var life: Float, val color: FloatArray, val size: Float
     )
 
+    class Quest(
+        val type: Int,
+        val target: Int,
+        val rewardScore: Int,
+        val rewardWallet: Int,
+        val label: String
+    ) {
+        @Volatile var progress = 0
+        @Volatile var done = false
+    }
+
+    class Banner(val text: String, val color: Int, var life: Float = 2.4f)
+
     @Volatile var state = State.READY
     @Volatile var score = 0
-    @Volatile var coins = 0
+    @Volatile var coins = 0          // 本局拾取（计分用）
     @Volatile var highScore = 0
     @Volatile var deadTime = 0f
 
-    // 道具状态（HUD/渲染读取）
+    // 永久钱包（外观货币）与本局净赚
+    @Volatile var wallet = 0
+    @Volatile var runWalletEarn = 0
+
     @Volatile var magnetTime = 0f
     @Volatile var doubleTime = 0f
     @Volatile var boostTime = 0f
@@ -119,58 +167,66 @@ class Game {
     val helmet get() = helmetLayers > 0
     val boosting get() = boostTime > 0f
 
-    // 连击
     @Volatile var combo = 0
     @Volatile var comboMult = 1
     @Volatile var comboFlash = 0f
+    @Volatile var comboNextAt = 5   // 距离下一级所需连击数
     private var comboTimer = 0f
-    private var comboScore = 0   // 连击额外分数（不计入 coins*10）
+    private var comboScore = 0
 
-    // 局内任务进度
-    @Volatile var questCoinsDone = false
-    @Volatile var questComboDone = false
-    @Volatile var questDistDone = false
-    @Volatile var questFlash = 0f
-    @Volatile var questFlashText = ""
+    val quests = ArrayList<Quest>(3)
     @Volatile var bestComboRun = 0
     private var missionBonus = 0
+    private var runJumps = 0
+    private var runSlides = 0
+    private var runSmashes = 0
 
-    // 持久成就（累计）
+    // 累计统计
     @Volatile var totalCoins = 0
     @Volatile var totalDistance = 0
     @Volatile var totalQuests = 0
     @Volatile var bestComboEver = 0
-    @Volatile var achieveCount = 0
-    @Volatile var achieveFlash = 0f
-    @Volatile var achieveFlashText = ""
-    private var unlockedMask = 0
 
-    // 反馈：飘分、粒子、相机震动、触觉强度
+    // 成就：每类 0~3 级
+    val achieveLevels = IntArray(ACHIEVE_CATS)
+    @Volatile var achieveCount = 0   // 已完成级数总和 /15
+    private val bannerQueue = ArrayList<Banner>()
+    @Volatile var bannerText = ""
+    @Volatile var bannerColor = 0xFFFFD426.toInt()
+    @Volatile var bannerFlash = 0f
+
+    // 外观
+    @Volatile var catColor = 0
+    @Volatile var trailStyle = 0
+    private var ownedColors = 1   // bit0 免费
+    private var ownedTrails = 1
+
+    // 菜单
+    @Volatile var menuPanel = PANEL_MAIN
+    @Volatile var shopBrowseColor = 0
+    @Volatile var shopBrowseTrail = 0
+
     val floatTexts = ArrayList<FloatText>()
     val particles = ArrayList<Particle>()
     @Volatile var shake = 0f
-    @Volatile var hapticPulse = 0   // 0=无；MainActivity 读取后清零
+    @Volatile var hapticPulse = 0
     @Volatile var lastFloat = ""
     @Volatile var lastFloatColor = 0xFFFFD54A.toInt()
     @Volatile var floatFlash = 0f
 
-    // 音效回调（MainActivity 注入）、跑酷中新纪录横幅、猫的颜色
     @Volatile var onEvent: ((Int) -> Unit)? = null
     @Volatile var recordFlash = 0f
-    @Volatile var catColor = 0
     private var recordDone = false
+    private var settled = false
 
-    // 天气：随机轮换，weatherBlend 从 0 到 1 平滑过渡到当前天气
     @Volatile var weather = W_SUNNY
     @Volatile var weatherPrev = W_SUNNY
     @Volatile var weatherBlend = 1f
     private var weatherTimer = 18f + Random.nextFloat() * 15f
 
-    // 昼夜：0=正午 → 0.25=黄昏 → 0.5=午夜 → 0.75=黎明 → 1=正午
     @Volatile var dayPhase = 0.12f + Random.nextFloat() * 0.2f
-    private var daySpeed = 1f / 90f   // 约 90 秒一昼夜
+    private var daySpeed = 1f / 90f
 
-    // 猫状态（GL 线程写，渲染直接读）
     var lane = 1
     var catX = 0f
     var catY = 0f
@@ -181,39 +237,108 @@ class Game {
     val sliding get() = slideTimer > 0f
     val onGround get() = catY <= groundY + 0.001f
 
-    var speed = 14f
-    var baseSpeed = 14f
+    var speed = SPEED_START
+    var baseSpeed = SPEED_START
     var distance = 0f
     private var gapRemaining = 0f
     private var zipGap = 100f
-    private var scoreBoost = 0f      // 加倍期间的额外里程分
+    private var scoreBoost = 0f
     private var invulnTime = 0f
+    private var wavesSincePower = 0
+    private var runTime = 0f
 
     val entities = ArrayList<Entity>()
     val ziplines = ArrayList<Zip>()
 
     private var prefs: SharedPreferences? = null
-    private var sessionCoins = 0
-    private var sessionDistSaved = 0f
+    private var sessionPickupCoins = 0  // 本局拾取计入累计统计
 
     fun attachPrefs(p: SharedPreferences) {
         prefs = p
         highScore = p.getInt("high3d", 0)
-        catColor = p.getInt("catColor", 0) % CAT_COLOR_COUNT
         totalCoins = p.getInt("totalCoins", 0)
         totalDistance = p.getInt("totalDist", 0)
         totalQuests = p.getInt("totalQuests", 0)
         bestComboEver = p.getInt("bestCombo", 0)
-        unlockedMask = p.getInt("achieveMask", 0)
-        achieveCount = Integer.bitCount(unlockedMask)
+        wallet = p.getInt("wallet", 0)
+
+        // 兼容旧 achieveMask → 迁移为三级成就
+        if (p.contains("achieveLv0")) {
+            for (i in 0 until ACHIEVE_CATS) {
+                achieveLevels[i] = p.getInt("achieveLv$i", 0).coerceIn(0, 3)
+            }
+        } else {
+            val mask = p.getInt("achieveMask", 0)
+            if (mask and 1 != 0) achieveLevels[A_COINS] = 1
+            if (mask and 2 != 0) achieveLevels[A_DIST] = 1
+            if (mask and 4 != 0) achieveLevels[A_QUESTS] = 1
+            if (mask and 8 != 0) achieveLevels[A_COMBO] = 1
+        }
+        achieveCount = achieveLevels.sum()
+
+        ownedColors = p.getInt("ownedColors", 1) or 1
+        ownedTrails = p.getInt("ownedTrails", 1) or 1
+        catColor = p.getInt("catColor", 0).coerceIn(0, CAT_COLOR_COUNT - 1)
+        trailStyle = p.getInt("trailStyle", 0).coerceIn(0, TRAIL_COUNT - 1)
+        if (!ownsColor(catColor)) catColor = 0
+        if (!ownsTrail(trailStyle)) trailStyle = 0
+        shopBrowseColor = catColor
+        shopBrowseTrail = trailStyle
     }
 
-    fun cycleCatColor() {
-        catColor = (catColor + 1) % CAT_COLOR_COUNT
-        prefs?.edit()?.putInt("catColor", catColor)?.apply()
+    fun ownsColor(i: Int) = (ownedColors and (1 shl i)) != 0
+    fun ownsTrail(i: Int) = (ownedTrails and (1 shl i)) != 0
+
+    @Synchronized fun switchMenuPanel(panel: Int) {
+        if (state == State.RUNNING) return
+        menuPanel = panel
     }
 
-    /** MainActivity 消费触觉脉冲后调用 */
+    @Synchronized fun browseColor(delta: Int) {
+        if (state == State.RUNNING) return
+        shopBrowseColor = (shopBrowseColor + delta + CAT_COLOR_COUNT) % CAT_COLOR_COUNT
+    }
+
+    @Synchronized fun browseTrail(delta: Int) {
+        if (state == State.RUNNING) return
+        shopBrowseTrail = (shopBrowseTrail + delta + TRAIL_COUNT) % TRAIL_COUNT
+    }
+
+    /** 购买或装备当前浏览的配色；返回提示文案 */
+    @Synchronized fun buyOrEquipColor(): String {
+        if (state == State.RUNNING) return ""
+        val i = shopBrowseColor
+        if (ownsColor(i)) {
+            catColor = i
+            persistCosmetics()
+            return "已装备 ${COLOR_NAMES[i]}"
+        }
+        val price = COLOR_PRICES[i]
+        if (wallet < price) return "金币不足（需 $price）"
+        wallet -= price
+        ownedColors = ownedColors or (1 shl i)
+        catColor = i
+        persistCosmetics()
+        return "购买成功：${COLOR_NAMES[i]}"
+    }
+
+    @Synchronized fun buyOrEquipTrail(): String {
+        if (state == State.RUNNING) return ""
+        val i = shopBrowseTrail
+        if (ownsTrail(i)) {
+            trailStyle = i
+            persistCosmetics()
+            return "已装备 ${TRAIL_NAMES[i]}"
+        }
+        val price = TRAIL_PRICES[i]
+        if (wallet < price) return "金币不足（需 $price）"
+        wallet -= price
+        ownedTrails = ownedTrails or (1 shl i)
+        trailStyle = i
+        persistCosmetics()
+        return "购买成功：${TRAIL_NAMES[i]}"
+    }
+
     fun consumeHaptic(): Int {
         val h = hapticPulse
         hapticPulse = 0
@@ -229,9 +354,13 @@ class Game {
     fun doubleLeft() = ceil(doubleTime).toInt()
     fun boostLeft() = ceil(boostTime).toInt()
 
-    /** 夜晚强度 0~1，用于渲染调暗与路灯 */
+    fun comboToNext(): Int {
+        if (comboMult >= COMBO_MAX_MULT) return 0
+        val need = COMBO_THRESH[comboMult - 1]
+        return (need - combo).coerceAtLeast(0)
+    }
+
     fun nightAmount(): Float {
-        // 0.25~0.75 逐渐入夜，0.4~0.6 最暗
         val p = dayPhase
         return when {
             p < 0.20f -> 0f
@@ -242,7 +371,6 @@ class Game {
         }.coerceIn(0f, 1f)
     }
 
-    /** 黄昏暖色强度 0~1 */
     fun duskAmount(): Float {
         val p = dayPhase
         return when {
@@ -252,12 +380,58 @@ class Game {
         }.coerceIn(0f, 1f)
     }
 
-    // ---------- 输入（UI 线程） ----------
+    fun playerTier(): Int = when {
+        totalDistance < 3000 -> 0
+        totalDistance < 15000 -> 1
+        else -> 2
+    }
+
+    fun nextAchieveHint(): String {
+        var bestCat = -1
+        var bestNeed = Int.MAX_VALUE
+        var bestPct = 0f
+        for (c in 0 until ACHIEVE_CATS) {
+            val lv = achieveLevels[c]
+            if (lv >= 3) continue
+            val target = ACHIEVE_TARGETS[c][lv]
+            val cur = achieveProgress(c)
+            val need = target - cur
+            if (need < bestNeed) {
+                bestNeed = need
+                bestCat = c
+                bestPct = (cur.toFloat() / target).coerceIn(0f, 1f)
+            }
+        }
+        if (bestCat < 0) return "成就已全部解锁"
+        val lv = achieveLevels[bestCat]
+        val target = ACHIEVE_TARGETS[bestCat][lv]
+        val cur = achieveProgress(bestCat)
+        return "${ACHIEVE_NAMES[bestCat]} ${ACHIEVE_TIERS[lv]} $cur/$target"
+    }
+
+    fun achieveProgress(cat: Int): Int = when (cat) {
+        // 未结算时计入本局进度，避免死亡结算重复累加后再判
+        A_COINS -> totalCoins + if (settled) 0 else sessionPickupCoins
+        A_DIST -> totalDistance + if (settled) 0 else distance.toInt()
+        A_QUESTS -> totalQuests
+        A_COMBO -> maxOf(bestComboEver, bestComboRun)
+        A_SCORE -> maxOf(highScore, score)
+        else -> 0
+    }
+
+    // ---------- 输入 ----------
     @Synchronized fun onTap() {
         when (state) {
-            State.READY -> { reset(); state = State.RUNNING }
+            State.READY -> {
+                if (menuPanel != PANEL_MAIN) { menuPanel = PANEL_MAIN; return }
+                reset(); state = State.RUNNING
+            }
             State.RUNNING -> jump()
-            State.DEAD -> if (deadTime > 0.6f) { reset(); state = State.RUNNING }
+            State.DEAD -> {
+                if (deadTime <= 0.6f) return
+                if (menuPanel != PANEL_MAIN) { menuPanel = PANEL_MAIN; return }
+                reset(); state = State.RUNNING
+            }
         }
     }
 
@@ -271,6 +445,8 @@ class Game {
         } else {
             slideTimer = SLIDE_TIME
             if (!onGround) velY = -14f
+            runSlides++
+            bumpQuest(Q_SLIDE, 1)
             emit(EV_SLIDE, HAPTIC_LIGHT)
         }
     }
@@ -288,6 +464,8 @@ class Game {
         if (onGround) {
             velY = JUMP_V
             slideTimer = 0f
+            runJumps++
+            bumpQuest(Q_JUMP, 1)
             emit(EV_JUMP, HAPTIC_LIGHT)
         }
     }
@@ -297,36 +475,49 @@ class Game {
         ziplines.clear()
         floatTexts.clear()
         particles.clear()
+        bannerQueue.clear()
+        quests.clear()
         lane = 1; catX = 0f; catY = 0f; velY = 0f
         groundY = 0f
         slideTimer = 0f; runPhase = 0f
-        baseSpeed = 14f; speed = 14f; distance = 0f; score = 0; coins = 0
+        baseSpeed = SPEED_START; speed = SPEED_START
+        distance = 0f; score = 0; coins = 0; runTime = 0f
         deadTime = 0f
         magnetTime = 0f; doubleTime = 0f; boostTime = 0f; helmetLayers = 0
         riding = null; scoreBoost = 0f; invulnTime = 0f
-        recordFlash = 0f; recordDone = false
+        recordFlash = 0f; recordDone = false; settled = false
         combo = 0; comboMult = 1; comboTimer = 0f; comboFlash = 0f; comboScore = 0
-        questCoinsDone = false; questComboDone = false; questDistDone = false
-        questFlash = 0f; questFlashText = ""; bestComboRun = 0; missionBonus = 0
-        achieveFlash = 0f; achieveFlashText = ""
+        comboNextAt = COMBO_THRESH[0]
+        bestComboRun = 0; missionBonus = 0
+        runJumps = 0; runSlides = 0; runSmashes = 0
+        runWalletEarn = 0; sessionPickupCoins = 0
+        bannerFlash = 0f; bannerText = ""
         shake = 0f; hapticPulse = 0; floatFlash = 0f; lastFloat = ""
-        sessionCoins = 0; sessionDistSaved = 0f
+        wavesSincePower = 0
+        menuPanel = PANEL_MAIN
         zipGap = 90f + Random.nextFloat() * 80f
+        rollQuests()
         var z = -45f
         while (z > SPAWN_Z) {
-            spawnWave(z)
-            z -= 22f + Random.nextFloat() * 12f
+            spawnWave(z, early = true)
+            z -= 24f + Random.nextFloat() * 14f
         }
         gapRemaining = nextGap()
     }
 
-    private fun nextGap() = 16f + Random.nextFloat() * 14f + baseSpeed * 0.35f
+    /** 反应时间间距：前期 ~1.7s，后期 ~0.95s */
+    private fun nextGap(): Float {
+        val t = (distance / 2500f).coerceIn(0f, 1f)
+        val react = 1.7f - t * 0.75f
+        val jitter = 0.85f + Random.nextFloat() * 0.3f
+        return (baseSpeed * react * jitter).coerceIn(14f, 48f)
+    }
 
-    // ---------- 主更新（GL 线程） ----------
+    // ---------- 主更新 ----------
     @Synchronized fun update(dt: Float) {
         tickDayNight(dt)
         tickFeedback(dt)
-        // 镜头震动在死亡界面也要衰减，否则会一直抖
+        tickBanners(dt)
         if (shake > 0f) shake = (shake - dt * 5f).coerceAtLeast(0f)
         if (state == State.DEAD) {
             deadTime += dt
@@ -336,8 +527,15 @@ class Game {
         runPhase += dt * speed * 0.9f
         if (state != State.RUNNING) return
 
-        baseSpeed = min(baseSpeed + 0.35f * dt, 30f)
-        speed = if (boosting) baseSpeed * 1.30f else baseSpeed
+        runTime += dt
+        baseSpeed = min(SPEED_START + SPEED_RAMP * runTime, SPEED_MAX)
+        // 前期略缓加速曲线（ease-out 近似）
+        if (runTime < 70f) {
+            val u = runTime / 70f
+            val eased = 1f - (1f - u) * (1f - u)
+            baseSpeed = SPEED_START + (SPEED_MAX - SPEED_START) * eased
+        }
+        speed = if (boosting) baseSpeed * BOOST_MULT else baseSpeed
         val dz = speed * dt
         distance += dz
 
@@ -349,17 +547,13 @@ class Game {
         if (boostTime > 0f) boostTime = (boostTime - dt).coerceAtLeast(0f)
         if (invulnTime > 0f) invulnTime = (invulnTime - dt).coerceAtLeast(0f)
 
-        // 连击超时
         if (combo > 0) {
             comboTimer -= dt
             if (comboTimer <= 0f) resetCombo()
         }
         if (comboFlash > 0f) comboFlash -= dt
-        if (questFlash > 0f) questFlash -= dt
-        if (achieveFlash > 0f) achieveFlash -= dt
         if (floatFlash > 0f) floatFlash -= dt
 
-        // 猫横向
         val targetX = LANE_X[lane]
         catX += (targetX - catX) * min(1f, dt * 12f)
 
@@ -398,7 +592,6 @@ class Game {
             }
         }
 
-        // 实体前移 / 磁铁吸金币 / 清理
         val it = entities.iterator()
         while (it.hasNext()) {
             val e = it.next()
@@ -412,7 +605,6 @@ class Game {
             if (e.z > 8f || e.taken) it.remove()
         }
 
-        // 粒子物理
         val pit = particles.iterator()
         while (pit.hasNext()) {
             val p = pit.next()
@@ -427,17 +619,18 @@ class Game {
 
         gapRemaining -= dz
         while (gapRemaining <= 0f) {
-            spawnWave(SPAWN_Z - gapRemaining)
+            spawnWave(SPAWN_Z - gapRemaining, early = false)
             gapRemaining += nextGap()
         }
         zipGap -= dz
-        if (zipGap <= 0f && ziplines.isEmpty()) {
+        if (zipGap <= 0f && ziplines.isEmpty() && distance > 400f) {
             spawnZipline()
             zipGap = 160f + Random.nextFloat() * 160f
         }
 
         checkCollision()
-        checkQuests()
+        syncQuestProgress()
+        // 计分：里程 + 加倍里程 + 金币基础分 + 连击额外 + 任务分
         score = (distance + scoreBoost).toInt() + coins * 10 + comboScore + missionBonus
 
         if (recordFlash > 0f) recordFlash -= dt
@@ -463,6 +656,34 @@ class Game {
         }
     }
 
+    private fun tickBanners(dt: Float) {
+        if (bannerFlash > 0f) {
+            bannerFlash -= dt
+            if (bannerFlash <= 0f && bannerQueue.isNotEmpty()) {
+                val b = bannerQueue.removeAt(0)
+                bannerText = b.text
+                bannerColor = b.color
+                bannerFlash = b.life
+            }
+        } else if (bannerQueue.isNotEmpty()) {
+            val b = bannerQueue.removeAt(0)
+            bannerText = b.text
+            bannerColor = b.color
+            bannerFlash = b.life
+        }
+    }
+
+    private fun enqueueBanner(text: String, color: Int, life: Float = 2.4f) {
+        if (bannerFlash <= 0f && bannerQueue.isEmpty()) {
+            bannerText = text
+            bannerColor = color
+            bannerFlash = life
+        } else {
+            bannerQueue.add(Banner(text, color, life))
+            if (bannerQueue.size > 6) bannerQueue.removeAt(0)
+        }
+    }
+
     private fun tickWeather(dt: Float) {
         weatherTimer -= dt
         if (weatherTimer <= 0f) {
@@ -476,11 +697,11 @@ class Game {
         if (weatherBlend < 1f) weatherBlend = min(1f, weatherBlend + dt / 2.5f)
     }
 
+    // ---------- 生成 ----------
     private fun spawnZipline() {
         val laneZ = Random.nextInt(3)
         val length = 30f + Random.nextFloat() * 50f
-        val zip = Zip(laneZ, SPAWN_Z, length)
-        ziplines.add(zip)
+        ziplines.add(Zip(laneZ, SPAWN_Z, length))
         var cz = SPAWN_Z - 8f
         while (cz > SPAWN_Z - length + 4f) {
             entities.add(Entity(COIN, laneZ, cz, CABLE_H - 1.1f))
@@ -488,38 +709,45 @@ class Game {
         }
     }
 
-    private fun spawnWave(zBase: Float) {
-        val r = Random.nextFloat()
+    private fun spawnWave(zBase: Float, early: Boolean) {
+        wavesSincePower++
         val freeLanes = mutableListOf(0, 1, 2)
+        val barOpen = distance > 180f && !early
+        val rampOpen = distance > 450f && !early
+        val dense = distance > 900f
+
+        val r = Random.nextFloat()
         when {
-            r < 0.25f -> {
-                val n = 1 + Random.nextInt(3)
-                freeLanes.shuffle()
-                for (i in 0 until n) entities.add(Entity(OBST_LOW, freeLanes[i], zBase))
-                coinArc(freeLanes[0], zBase)
-            }
-            r < 0.50f -> {
-                val n = 1 + Random.nextInt(2)
-                freeLanes.shuffle()
-                for (i in 0 until n) entities.add(Entity(OBST_BLOCK, freeLanes[i], zBase))
-                coinRow(freeLanes[2], zBase)
-            }
-            r < 0.68f -> {
+            rampOpen && r < 0.14f -> spawnRampWave(zBase)
+            barOpen && r < (if (dense) 0.38f else 0.32f) -> {
                 val l = Random.nextInt(3)
                 entities.add(Entity(OBST_BAR, l, zBase))
                 coinRow(l, zBase)
             }
-            r < 0.82f -> spawnRampWave(zBase)
+            r < 0.55f -> {
+                val n = 1 + Random.nextInt(if (dense) 3 else 2)
+                freeLanes.shuffle()
+                for (i in 0 until n) entities.add(Entity(OBST_BLOCK, freeLanes[i], zBase))
+                coinRow(freeLanes.last(), zBase)
+            }
+            r < 0.82f -> {
+                val n = 1 + Random.nextInt(if (dense) 3 else 2)
+                freeLanes.shuffle()
+                for (i in 0 until n) entities.add(Entity(OBST_LOW, freeLanes[i], zBase))
+                coinArc(freeLanes[0], zBase)
+            }
             else -> {
                 coinRow(Random.nextInt(3), zBase)
                 coinRow(Random.nextInt(3), zBase - 8f)
             }
         }
-        // 随机道具：磁铁 / 头盔 / 加倍 / 冲刺
-        if (Random.nextFloat() < 0.16f) {
+
+        // 道具：随机 + 保底（约每 7 波）
+        val pity = wavesSincePower >= 7
+        if (pity || Random.nextFloat() < 0.15f) {
             val kinds = intArrayOf(P_MAGNET, P_HELMET, P_DOUBLE, P_BOOST)
-            val kind = kinds[Random.nextInt(kinds.size)]
-            entities.add(Entity(kind, Random.nextInt(3), zBase - 10f, 1.2f))
+            entities.add(Entity(kinds[Random.nextInt(kinds.size)], Random.nextInt(3), zBase - 10f, 1.2f))
+            wavesSincePower = 0
         }
     }
 
@@ -558,6 +786,7 @@ class Game {
         for (i in ys.indices) entities.add(Entity(COIN, lane, zBase + 3.2f - 1.6f * i, ys[i]))
     }
 
+    // ---------- 碰撞 / 拾取 ----------
     private fun checkCollision() {
         val catCenterY = catY + (if (sliding) 0.4f else 1.0f)
         val onZip = riding != null
@@ -590,14 +819,11 @@ class Game {
                         else -> true
                     }
                     if (!hit) continue
-
-                    // 冲刺：撞碎障碍
                     if (boosting && e.kind != OBST_RAMP) {
                         e.taken = true
                         smashObstacle(e)
                         continue
                     }
-
                     if (helmetLayers > 0) {
                         helmetLayers--
                         invulnTime = 1f
@@ -615,19 +841,22 @@ class Game {
     }
 
     private fun collectCoin(e: Entity) {
-        val gained = if (doubleTime > 0f) 2 else 1
-        coins += gained
-        sessionCoins += gained
+        // 加倍只影响本局计分金币数量，钱包按 1:1 拾取计入本局赚取
+        val scoreGained = if (doubleTime > 0f) 2 else 1
+        coins += scoreGained
+        sessionPickupCoins += 1
+        // 钱包：每枚实体金币 +1（加倍不刷钱包）
+        grantWallet(1)
 
-        // 连击：续接窗口内累加；倍率每 COMBO_STEP 枚升一级，最高 COMBO_MAX_MULT
         val prevMult = comboMult
         combo++
         comboTimer = COMBO_WINDOW
         if (combo > bestComboRun) bestComboRun = combo
         if (bestComboRun > bestComboEver) bestComboEver = bestComboRun
-        comboMult = min(COMBO_MAX_MULT, 1 + (combo - 1) / COMBO_STEP)
-        // 连击额外分：基础分已在 coins*10；此处只加 (mult-1) 倍奖励，避免与加倍双重计算
-        val basePts = 10 * gained
+        comboMult = multForCombo(combo)
+        comboNextAt = if (comboMult >= COMBO_MAX_MULT) combo else COMBO_THRESH[comboMult - 1]
+
+        val basePts = 10 * scoreGained
         val comboExtra = basePts * (comboMult - 1)
         comboScore += comboExtra
 
@@ -641,9 +870,16 @@ class Game {
         } else {
             emit(EV_COIN, HAPTIC_LIGHT)
         }
-        if (bestComboEver >= 25 || totalCoins + sessionCoins >= 500) {
-            tryUnlockAchievements()
+        bumpQuest(Q_COINS, 1)
+        bumpQuest(Q_COMBO, 0) // 用 sync 刷新
+    }
+
+    private fun multForCombo(c: Int): Int {
+        var m = 1
+        for (t in COMBO_THRESH) {
+            if (c >= t) m++ else break
         }
+        return min(COMBO_MAX_MULT, m)
     }
 
     private fun pickupPower(e: Entity) {
@@ -674,6 +910,8 @@ class Game {
 
     private fun smashObstacle(e: Entity) {
         missionBonus += 25
+        runSmashes++
+        bumpQuest(Q_SMASH, 1)
         pushFloat("+25 撞碎", 0xFF4DE8FF.toInt())
         shake = 0.35f
         val col = when (e.kind) {
@@ -688,53 +926,107 @@ class Game {
         combo = 0
         comboMult = 1
         comboTimer = 0f
+        comboNextAt = COMBO_THRESH[0]
     }
 
-    private fun checkQuests() {
-        if (!questCoinsDone && coins >= QUEST_COINS) {
-            questCoinsDone = true
-            completeQuest("任务：收集 ${QUEST_COINS} 金币", 200)
-        }
-        if (!questComboDone && bestComboRun >= QUEST_COMBO) {
-            questComboDone = true
-            completeQuest("任务：连击 ${QUEST_COMBO}", 250)
-        }
-        if (!questDistDone && distance >= QUEST_DIST) {
-            questDistDone = true
-            completeQuest("任务：奔跑 ${QUEST_DIST} 米", 300)
+    // ---------- 动态任务 ----------
+    private fun rollQuests() {
+        quests.clear()
+        val tier = playerTier()
+        val pool = mutableListOf(
+            Q_COINS, Q_DIST, Q_COMBO, Q_JUMP, Q_SLIDE, Q_SMASH
+        )
+        pool.shuffle()
+        for (i in 0 until 3) {
+            quests.add(makeQuest(pool[i], tier))
         }
     }
 
-    private fun completeQuest(text: String, bonus: Int) {
-        missionBonus += bonus
+    private fun makeQuest(type: Int, tier: Int): Quest {
+        // 目标随阶段缩放
+        fun scale(a: Int, b: Int, c: Int) = when (tier) { 0 -> a; 1 -> b; else -> c }
+        fun scoreR(a: Int, b: Int, c: Int) = scale(a, b, c)
+        fun walletR(a: Int, b: Int, c: Int) = scale(a, b, c)
+        return when (type) {
+            Q_COINS -> Quest(type, scale(30, 55, 90), scoreR(150, 220, 320), walletR(15, 25, 40), "收集金币")
+            Q_DIST -> Quest(type, scale(400, 800, 1400), scoreR(180, 280, 400), walletR(18, 30, 50), "奔跑距离")
+            Q_COMBO -> Quest(type, scale(10, 18, 28), scoreR(200, 300, 450), walletR(20, 35, 55), "最高连击")
+            Q_JUMP -> Quest(type, scale(8, 15, 25), scoreR(120, 180, 260), walletR(12, 20, 35), "跳跃次数")
+            Q_SLIDE -> Quest(type, scale(5, 10, 16), scoreR(120, 180, 260), walletR(12, 20, 35), "铲滑次数")
+            else -> Quest(type, scale(3, 6, 12), scoreR(160, 240, 360), walletR(16, 28, 45), "撞碎障碍")
+        }
+    }
+
+    private fun bumpQuest(type: Int, add: Int) {
+        for (q in quests) {
+            if (q.done || q.type != type) continue
+            if (type == Q_COMBO) continue // 由 sync 处理
+            q.progress = (q.progress + add).coerceAtMost(q.target)
+            if (q.progress >= q.target) completeQuest(q)
+        }
+    }
+
+    private fun syncQuestProgress() {
+        for (q in quests) {
+            if (q.done) continue
+            val cur = when (q.type) {
+                Q_COINS -> sessionPickupCoins
+                Q_DIST -> distance.toInt()
+                Q_COMBO -> bestComboRun
+                Q_JUMP -> runJumps
+                Q_SLIDE -> runSlides
+                Q_SMASH -> runSmashes
+                else -> 0
+            }
+            q.progress = cur.coerceAtMost(q.target)
+            if (q.progress >= q.target) completeQuest(q)
+        }
+    }
+
+    private fun completeQuest(q: Quest) {
+        if (q.done) return
+        q.done = true
+        q.progress = q.target
+        missionBonus += q.rewardScore
         totalQuests++
-        questFlash = 2.4f
-        questFlashText = text
-        pushFloat("+$bonus 任务", 0xFF7DEBA0.toInt())
+        grantWallet(q.rewardWallet)
+        enqueueBanner("任务完成：${q.label} +${q.rewardScore}", 0xFF7DEBA0.toInt(), 2.2f)
+        pushFloat("+${q.rewardScore} / 钱包+${q.rewardWallet}", 0xFF7DEBA0.toInt())
         emit(EV_QUEST, HAPTIC_MED)
-        persistStats()
-        tryUnlockAchievements()
+        // 任务数成就可在局中解锁（奖励进钱包）；累计统计在 settle 时一并持久化
+        tryUnlockAchievements(persist = false)
     }
 
-    private fun tryUnlockAchievements() {
-        // bit0: 累计 500 金币  bit1: 累计 5000 米  bit2: 完成 10 任务  bit3: 连击 25
-        fun unlock(bit: Int, name: String) {
-            val mask = 1 shl bit
-            if (unlockedMask and mask == 0) {
-                unlockedMask = unlockedMask or mask
-                achieveCount = Integer.bitCount(unlockedMask)
-                achieveFlash = 2.8f
-                achieveFlashText = "成就：$name"
+    private fun grantWallet(amount: Int) {
+        if (amount <= 0) return
+        wallet += amount
+        runWalletEarn += amount
+    }
+
+    // ---------- 成就 ----------
+    private fun tryUnlockAchievements(persist: Boolean) {
+        var unlocked = false
+        for (c in 0 until ACHIEVE_CATS) {
+            while (achieveLevels[c] < 3) {
+                val lv = achieveLevels[c]
+                val target = ACHIEVE_TARGETS[c][lv]
+                if (achieveProgress(c) < target) break
+                achieveLevels[c] = lv + 1
+                achieveCount = achieveLevels.sum()
+                val reward = ACHIEVE_REWARDS[lv]
+                grantWallet(reward)
+                enqueueBanner(
+                    "成就：${ACHIEVE_NAMES[c]}·${ACHIEVE_TIERS[lv]} +$reward",
+                    0xFFFFD426.toInt(), 2.8f
+                )
                 emit(EV_ACHIEVE, HAPTIC_MED)
-                persistStats()
+                unlocked = true
             }
         }
-        if (totalCoins + sessionCoins >= 500) unlock(0, "金币收藏家")
-        if (totalDistance + distance.toInt() >= 5000) unlock(1, "长跑健将")
-        if (totalQuests >= 10) unlock(2, "任务达人")
-        if (bestComboEver >= 25) unlock(3, "连击大师")
+        if (unlocked && persist) persistAll()
     }
 
+    // ---------- 反馈辅助 ----------
     private fun pushFloat(text: String, color: Int) {
         floatTexts.add(FloatText(text, color))
         if (floatTexts.size > 8) floatTexts.removeAt(0)
@@ -757,20 +1049,46 @@ class Game {
                 )
             )
         }
-        if (particles.size > 80) {
-            particles.subList(0, particles.size - 80).clear()
-        }
+        if (particles.size > 80) particles.subList(0, particles.size - 80).clear()
     }
 
-    private fun persistStats() {
+    private fun persistCosmetics() {
+        prefs?.edit()
+            ?.putInt("wallet", wallet)
+            ?.putInt("ownedColors", ownedColors)
+            ?.putInt("ownedTrails", ownedTrails)
+            ?.putInt("catColor", catColor)
+            ?.putInt("trailStyle", trailStyle)
+            ?.apply()
+    }
+
+    private fun persistAll() {
         val p = prefs ?: return
-        p.edit()
+        val ed = p.edit()
+            .putInt("high3d", highScore)
             .putInt("totalCoins", totalCoins)
             .putInt("totalDist", totalDistance)
             .putInt("totalQuests", totalQuests)
             .putInt("bestCombo", bestComboEver)
-            .putInt("achieveMask", unlockedMask)
-            .apply()
+            .putInt("wallet", wallet)
+            .putInt("ownedColors", ownedColors)
+            .putInt("ownedTrails", ownedTrails)
+            .putInt("catColor", catColor)
+            .putInt("trailStyle", trailStyle)
+        for (i in 0 until ACHIEVE_CATS) ed.putInt("achieveLv$i", achieveLevels[i])
+        ed.apply()
+    }
+
+    /** 死亡时一次性结算，避免重复累加 */
+    private fun settleRun() {
+        if (settled) return
+        totalCoins += sessionPickupCoins
+        totalDistance += distance.toInt()
+        if (bestComboRun > bestComboEver) bestComboEver = bestComboRun
+        if (score > highScore) highScore = score
+        settled = true
+        tryUnlockAchievements(persist = false)
+        persistAll()
     }
 
     private fun die() {
@@ -779,19 +1097,6 @@ class Game {
         shake = 0.28f
         resetCombo()
         emit(EV_DIE, HAPTIC_HEAVY)
-
-        // 结算累计
-        totalCoins += sessionCoins
-        val distAdd = (distance - sessionDistSaved).toInt().coerceAtLeast(0)
-        totalDistance += distAdd
-        sessionDistSaved = distance
-        if (bestComboRun > bestComboEver) bestComboEver = bestComboRun
-        persistStats()
-        tryUnlockAchievements()
-
-        if (score > highScore) {
-            highScore = score
-            prefs?.edit()?.putInt("high3d", score)?.apply()
-        }
+        settleRun()
     }
 }
