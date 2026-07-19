@@ -223,7 +223,8 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         private val GRASS_DR = floatArrayOf(0.20f, 0.45f, 0.19f, 1f)
         private val GRASS_DS = floatArrayOf(0.75f, 0.80f, 0.87f, 1f)
         private val ROAD_R = floatArrayOf(0.28f, 0.27f, 0.32f, 1f)
-        private val ROAD_S = floatArrayOf(0.52f, 0.54f, 0.60f, 1f)
+        // 雪天路面压暗偏蓝：避免与金属杆 METAL(0.55,0.58,0.64) 同灰度
+        private val ROAD_S = floatArrayOf(0.38f, 0.41f, 0.50f, 1f)
         private val EDGE_R = floatArrayOf(0.60f, 0.59f, 0.56f, 1f)
         private val EDGE_S = floatArrayOf(0.86f, 0.87f, 0.90f, 1f)
         private val CLOUD_R = floatArrayOf(0.58f, 0.61f, 0.67f, 1f)
@@ -237,20 +238,20 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
                 floatArrayOf(0f, 0f, 0f, 1f), floatArrayOf(0f, 0f, 0f, 1f),
                 floatArrayOf(0f, 0f, 0f, 1f), floatArrayOf(0f, 0f, 0f, 1f)
             ),
-            arrayOf( // 水下：深海蓝绿 + 沙路
+            arrayOf( // 水下：深海蓝绿 + 沙路（灰化去黄，避免与金币 GOLD 同色系）
                 floatArrayOf(0.05f, 0.32f, 0.52f, 1f),
                 floatArrayOf(0.10f, 0.42f, 0.47f, 1f),
                 floatArrayOf(0.07f, 0.33f, 0.39f, 1f),
-                floatArrayOf(0.72f, 0.64f, 0.42f, 1f),
+                floatArrayOf(0.58f, 0.53f, 0.44f, 1f),
                 floatArrayOf(0.88f, 0.84f, 0.72f, 1f),
                 floatArrayOf(0.55f, 0.85f, 0.95f, 1f)
             ),
-            arrayOf( // 天空：云海 + 金色云路
+            arrayOf( // 天空：云海 + 蓝紫云路（原金色路会吞掉金币和黄色跳板）
                 floatArrayOf(0.55f, 0.82f, 1.0f, 1f),
                 floatArrayOf(0.90f, 0.93f, 0.98f, 1f),
                 floatArrayOf(0.78f, 0.84f, 0.94f, 1f),
-                floatArrayOf(0.97f, 0.90f, 0.72f, 1f),
-                floatArrayOf(1.0f, 0.80f, 0.35f, 1f),
+                floatArrayOf(0.58f, 0.66f, 0.90f, 1f),
+                floatArrayOf(0.98f, 0.52f, 0.40f, 1f),
                 floatArrayOf(1f, 1f, 1f, 1f)
             ),
             arrayOf( // 熔岩：暗红天 + 烬石路 + 岩浆描边
@@ -261,11 +262,11 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
                 floatArrayOf(1.0f, 0.45f, 0.10f, 1f),
                 floatArrayOf(0.36f, 0.28f, 0.28f, 1f)
             ),
-            arrayOf( // 糖果：棉花糖粉天 + 巧克力路
+            arrayOf( // 糖果：棉花糖粉天 + 深巧克力路（压暗，和木障碍 WOOD_DARK 拉开）
                 floatArrayOf(0.99f, 0.76f, 0.86f, 1f),
                 floatArrayOf(0.64f, 0.90f, 0.72f, 1f),
                 floatArrayOf(0.53f, 0.82f, 0.62f, 1f),
-                floatArrayOf(0.44f, 0.27f, 0.16f, 1f),
+                floatArrayOf(0.29f, 0.16f, 0.10f, 1f),
                 floatArrayOf(1.0f, 0.94f, 0.82f, 1f),
                 floatArrayOf(1.0f, 0.88f, 0.94f, 1f)
             ),
