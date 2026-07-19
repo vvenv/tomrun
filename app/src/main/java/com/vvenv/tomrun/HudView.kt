@@ -83,6 +83,14 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private var catStage = 0          // 猫爬架分段动作
     private var catStageT = 0f
     private val catRnd = java.util.Random()
+    private var yardEventTimer = 6f
+    private var pendingYardEvent = YARD_EVENT_NONE
+    private var butterflyVisible = false
+    private var butterflySpawnTimer = 10f
+    private var butterflyLife = 0f
+    private var butterflyX = 0f
+    private var butterflyHeight = 70f
+    private var butterflyDir = 1f
 
     companion object {
         /** Fusion Pixel 设计基准；textSize 必须是其整数倍。 */
@@ -119,6 +127,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         private const val CAT_WALK = 1
         private const val CAT_PLAY = 2
         private const val CAT_NAP = 3
+        private const val CAT_CHASE = 4
         private const val POSE_STAND = 0
         private const val POSE_WALK = 1
         private const val POSE_SIT = 2
@@ -126,6 +135,8 @@ class HudView(context: Context, private val game: Game) : View(context) {
         private const val POSE_SNIFF = 4
         private const val POSE_LOOKUP = 5
         private const val POSE_JUMP = 6
+        private const val YARD_EVENT_NONE = -1
+        private const val YARD_EVENT_COINS = 0
     }
 
     override fun onAttachedToWindow() {
@@ -635,7 +646,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val top = h * 0.105f
         val gy = h * 0.42f            // 地面线
         val bottom = h * 0.545f
-        val half = min(w * 0.46f, 330f * s)
+        val half = min(w * 0.49f, 400f * s)
         fun rc(l: Float, t: Float, r: Float, b: Float, color: Int) {
             btnPaint.style = Paint.Style.FILL
             btnPaint.color = color
@@ -712,8 +723,9 @@ class HudView(context: Context, private val game: Game) : View(context) {
             drawDeco(canvas, i, cx, gy, half, s, alpha)
         }
 
-        // 庭院里的猫（当前配色，自由活动）
+        // 庭院里的猫与偶尔飞过的蝴蝶
         updateYardCat(0.016f, half / s)
+        drawYardButterfly(canvas, cx, gy, s)
         drawYardCat(canvas, cx, gy, s)
     }
 
@@ -850,6 +862,36 @@ class HudView(context: Context, private val game: Game) : View(context) {
      */
     private fun updateYardCat(dt: Float, bound: Float) {
         catTimer -= dt
+        yardEventTimer -= dt
+        if (butterflyVisible) {
+            butterflyLife -= dt
+            butterflyX += butterflyDir * 18f * dt
+            val butterflyBound = (bound - 40f).coerceAtLeast(30f)
+            if (abs(butterflyX) >= butterflyBound) {
+                butterflyX = butterflyX.coerceIn(-butterflyBound, butterflyBound)
+                butterflyDir = -butterflyDir
+            }
+            if (butterflyLife <= 0f) {
+                butterflyVisible = false
+                butterflySpawnTimer = 15f + catRnd.nextFloat() * 20f
+                if (catState == CAT_CHASE) {
+                    catState = CAT_IDLE
+                    catTimer = 1f + catRnd.nextFloat()
+                }
+            }
+        } else {
+            butterflySpawnTimer -= dt
+            if (butterflySpawnTimer <= 0f && catState == CAT_IDLE) {
+                val butterflyBound = (bound - 60f).coerceAtLeast(20f)
+                butterflyVisible = true
+                butterflyLife = 6f + catRnd.nextFloat() * 4f
+                butterflyX = (catRnd.nextFloat() * 2f - 1f) * butterflyBound
+                butterflyHeight = 48f + catRnd.nextFloat() * 48f
+                butterflyDir = if (catRnd.nextBoolean()) 1f else -1f
+                catDeco = -1
+                catState = CAT_CHASE
+            }
+        }
         when (catState) {
             CAT_IDLE -> if (catTimer <= 0f) pickYardGoal(bound)
             CAT_WALK -> {
@@ -858,7 +900,11 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 val step = 60f * dt
                 if (abs(d) <= step) {
                     catX = catTarget
-                    if (catDeco >= 0) {
+                    if (pendingYardEvent != YARD_EVENT_NONE) {
+                        resolveYardEvent()
+                        catState = CAT_IDLE
+                        catTimer = 1.2f + catRnd.nextFloat() * 1.5f
+                    } else if (catDeco >= 0) {
                         catState = CAT_PLAY
                         catStage = 0
                         catStageT = 0f
@@ -894,6 +940,11 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 catState = CAT_IDLE
                 catTimer = 0.5f
             }
+            CAT_CHASE -> if (butterflyVisible) {
+                val d = butterflyX - catX
+                catDir = if (d >= 0f) 1f else -1f
+                if (abs(d) > 16f) catX += 82f * dt * catDir
+            }
         }
     }
 
@@ -904,6 +955,15 @@ class HudView(context: Context, private val game: Game) : View(context) {
     }
 
     private fun pickYardGoal(bound: Float) {
+        if (yardEventTimer <= 0f) {
+            pendingYardEvent = YARD_EVENT_COINS
+            catDeco = -1
+            val eventRange = (bound - 70f).coerceAtLeast(20f)
+            catTarget = (catRnd.nextFloat() * 2f - 1f) * eventRange
+            catState = CAT_WALK
+            return
+        }
+
         // 候选：散步（权重 2）、打盹（1）、每个已购可互动装饰（1）
         val opts = ArrayList<Int>()
         opts.add(-1); opts.add(-1)
@@ -938,11 +998,34 @@ class HudView(context: Context, private val game: Game) : View(context) {
         }
     }
 
+    private fun resolveYardEvent() {
+        val message = when (pendingYardEvent) {
+            YARD_EVENT_COINS -> game.grantYardCoins(2 + catRnd.nextInt(5))
+            else -> ""
+        }
+        pendingYardEvent = YARD_EVENT_NONE
+        yardEventTimer = 18f + catRnd.nextFloat() * 18f
+        showToast(message)
+    }
+
+    private fun drawYardButterfly(canvas: Canvas, cx: Float, gy: Float, s: Float) {
+        if (!butterflyVisible) return
+        val x = cx + butterflyX * s
+        val y = gy - butterflyHeight * s + kotlin.math.sin(homePhase * 4f) * 8f * s
+        val wing = if (kotlin.math.sin(homePhase * 12f) > 0f) 7f else 4f
+        btnPaint.style = Paint.Style.FILL
+        btnPaint.color = 0xFFFF8FCB.toInt()
+        canvas.drawRect(x - wing * s, y - 5f * s, x - 1f * s, y + 3f * s, btnPaint)
+        canvas.drawRect(x + 1f * s, y - 5f * s, x + wing * s, y + 3f * s, btnPaint)
+        btnPaint.color = 0xFFFFD75E.toInt()
+        canvas.drawRect(x - 1f * s, y - 3f * s, x + 1f * s, y + 5f * s, btnPaint)
+    }
+
     private fun drawYardCat(canvas: Canvas, cx: Float, gy: Float, s: Float) {
         var x = cx + catX * s
         var footY = gy
         var pose = when (catState) {
-            CAT_WALK -> POSE_WALK
+            CAT_WALK, CAT_CHASE -> POSE_WALK
             CAT_NAP -> POSE_NAP
             else -> POSE_STAND
         }
