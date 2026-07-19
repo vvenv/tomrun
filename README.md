@@ -60,6 +60,7 @@
 
 - 程序化音效、分级振动、飘分、粒子、动态 FOV、速度线、镜头震动
 - 天气（晴/雨/雪）与昼夜循环独立叠加；夜晚有月亮、星星与路灯
+- HUD 使用 [Fusion Pixel](https://github.com/TakWolf/fusion-pixel-font) 12px 简体像素字体（OFL），字号取 12 的整数倍
 
 ## 构建与运行
 
@@ -75,5 +76,6 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 - [Game.kt](app/src/main/java/com/vvenv/tomrun/Game.kt) — 数值节奏、任务、成就、钱包商店、物理与生成
 - [GameRenderer.kt](app/src/main/java/com/vvenv/tomrun/GameRenderer.kt) — OpenGL 体素渲染与尾迹
 - [HudView.kt](app/src/main/java/com/vvenv/tomrun/HudView.kt) — HUD、商店/成就面板、手势
+- [assets/fonts/](app/src/main/assets/fonts/) — Fusion Pixel 12px（zh_hans）
 - [SoundFx.kt](app/src/main/java/com/vvenv/tomrun/SoundFx.kt) — 程序化音效
 - [MainActivity.kt](app/src/main/java/com/vvenv/tomrun/MainActivity.kt) — 入口与振动

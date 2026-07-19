@@ -1,23 +1,27 @@
 package com.vvenv.tomrun
 
 import android.content.Context
-import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.view.MotionEvent
 import android.view.View
 import kotlin.math.abs
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 /**
- * 像素风中文 HUD：离屏低分辨率最近邻放大 + 手势识别。
+ * 像素风中文 HUD：直接绘制 + 手势识别。
  * 菜单含主界面 / 商店 / 成就面板。
+ * 文字使用 Fusion Pixel 12px（简体），字号取 12 的整数倍以保持点阵清晰。
  */
 class HudView(context: Context, private val game: Game) : View(context) {
+
+    private val pixelTypeface: Typeface = runCatching {
+        Typeface.createFromAsset(context.assets, "fonts/fusion-pixel-12px.ttf")
+    }.getOrElse { Typeface.DEFAULT_BOLD }
 
     private val textPaint = Paint().apply {
         color = Color.WHITE
@@ -27,24 +31,14 @@ class HudView(context: Context, private val game: Game) : View(context) {
         isDither = false
         isSubpixelText = false
         isLinearText = false
-        isFakeBoldText = true
-        typeface = Typeface.DEFAULT_BOLD
+        isFakeBoldText = false
+        typeface = pixelTypeface
     }
     private val dimPaint = Paint()
     private val btnPaint = Paint().apply {
         isAntiAlias = false
         isDither = false
     }
-    private val pixPaint = Paint().apply {
-        isFilterBitmap = false
-        isAntiAlias = false
-        isDither = false
-    }
-
-    private var buf: Bitmap? = null
-    private var bufCanvas: Canvas? = null
-    private val srcRect = Rect()
-    private val dstRect = Rect()
 
     private var downX = 0f
     private var downY = 0f
@@ -64,23 +58,14 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private val btnTrailBuy = RectF()
 
     companion object {
-        private const val PIX = 1
+        /** Fusion Pixel 设计基准；textSize 必须是其整数倍。 */
+        private const val FONT_PX = 12
         private val COLOR_CHIPS = intArrayOf(
             0xFF8594B3.toInt(), 0xFFF29E42.toInt(), 0xFF4D4D59.toInt(), 0xFFF5A8C1.toInt()
         )
         private val TRAIL_CHIPS = intArrayOf(
             0xFF888888.toInt(), 0xFF4DE8FF.toInt(), 0xFFFFD54A.toInt(), 0xFFFF66CC.toInt()
         )
-    }
-
-    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
-        super.onSizeChanged(w, h, oldw, oldh)
-        if (w > 0 && h > 0) {
-            buf = Bitmap.createBitmap(w / PIX, h / PIX, Bitmap.Config.ARGB_8888).also {
-                it.density = Bitmap.DENSITY_NONE
-            }
-            bufCanvas = Canvas(buf!!)
-        }
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -104,7 +89,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 }
             }
             MotionEvent.ACTION_UP -> {
-                if (!consumed) handleTap(event.x / PIX, event.y / PIX)
+                if (!consumed) handleTap(event.x, event.y)
             }
         }
         return true
@@ -150,13 +135,9 @@ class HudView(context: Context, private val game: Game) : View(context) {
     }
 
     override fun onDraw(canvas: Canvas) {
-        val b = buf ?: return
-        b.eraseColor(Color.TRANSPARENT)
+        if (width == 0 || height == 0) return
         if (toastLife > 0f) toastLife -= 0.016f
-        drawHud(bufCanvas!!, b.width.toFloat(), b.height.toFloat())
-        srcRect.set(0, 0, b.width, b.height)
-        dstRect.set(0, 0, width, height)
-        canvas.drawBitmap(b, srcRect, dstRect, pixPaint)
+        drawHud(canvas, width.toFloat(), height.toFloat())
         postInvalidateOnAnimation()
     }
 
@@ -427,9 +408,10 @@ class HudView(context: Context, private val game: Game) : View(context) {
         canvas: Canvas, text: String, x: Float, y: Float, size: Float, color: Int,
         shadowDx: Float, shadowDy: Float
     ) {
-        textPaint.textSize = size.toInt().coerceAtLeast(8).toFloat()
-        val ix = x.toInt().toFloat()
-        val iy = y.toInt().toFloat()
+        val steps = (size / FONT_PX).roundToInt().coerceAtLeast(1)
+        textPaint.textSize = (steps * FONT_PX).toFloat()
+        val ix = x.roundToInt().toFloat()
+        val iy = y.roundToInt().toFloat()
         textPaint.color = 0x88000000.toInt()
         canvas.drawText(text, ix + shadowDx, iy + shadowDy, textPaint)
         textPaint.color = color
