@@ -60,6 +60,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private val btnAchieve = RectF()
     private val btnHelp = RectF()
     private var showHelp = false
+    private var showAchieve = false
     private val btnBack = RectF()
     private val btnShopTabs = arrayOf(RectF(), RectF(), RectF(), RectF())
     private val btnShopL = RectF()
@@ -199,16 +200,14 @@ class HudView(context: Context, private val game: Game) : View(context) {
 
         when (game.menuPanel) {
             Game.PANEL_MAIN -> {
-                if (showHelp) {
-                    showHelp = false
-                    return
-                }
+                if (showHelp) { showHelp = false; return }
+                if (showAchieve) { showAchieve = false; return }
                 if (handleSecretTitleTap(x, y)) return
                 when {
                     btnHelp.contains(x, y) -> showHelp = true
-                    btnShop.contains(x, y) -> { showHelp = false; game.switchMenuPanel(Game.PANEL_SHOP) }
-                    btnHome.contains(x, y) -> { showHelp = false; game.switchMenuPanel(Game.PANEL_HOME) }
-                    btnAchieve.contains(x, y) -> { showHelp = false; game.switchMenuPanel(Game.PANEL_ACHIEVE) }
+                    btnAchieve.contains(x, y) -> showAchieve = true
+                    btnShop.contains(x, y) -> game.switchMenuPanel(Game.PANEL_SHOP)
+                    btnHome.contains(x, y) -> game.switchMenuPanel(Game.PANEL_HOME)
                     else -> game.onTap()
                 }
             }
@@ -235,9 +234,6 @@ class HudView(context: Context, private val game: Game) : View(context) {
                     btnShopR.contains(x, y) -> game.browseShop(1)
                     btnShopBuy.contains(x, y) -> showToast(game.buyOrEquipShop())
                 }
-            }
-            Game.PANEL_ACHIEVE -> {
-                if (btnBack.contains(x, y)) game.switchMenuPanel(Game.PANEL_MAIN)
             }
         }
     }
@@ -445,7 +441,6 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 dim(canvas, w, h)
                 when (game.menuPanel) {
                     Game.PANEL_SHOP -> drawShop(canvas, w, h, s, sdx, sdy)
-                    Game.PANEL_ACHIEVE -> drawAchieve(canvas, w, h, s, sdx, sdy)
                     Game.PANEL_HOME -> drawHome(canvas, w, h, s, sdx, sdy)
                     else -> drawMainMenu(canvas, w, h, s, sdx, sdy)
                 }
@@ -512,31 +507,27 @@ class HudView(context: Context, private val game: Game) : View(context) {
             pixText(canvas, "点击屏幕开始", w / 2f, h * 0.46f, 32f * s, withAlpha(Color.WHITE, blink), sdx, sdy)
         }
 
-        // 商店 / 小屋 / 成就 按钮
-        val bw = 148f * s
-        val bh = 52f * s
-        val gap = 14f * s
+        // 商店 / 小屋：两个核心操作按钮居中
+        val bw = 168f * s
+        val bh = 56f * s
+        val gap = 20f * s
         val y = h * 0.73f
-        btnShop.set(w / 2f - bw * 1.5f - gap, y, w / 2f - bw * 0.5f - gap, y + bh)
-        btnHome.set(w / 2f - bw * 0.5f, y, w / 2f + bw * 0.5f, y + bh)
-        btnAchieve.set(w / 2f + bw * 0.5f + gap, y, w / 2f + bw * 1.5f + gap, y + bh)
+        btnShop.set(w / 2f - bw - gap / 2f, y, w / 2f - gap / 2f, y + bh)
+        btnHome.set(w / 2f + gap / 2f, y, w / 2f + bw + gap / 2f, y + bh)
         drawBtn(canvas, btnShop, "商店", s)
         drawBtn(canvas, btnHome, "小屋", s)
+
+        // 底部两角小图标：左「帮助」右「成就」，只读信息收进浮层
+        val iconSize = 52f * s
+        val iconY = h - 36f * s
+        btnHelp.set(36f * s, iconY - iconSize, 36f * s + iconSize, iconY)
+        drawBtn(canvas, btnHelp, "?", s)
+        val achieveW = 96f * s
+        btnAchieve.set(w - 36f * s - achieveW, iconY - iconSize, w - 36f * s, iconY)
         drawBtn(canvas, btnAchieve, "成就", s)
 
-        // 左下角玩法帮助入口
-        val helpSize = 52f * s
-        btnHelp.set(36f * s, h - 36f * s - helpSize, 36f * s + helpSize, h - 36f * s)
-        drawBtn(canvas, btnHelp, "?", s)
-
-        // 一行浅色小字概览：图鉴与成就进度
-        pixText(
-            canvas,
-            "成就 ${game.achieveCount}/15  ·  宇宙图鉴 ${game.universesSeen}/${Game.UNIVERSE_COUNT}",
-            w / 2f, h * 0.86f, 24f * s, 0xCCAAAAAA.toInt(), sdx, sdy
-        )
-
         if (showHelp) drawHelpOverlay(canvas, w, h, s, sdx, sdy)
+        if (showAchieve) drawAchieveOverlay(canvas, w, h, s, sdx, sdy)
     }
 
     private fun drawHelpOverlay(canvas: Canvas, w: Float, h: Float, s: Float, sdx: Float, sdy: Float) {
@@ -1440,11 +1431,24 @@ class HudView(context: Context, private val game: Game) : View(context) {
         drawBtn(canvas, btnQuit, "结束本局", s)
     }
 
-    private fun drawAchieve(canvas: Canvas, w: Float, h: Float, s: Float, sdx: Float, sdy: Float) {
-        pixText(canvas, "成就 ${game.achieveCount}/15", w / 2f, h * 0.14f, 44f * s, 0xFFFFD426.toInt(), sdx, sdy)
-        pixText(canvas, game.nextAchieveHint(), w / 2f, h * 0.21f, 24f * s, Color.WHITE, sdx, sdy)
+    private fun drawAchieveOverlay(canvas: Canvas, w: Float, h: Float, s: Float, sdx: Float, sdy: Float) {
+        dim(canvas, w, h)
+        val pw = min(w * 0.82f, 660f * s)
+        val top = h * 0.11f
+        val bottom = h * 0.89f
+        btnPaint.style = Paint.Style.FILL
+        btnPaint.color = 0xF21C2634.toInt()
+        canvas.drawRect(w / 2f - pw / 2f, top, w / 2f + pw / 2f, bottom, btnPaint)
+        btnPaint.style = Paint.Style.STROKE
+        btnPaint.strokeWidth = 1f
+        btnPaint.color = 0xFFFFD426.toInt()
+        canvas.drawRect(w / 2f - pw / 2f, top, w / 2f + pw / 2f, bottom, btnPaint)
+        btnPaint.style = Paint.Style.FILL
 
-        var y = h * 0.30f
+        pixText(canvas, "成就 ${game.achieveCount}/15", w / 2f, top + 52f * s, 36f * s, 0xFFFFD426.toInt(), sdx, sdy)
+        pixText(canvas, game.nextAchieveHint(), w / 2f, top + 92f * s, 24f * s, 0xFFAAD5FF.toInt(), sdx, sdy)
+
+        var y = top + 148f * s
         for (c in 0 until Game.ACHIEVE_CATS) {
             val lv = game.achieveLevels[c]
             val tierLabel = when (lv) {
@@ -1468,11 +1472,23 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 else -> 0xFFFFD426.toInt()
             }
             pixText(canvas, line, w / 2f, y, 24f * s, color, sdx, sdy)
-            y += 52f * s
+            y += 48f * s
         }
 
-        btnBack.set(w / 2f - 100f * s, h * 0.90f - 26f * s, w / 2f + 100f * s, h * 0.90f + 26f * s)
-        drawBtn(canvas, btnBack, "返回", s)
+        // 图鉴 / 穿越统计并入同一浮层
+        y += 12f * s
+        val codexLine = if (game.codexComplete()) {
+            "宇宙图鉴 ${Game.UNIVERSE_COUNT}/${Game.UNIVERSE_COUNT} 全收集！"
+        } else {
+            "宇宙图鉴 ${game.universesSeen}/${Game.UNIVERSE_COUNT}（集齐奖 ${Game.CODEX_REWARD}）"
+        }
+        pixText(
+            canvas, codexLine, w / 2f, y, 24f * s,
+            if (game.codexComplete()) 0xFFFFD426.toInt() else 0xFF4DE8FF.toInt(), sdx, sdy
+        )
+        pixText(canvas, "累计穿越 ${game.totalPortals} 次", w / 2f, y + 40f * s, 24f * s, 0xFFAAAAAA.toInt(), sdx, sdy)
+
+        pixText(canvas, "点击任意处关闭", w / 2f, bottom - 28f * s, 22f * s, 0xFFAAAAAA.toInt(), sdx, sdy)
     }
 
     private fun drawBtn(canvas: Canvas, r: RectF, label: String, s: Float) {

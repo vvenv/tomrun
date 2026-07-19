@@ -161,8 +161,7 @@ class Game {
         // 菜单面板
         const val PANEL_MAIN = 0
         const val PANEL_SHOP = 1
-        const val PANEL_ACHIEVE = 2
-        const val PANEL_HOME = 3
+        const val PANEL_HOME = 2
     }
 
     class Entity(val kind: Int, val lane: Int, var z: Float, var y: Float = 0f) {
