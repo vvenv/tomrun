@@ -647,17 +647,13 @@ class HudView(context: Context, private val game: Game) : View(context) {
 
         val bottomY = h * 0.92f
         val bottomW = 180f * s
-        val bottomGap = 16f * s
-        btnBack.set(
-            w / 2f - bottomGap / 2f - bottomW, bottomY - 26f * s,
-            w / 2f - bottomGap / 2f, bottomY + 26f * s
-        )
-        drawBtn(canvas, btnBack, "返回", s)
         btnRename.set(
-            w / 2f + bottomGap / 2f, bottomY - 26f * s,
-            w / 2f + bottomGap / 2f + bottomW, bottomY + 26f * s
+            w / 2f - bottomW / 2f, bottomY - 26f * s,
+            w / 2f + bottomW / 2f, bottomY + 26f * s
         )
         drawBtn(canvas, btnRename, "角色改名", s)
+
+        drawBackButton(canvas, s)
     }
 
     private data class HomeRow(val name: String, val price: Int, val status: String, val action: String)
@@ -1395,8 +1391,13 @@ class HudView(context: Context, private val game: Game) : View(context) {
         btnShopBuy.set(w / 2f - 120f * s, h * 0.685f, w / 2f + 120f * s, h * 0.685f + 48f * s)
         drawBtn(canvas, btnShopBuy, row.action, s)
 
-        btnBack.set(w / 2f - 100f * s, h * 0.92f - 26f * s, w / 2f + 100f * s, h * 0.92f + 26f * s)
-        drawBtn(canvas, btnBack, "返回", s)
+        drawBackButton(canvas, s)
+    }
+
+    /** 统一的左上角返回按钮，与跑酷中的暂停按钮同位 */
+    private fun drawBackButton(canvas: Canvas, s: Float) {
+        btnBack.set(30f * s, 30f * s, 30f * s + 120f * s, 30f * s + 52f * s)
+        drawBtn(canvas, btnBack, "< 返回", s)
     }
 
     // ---------- 暂停 ----------
