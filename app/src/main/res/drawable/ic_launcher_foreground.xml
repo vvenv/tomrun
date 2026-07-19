@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- 缩放进 66dp 安全区，避免被圆形/圆角遮罩裁掉 -->
+    <group
+        android:scaleX="0.7"
+        android:scaleY="0.7"
+        android:pivotX="54"
+        android:pivotY="54"
+        android:translateY="3">
+        <!-- 像素猫头（方块） -->
+        <path android:fillColor="#FF8594B3"
+            android:pathData="M30,34h48v40h-48z"/>
+        <!-- 耳朵 -->
+        <path android:fillColor="#FF5C6B8C"
+            android:pathData="M32,22h12v12h-12z"/>
+        <path android:fillColor="#FF5C6B8C"
+            android:pathData="M64,22h12v12h-12z"/>
+        <!-- 眼睛 -->
+        <path android:fillColor="#FFFFFFFF"
+            android:pathData="M38,44h10v10h-10z"/>
+        <path android:fillColor="#FFFFFFFF"
+            android:pathData="M60,44h10v10h-10z"/>
+        <path android:fillColor="#FF2E7D32"
+            android:pathData="M42,47h5v5h-5z"/>
+        <path android:fillColor="#FF2E7D32"
+            android:pathData="M63,47h5v5h-5z"/>
+        <!-- 白口鼻 + 粉鼻子 -->
+        <path android:fillColor="#FFF5F5F0"
+            android:pathData="M44,60h20v12h-20z"/>
+        <path android:fillColor="#FFE8A0A8"
+            android:pathData="M50,58h8v6h-8z"/>
+        <!-- 金币 -->
+        <path android:fillColor="#FFFFD426"
+            android:pathData="M80,60h12v12h-12z"/>
+        <path android:fillColor="#FFB8960B"
+            android:pathData="M84,63h4v6h-4z"/>
+    </group>
+</vector>
