@@ -725,13 +725,14 @@ class Game {
                 coinRow(l, zBase)
             }
             r < 0.55f -> {
-                val n = 1 + Random.nextInt(if (dense) 3 else 2)
+                // 最多堵 2 道，始终留一条可走
+                val n = 1 + Random.nextInt(2)
                 freeLanes.shuffle()
                 for (i in 0 until n) entities.add(Entity(OBST_BLOCK, freeLanes[i], zBase))
                 coinRow(freeLanes.last(), zBase)
             }
             r < 0.82f -> {
-                val n = 1 + Random.nextInt(if (dense) 3 else 2)
+                val n = 1 + Random.nextInt(2)
                 freeLanes.shuffle()
                 for (i in 0 until n) entities.add(Entity(OBST_LOW, freeLanes[i], zBase))
                 coinArc(freeLanes[0], zBase)
