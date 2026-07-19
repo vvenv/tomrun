@@ -41,6 +41,7 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
     private var camX = 0f
     private var mMode = 0
     private var aspect = 1.6f
+    private var powerFxPhase = 0f
 
     // 天气 + 昼夜混合后的场景配色
     private val skyCol = FloatArray(4) { 1f }
@@ -201,6 +202,7 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
 
         private val MAGNET_RED = floatArrayOf(0.90f, 0.24f, 0.24f, 1f)
         private val MAGNET_TIP = floatArrayOf(0.92f, 0.92f, 0.95f, 1f)
+        private val MAGNET_BLUE = floatArrayOf(0.25f, 0.65f, 1.0f, 1f)
         private val HELMET_Y = floatArrayOf(1.0f, 0.76f, 0.12f, 1f)
         private val DOUBLE_P = floatArrayOf(0.62f, 0.30f, 0.90f, 1f)
         private val DOUBLE_CORE = floatArrayOf(1.0f, 0.84f, 0.10f, 1f)
@@ -759,6 +761,7 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
     // ---------- 像素猫 ----------
     private fun drawCat(dt: Float) {
         val g = game
+        powerFxPhase = (powerFxPhase + dt * 5f) % 1000f
         drawShadow(g.catX, 0f, 0.85f - min(g.catY * 0.10f, 0.3f))
 
         val squash = if (g.sliding) 0.5f else 1f
@@ -820,6 +823,7 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         drawPart(0f, 0.85f, 0f, 0.95f, 0.8f, 1.35f, c)
         drawPart(0f, 1.15f, 0.3f, 0.97f, 0.24f, 0.3f, cd)
         drawPart(0f, 1.15f, -0.25f, 0.97f, 0.24f, 0.3f, cd)
+        drawActivePowerUps(g)
 
         pushModel(0f, 1.75f, -0.42f)
         if (g.state == Game.State.DEAD) {
@@ -862,6 +866,52 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         popModel()
 
         popModel()
+    }
+
+    /** 把生效中的道具做成猫身上的装备，HUD 之外也能一眼辨认。 */
+    private fun drawActivePowerUps(g: Game) {
+        if (g.magnetTime > 0f) {
+            // 背负式马蹄磁铁；红蓝电荷沿身体两侧环绕。
+            drawPart(0f, 1.36f, 0.76f, 0.7f, 0.18f, 0.16f, MAGNET_RED)
+            drawPart(-0.27f, 1.08f, 0.76f, 0.16f, 0.56f, 0.16f, MAGNET_RED)
+            drawPart(0.27f, 1.08f, 0.76f, 0.16f, 0.56f, 0.16f, MAGNET_RED)
+            drawPart(-0.27f, 0.77f, 0.76f, 0.2f, 0.14f, 0.2f, MAGNET_TIP)
+            drawPart(0.27f, 0.77f, 0.76f, 0.2f, 0.14f, 0.2f, MAGNET_TIP)
+            for (i in 0 until 4) {
+                val a = powerFxPhase * 1.7f + i * (Math.PI.toFloat() / 2f)
+                val x = cos(a) * 0.95f
+                val y = 1.18f + sin(a * 1.35f) * 0.35f
+                val z = 0.12f + sin(a) * 0.82f
+                val k = 0.11f + 0.04f * abs(sin(a * 2f))
+                drawPart(x, y, z, k, k, k, if (i % 2 == 0) MAGNET_RED else MAGNET_BLUE)
+            }
+        }
+
+        if (g.doubleTime > 0f) {
+            // 紫金肩章 + 一对反向公转的积分核心，表达“x2”。
+            drawPart(-0.52f, 1.25f, 0f, 0.22f, 0.18f, 0.42f, DOUBLE_P)
+            drawPart(0.52f, 1.25f, 0f, 0.22f, 0.18f, 0.42f, DOUBLE_P)
+            drawPart(0f, 1.35f, 0.55f, 0.34f, 0.3f, 0.12f, DOUBLE_CORE)
+            for (i in 0 until 2) {
+                val a = powerFxPhase * 1.25f + i * Math.PI.toFloat()
+                pushModel(cos(a) * 0.78f, 1.55f + sin(a * 2f) * 0.16f, sin(a) * 0.62f)
+                Matrix.rotateM(model, 0, powerFxPhase * 95f + i * 90f, 0f, 1f, 0f)
+                drawPart(0f, 0f, 0f, 0.22f, 0.22f, 0.22f, if (i == 0) DOUBLE_P else DOUBLE_CORE)
+                popModel()
+            }
+        }
+
+        if (g.boostTime > 0f) {
+            // 双推进器固定在背部，尾焰朝跑动反方向延伸。
+            val flame = 0.28f + abs(sin(powerFxPhase * 3.2f)) * 0.22f
+            for (side in intArrayOf(-1, 1)) {
+                val x = side * 0.38f
+                drawPart(x, 0.98f, 0.7f, 0.26f, 0.48f, 0.28f, BOOST_CYAN)
+                drawPart(x, 0.98f, 0.86f, 0.14f, 0.3f, 0.12f, BOOST_CORE)
+                drawPart(x, 0.98f, 1.08f, 0.16f, 0.22f, flame, BOOST_CORE)
+                drawPart(x, 0.98f, 1.35f + flame * 0.25f, 0.11f, 0.15f, flame * 0.7f, BOOST_CYAN)
+            }
+        }
     }
 
     // ---------- 工具 ----------
