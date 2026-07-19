@@ -66,6 +66,17 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private val btnHomeBuy = RectF()
     private var homePhase = 0f
 
+    // 庭院猫 AI：站立张望 / 散步 / 与装饰互动 / 打盹
+    private var catState = CAT_IDLE
+    private var catTimer = 1.5f
+    private var catX = -118f          // s 单位，相对场景中心
+    private var catDir = 1f
+    private var catTarget = -118f
+    private var catDeco = -1          // 互动目标装饰，-1 为无
+    private var catStage = 0          // 猫爬架分段动作
+    private var catStageT = 0f
+    private val catRnd = java.util.Random()
+
     companion object {
         /** Fusion Pixel 设计基准；textSize 必须是其整数倍。 */
         private const val FONT_PX = 12
@@ -84,6 +95,19 @@ class HudView(context: Context, private val game: Game) : View(context) {
             0xFFD9483B.toInt(), 0xFF3FA9A5.toInt(), 0xFF8C6BD9.toInt(), 0xFFF2C14E.toInt()
         )
         private val HOME_TAB_NAMES = arrayOf("房屋", "屋顶", "装饰")
+
+        // 庭院猫状态与姿势
+        private const val CAT_IDLE = 0
+        private const val CAT_WALK = 1
+        private const val CAT_PLAY = 2
+        private const val CAT_NAP = 3
+        private const val POSE_STAND = 0
+        private const val POSE_WALK = 1
+        private const val POSE_SIT = 2
+        private const val POSE_NAP = 3
+        private const val POSE_SNIFF = 4
+        private const val POSE_LOOKUP = 5
+        private const val POSE_JUMP = 6
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -585,8 +609,9 @@ class HudView(context: Context, private val game: Game) : View(context) {
             drawDeco(canvas, i, cx, gy, half, s, alpha)
         }
 
-        // 门口的猫（当前配色）
-        drawSceneCat(canvas, cx - 118f * s, gy, s)
+        // 庭院里的猫（当前配色，自由活动）
+        updateYardCat(0.016f, half / s)
+        drawYardCat(canvas, cx, gy, s)
     }
 
     private fun darken(c: Int): Int {
@@ -714,26 +739,233 @@ class HudView(context: Context, private val game: Game) : View(context) {
         }
     }
 
-    /** 门口打盹的像素猫，用当前装备配色 */
-    private fun drawSceneCat(canvas: Canvas, cx: Float, gy: Float, s: Float) {
+    // ---------- 庭院猫 ----------
+    /**
+     * 状态机：站立张望 → 走向目标（散步点或已购装饰）→ 互动 → 继续。
+     * 互动：花坛嗅花 / 信箱抬头张望 / 秋千跟着荡 / 猫爬架两段跳上顶层蹲坐 / 泳池边喝水；
+     * 拥有的装饰越多，行为越丰富。
+     */
+    private fun updateYardCat(dt: Float, bound: Float) {
+        catTimer -= dt
+        when (catState) {
+            CAT_IDLE -> if (catTimer <= 0f) pickYardGoal(bound)
+            CAT_WALK -> {
+                val d = catTarget - catX
+                catDir = if (d >= 0f) 1f else -1f
+                val step = 60f * dt
+                if (abs(d) <= step) {
+                    catX = catTarget
+                    if (catDeco >= 0) {
+                        catState = CAT_PLAY
+                        catStage = 0
+                        catStageT = 0f
+                        catTimer = when (catDeco) {
+                            3 -> 4.5f      // 秋千
+                            4 -> 99f       // 爬架由分段控制
+                            else -> 3.2f
+                        }
+                        catDir = if (catDeco == 0) -1f else 1f   // 面向装饰
+                    } else {
+                        catState = CAT_IDLE
+                        catTimer = 1f + catRnd.nextFloat() * 2f
+                    }
+                } else {
+                    catX += step * catDir
+                }
+            }
+            CAT_PLAY -> {
+                catStageT += dt
+                if (catDeco == 4) {
+                    // 猫爬架：跳下层 → 停留 → 跳顶层 → 蹲坐甩尾 → 跳下
+                    val stageEnd = floatArrayOf(0.45f, 1.2f, 0.45f, 2.8f, 0.5f)
+                    if (catStageT > stageEnd[catStage]) {
+                        catStageT = 0f
+                        catStage++
+                        if (catStage > 4) endYardPlay()
+                    }
+                } else if (catTimer <= 0f) {
+                    endYardPlay()
+                }
+            }
+            CAT_NAP -> if (catTimer <= 0f) {
+                catState = CAT_IDLE
+                catTimer = 0.5f
+            }
+        }
+    }
+
+    private fun endYardPlay() {
+        catDeco = -1
+        catState = CAT_IDLE
+        catTimer = 0.8f + catRnd.nextFloat() * 1.5f
+    }
+
+    private fun pickYardGoal(bound: Float) {
+        // 候选：散步（权重 2）、打盹（1）、每个已购可互动装饰（1）
+        val opts = ArrayList<Int>()
+        opts.add(-1); opts.add(-1)
+        opts.add(-2)
+        for (i in intArrayOf(0, 2, 3, 4, 5)) if (game.ownsDeco(i)) opts.add(i)
+        when (val pick = opts[catRnd.nextInt(opts.size)]) {
+            -2 -> {
+                catState = CAT_NAP
+                catTimer = 2.5f + catRnd.nextFloat() * 2.5f
+            }
+            -1 -> {
+                catDeco = -1
+                catTarget = (catRnd.nextFloat() * 2f - 1f) * (bound - 60f)
+                catState = CAT_WALK
+            }
+            else -> {
+                catDeco = pick
+                catTarget = when (pick) {
+                    0 -> -196f    // 花坛旁
+                    2 -> 178f     // 信箱旁
+                    3 -> -280f    // 秋千下
+                    4 -> 126f     // 爬架起跳点
+                    else -> 82f   // 泳池左沿
+                }
+                // 窄屏时目标在场景外就改为散步
+                if (abs(catTarget) > bound - 30f) {
+                    catDeco = -1
+                    catTarget = 0f
+                }
+                catState = CAT_WALK
+            }
+        }
+    }
+
+    private fun drawYardCat(canvas: Canvas, cx: Float, gy: Float, s: Float) {
+        var x = cx + catX * s
+        var footY = gy
+        var pose = when (catState) {
+            CAT_WALK -> POSE_WALK
+            CAT_NAP -> POSE_NAP
+            else -> POSE_STAND
+        }
+        if (catState == CAT_PLAY) {
+            when (catDeco) {
+                0 -> pose = POSE_SNIFF
+                2 -> pose = POSE_LOOKUP
+                5 -> pose = if (kotlin.math.sin(homePhase * 1.4f) > 0f) POSE_SNIFF else POSE_STAND
+                3 -> { // 坐上秋千跟着荡
+                    val sway = kotlin.math.sin(homePhase * 1.6f) * 10f * s
+                    x = cx - 280f * s + sway * 1.2f
+                    footY = gy - 34f * s
+                    pose = POSE_SIT
+                }
+                4 -> { // 猫爬架：与 drawDeco 的平台位置对齐
+                    val lowY = gy - 64f * s
+                    val topY = gy - 102f * s
+                    when (catStage) {
+                        0 -> {
+                            val t = (catStageT / 0.45f).coerceIn(0f, 1f)
+                            x = cx + (126f + 22f * t) * s
+                            footY = gy + (lowY - gy) * t -
+                                kotlin.math.sin(t * Math.PI.toFloat()) * 18f * s
+                            pose = POSE_JUMP
+                        }
+                        1 -> { x = cx + 148f * s; footY = lowY; pose = POSE_STAND }
+                        2 -> {
+                            val t = (catStageT / 0.45f).coerceIn(0f, 1f)
+                            x = cx + (148f + 20f * t) * s
+                            footY = lowY + (topY - lowY) * t -
+                                kotlin.math.sin(t * Math.PI.toFloat()) * 16f * s
+                            pose = POSE_JUMP
+                        }
+                        3 -> { x = cx + 168f * s; footY = topY; pose = POSE_SIT }
+                        else -> {
+                            val t = (catStageT / 0.5f).coerceIn(0f, 1f)
+                            x = cx + (168f + 40f * t) * s
+                            footY = topY + (gy - topY) * t * t
+                            pose = POSE_JUMP
+                        }
+                    }
+                    catX = (x - cx) / s   // 同步位置，动作衔接不瞬移
+                }
+            }
+        }
+        drawPixelCat(canvas, x, footY, s, catDir, pose)
+    }
+
+    /** 参数化像素猫：footY 为脚底，dir=1 朝右 / -1 朝左（水平镜像） */
+    private fun drawPixelCat(canvas: Canvas, x: Float, footY: Float, s: Float, dir: Float, pose: Int) {
         val c = COLOR_CHIPS[game.catColor % COLOR_CHIPS.size]
         val cd = darken(c)
-        fun rc(l: Float, t: Float, r: Float, b: Float, color: Int) {
+        val eye = 0xFF222222.toInt()
+        val paw = 0xFFF2F2EE.toInt()
+        fun rc(dxl: Float, dyt: Float, dxr: Float, dyb: Float, color: Int) {
+            val x1 = x + dxl * dir * s
+            val x2 = x + dxr * dir * s
             btnPaint.style = Paint.Style.FILL
             btnPaint.color = color
-            canvas.drawRect(l, t, r, b, btnPaint)
+            canvas.drawRect(min(x1, x2), footY + dyt * s, kotlin.math.max(x1, x2), footY + dyb * s, btnPaint)
         }
-        val bob = kotlin.math.sin(homePhase * 2f) * 1.5f * s
-        rc(cx - 20f * s, gy - 22f * s + bob, cx + 16f * s, gy, c)                 // 身体
-        rc(cx + 6f * s, gy - 40f * s + bob, cx + 30f * s, gy - 16f * s + bob, c)  // 头
-        rc(cx + 8f * s, gy - 46f * s + bob, cx + 14f * s, gy - 38f * s + bob, cd) // 耳
-        rc(cx + 22f * s, gy - 46f * s + bob, cx + 28f * s, gy - 38f * s + bob, cd)
-        rc(cx + 12f * s, gy - 30f * s + bob, cx + 15f * s, gy - 27f * s + bob, 0xFF222222.toInt()) // 眼
-        rc(cx + 21f * s, gy - 30f * s + bob, cx + 24f * s, gy - 27f * s + bob, 0xFF222222.toInt())
-        val tailW = kotlin.math.sin(homePhase * 3f) * 6f * s
-        rc(cx - 32f * s + tailW, gy - 30f * s, cx - 18f * s, gy - 24f * s, cd)    // 尾巴
-        rc(cx - 18f * s, gy - 6f * s, cx - 10f * s, gy, 0xFFF2F2EE.toInt())      // 前爪
-        rc(cx + 4f * s, gy - 6f * s, cx + 12f * s, gy, 0xFFF2F2EE.toInt())
+        val t = homePhase
+        when (pose) {
+            POSE_NAP -> {
+                rc(-24f, -14f, 20f, 0f, c)                    // 趴平的身体
+                rc(4f, -24f, 30f, -4f, c)                     // 头贴地
+                rc(6f, -30f, 12f, -22f, cd)                   // 耳
+                rc(20f, -30f, 26f, -22f, cd)
+                rc(11f, -16f, 24f, -14f, cd)                  // 闭眼线
+                rc(-34f, -10f, -22f, -4f, cd)                 // 尾巴收拢
+                val fl = (t * 1.2f) % 1f                      // 飘起的 z
+                textPaint.textAlign = Paint.Align.LEFT
+                pixText(
+                    canvas, "z", x + 34f * dir * s, footY - (30f + fl * 14f) * s, 20f * s,
+                    withAlpha(0xFFFFFFFF.toInt(), (200 * (1f - fl)).toInt()), 1f, 1f
+                )
+                textPaint.textAlign = Paint.Align.CENTER
+            }
+            POSE_SIT -> {
+                rc(-16f, -30f, 12f, 0f, c)                    // 竖起的身体
+                rc(-4f, -50f, 22f, -26f, c)                   // 头
+                rc(-2f, -56f, 4f, -48f, cd)                   // 耳
+                rc(12f, -56f, 18f, -48f, cd)
+                rc(2f, -40f, 5f, -37f, eye)
+                rc(11f, -40f, 14f, -37f, eye)
+                val tw = kotlin.math.sin(t * 4f) * 8f
+                rc(-26f + tw, -10f, -14f, -4f, cd)            // 甩尾
+                rc(-14f, -6f, -6f, 0f, paw)
+                rc(2f, -6f, 10f, 0f, paw)
+            }
+            else -> {
+                val walk = pose == POSE_WALK
+                val jump = pose == POSE_JUMP
+                val bob = when {
+                    jump -> 0f
+                    walk -> kotlin.math.abs(kotlin.math.sin(t * 9f)) * 3f
+                    else -> kotlin.math.sin(t * 2f) * 1.5f
+                }
+                val headDy = when (pose) {
+                    POSE_SNIFF -> 16f
+                    POSE_LOOKUP -> -7f
+                    else -> 0f
+                }
+                val headDx = if (pose == POSE_SNIFF) 6f else 0f
+                rc(-20f, -22f - bob, 16f, 0f, c)              // 身体
+                rc(6f + headDx, -40f - bob + headDy, 30f + headDx, -16f - bob + headDy, c)   // 头
+                rc(8f + headDx, -46f - bob + headDy, 14f + headDx, -38f - bob + headDy, cd)  // 耳
+                rc(22f + headDx, -46f - bob + headDy, 28f + headDx, -38f - bob + headDy, cd)
+                rc(12f + headDx, -30f - bob + headDy, 15f + headDx, -27f - bob + headDy, eye)
+                rc(21f + headDx, -30f - bob + headDy, 24f + headDx, -27f - bob + headDy, eye)
+                val tailW = if (jump) 8f else kotlin.math.sin(t * 3f) * 6f
+                val tailDy = if (jump) -8f else 0f            // 跳跃时尾巴上扬
+                rc(-32f + tailW, -30f + tailDy, -18f, -24f + tailDy, cd)
+                if (walk) {
+                    val sw = kotlin.math.sin(t * 9f) * 5f     // 前后爪交替
+                    rc(-18f + sw, -6f, -10f + sw, 0f, paw)
+                    rc(4f - sw, -6f, 12f - sw, 0f, paw)
+                } else if (jump) {
+                    rc(-14f, -8f, -6f, -2f, paw)              // 收腿
+                    rc(2f, -8f, 10f, -2f, paw)
+                } else {
+                    rc(-18f, -6f, -10f, 0f, paw)
+                    rc(4f, -6f, 12f, 0f, paw)
+                }
+            }
+        }
     }
 
     private fun drawShop(canvas: Canvas, w: Float, h: Float, s: Float, sdx: Float, sdy: Float) {
