@@ -20,15 +20,28 @@ import kotlin.math.min
  */
 class HudView(context: Context, private val game: Game) : View(context) {
 
-    private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    // 关闭抗锯齿 / 亚像素：低分辨率位图上必须是硬边缘，最近邻放大后才是块状像素字
+    private val textPaint = Paint().apply {
         color = Color.WHITE
         textAlign = Paint.Align.CENTER
+        isAntiAlias = false
+        isFilterBitmap = false
+        isDither = false
+        isSubpixelText = false
+        isLinearText = false
         isFakeBoldText = true
         typeface = Typeface.DEFAULT_BOLD
     }
     private val dimPaint = Paint()
-    private val btnPaint = Paint()
-    private val pixPaint = Paint().apply { isFilterBitmap = false }
+    private val btnPaint = Paint().apply {
+        isAntiAlias = false
+        isDither = false
+    }
+    private val pixPaint = Paint().apply {
+        isFilterBitmap = false
+        isAntiAlias = false
+        isDither = false
+    }
 
     private var buf: Bitmap? = null
     private var bufCanvas: Canvas? = null
@@ -42,7 +55,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private val colorBtn = RectF()   // 离屏坐标系
 
     companion object {
-        private const val PIX = 3    // 像素化倍率
+        private const val PIX = 3    // 像素化倍率（越大块越粗）
         private val COLOR_NAMES = arrayOf("蓝灰", "橘黄", "乌黑", "粉红")
         private val COLOR_CHIPS = intArrayOf(
             0xFF8594B3.toInt(), 0xFFF29E42.toInt(), 0xFF4D4D59.toInt(), 0xFFF5A8C1.toInt()
@@ -52,7 +65,9 @@ class HudView(context: Context, private val game: Game) : View(context) {
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
         if (w > 0 && h > 0) {
-            buf = Bitmap.createBitmap(w / PIX, h / PIX, Bitmap.Config.ARGB_8888)
+            buf = Bitmap.createBitmap(w / PIX, h / PIX, Bitmap.Config.ARGB_8888).also {
+                it.density = Bitmap.DENSITY_NONE
+            }
             bufCanvas = Canvas(buf!!)
         }
     }
@@ -101,55 +116,43 @@ class HudView(context: Context, private val game: Game) : View(context) {
     // ---------- 全部 HUD 内容（离屏低分辨率坐标系） ----------
     private fun drawHud(canvas: Canvas, w: Float, h: Float) {
         val s = h / 720f
-
-        textPaint.setShadowLayer(3f * s, 0f, 1.5f * s, 0x88000000.toInt())
+        // 硬阴影：整像素偏移，避免 soft shadow 把像素边缘抹糊
+        val shadowDx = 1f
+        val shadowDy = 1f
 
         // 右上角：得分 / 金币 / 最高
         textPaint.textAlign = Paint.Align.RIGHT
-        textPaint.textSize = 42f * s
-        textPaint.color = Color.WHITE
-        canvas.drawText("得分 ${game.score}", w - 36f * s, 66f * s, textPaint)
-        textPaint.textSize = 28f * s
-        textPaint.color = 0xFFFFD54A.toInt()
-        canvas.drawText("金币 ${game.coins}", w - 36f * s, 106f * s, textPaint)
-        textPaint.color = Color.WHITE
-        canvas.drawText("最高 ${game.highScore}", w - 36f * s, 142f * s, textPaint)
+        pixText(canvas, "得分 ${game.score}", w - 36f * s, 66f * s, 42f * s, Color.WHITE, shadowDx, shadowDy)
+        pixText(canvas, "金币 ${game.coins}", w - 36f * s, 106f * s, 28f * s, 0xFFFFD54A.toInt(), shadowDx, shadowDy)
+        pixText(canvas, "最高 ${game.highScore}", w - 36f * s, 142f * s, 28f * s, Color.WHITE, shadowDx, shadowDy)
 
         // 左上角：生效中的道具 / 滑索 / 天气
         textPaint.textAlign = Paint.Align.LEFT
-        textPaint.textSize = 30f * s
         var buffY = 66f * s
         if (game.helmet) {
-            textPaint.color = 0xFFFFC21F.toInt()
-            canvas.drawText("⛑ 头盔", 36f * s, buffY, textPaint)
+            pixText(canvas, "头盔", 36f * s, buffY, 30f * s, 0xFFFFC21F.toInt(), shadowDx, shadowDy)
             buffY += 44f * s
         }
         if (game.magnetTime > 0f) {
-            textPaint.color = 0xFFFF6B6B.toInt()
-            canvas.drawText("🧲 磁铁 ${game.magnetLeft()}s", 36f * s, buffY, textPaint)
+            pixText(canvas, "磁铁 ${game.magnetLeft()}s", 36f * s, buffY, 30f * s, 0xFFFF6B6B.toInt(), shadowDx, shadowDy)
             buffY += 44f * s
         }
         if (game.doubleTime > 0f) {
-            textPaint.color = 0xFFC77DFF.toInt()
-            canvas.drawText("✦ 加倍 ${game.doubleLeft()}s", 36f * s, buffY, textPaint)
+            pixText(canvas, "加倍 ${game.doubleLeft()}s", 36f * s, buffY, 30f * s, 0xFFC77DFF.toInt(), shadowDx, shadowDy)
             buffY += 44f * s
         }
         if (game.riding != null) {
-            textPaint.color = 0xFF7DEBA0.toInt()
-            canvas.drawText("⚡ 滑索中", 36f * s, buffY, textPaint)
+            pixText(canvas, "滑索中", 36f * s, buffY, 30f * s, 0xFF7DEBA0.toInt(), shadowDx, shadowDy)
             buffY += 44f * s
         }
         // 按主导权重显示天气（过渡期显示占比大的那个）
         val wRain = weatherWeight(Game.W_RAIN)
         val wSnow = weatherWeight(Game.W_SNOW)
         if (wRain > 0.5f) {
-            textPaint.color = 0xFF9BB8E8.toInt()
-            canvas.drawText("🌧 雨", 36f * s, buffY, textPaint)
+            pixText(canvas, "雨", 36f * s, buffY, 30f * s, 0xFF9BB8E8.toInt(), shadowDx, shadowDy)
         } else if (wSnow > 0.5f) {
-            textPaint.color = 0xFFE8F2FF.toInt()
-            canvas.drawText("❄ 雪", 36f * s, buffY, textPaint)
+            pixText(canvas, "雪", 36f * s, buffY, 30f * s, 0xFFE8F2FF.toInt(), shadowDx, shadowDy)
         }
-        textPaint.color = Color.WHITE
         textPaint.textAlign = Paint.Align.CENTER
 
         // 跑酷中打破纪录的横幅
@@ -157,44 +160,49 @@ class HudView(context: Context, private val game: Game) : View(context) {
             val t = 2.6f - game.recordFlash
             val pop = 1f + 0.35f * (1f - min(1f, t * 5f))
             val alpha = (min(1f, game.recordFlash / 0.5f) * 255).toInt()
-            textPaint.textSize = 64f * s * pop
-            textPaint.color = (alpha shl 24) or 0x00FFD426
-            canvas.drawText("🏆 新纪录！", w / 2f, h * 0.24f, textPaint)
-            textPaint.color = Color.WHITE
+            pixText(
+                canvas, "新纪录！", w / 2f, h * 0.24f, 64f * s * pop,
+                (alpha shl 24) or 0x00FFD426, shadowDx, shadowDy
+            )
         }
 
         when (game.state) {
             Game.State.READY -> {
                 dim(canvas, w, h)
-                textPaint.textSize = 78f * s
-                canvas.drawText("汤姆猫跑酷", w / 2f, h * 0.34f, textPaint)
-                textPaint.textSize = 34f * s
-                canvas.drawText("点击屏幕开始", w / 2f, h * 0.50f, textPaint)
-                textPaint.textSize = 27f * s
-                canvas.drawText("左右滑动·换道    上滑·跳跃    下滑·铲滑", w / 2f, h * 0.61f, textPaint)
-                canvas.drawText("道具：磁铁吸金币 · 头盔抗撞 · 加倍得分", w / 2f, h * 0.69f, textPaint)
-                canvas.drawText("在地面对准绿色门架，走上索道跳过障碍！", w / 2f, h * 0.77f, textPaint)
+                pixText(canvas, "汤姆猫跑酷", w / 2f, h * 0.34f, 78f * s, Color.WHITE, shadowDx, shadowDy)
+                pixText(canvas, "点击屏幕开始", w / 2f, h * 0.50f, 34f * s, Color.WHITE, shadowDx, shadowDy)
+                pixText(canvas, "左右滑动·换道    上滑·跳跃    下滑·铲滑", w / 2f, h * 0.61f, 27f * s, Color.WHITE, shadowDx, shadowDy)
+                pixText(canvas, "道具：磁铁吸金币 · 头盔抗撞 · 加倍得分", w / 2f, h * 0.69f, 27f * s, Color.WHITE, shadowDx, shadowDy)
+                pixText(canvas, "在地面对准绿色门架，走上索道跳过障碍！", w / 2f, h * 0.77f, 27f * s, Color.WHITE, shadowDx, shadowDy)
                 drawColorButton(canvas, w, h)
             }
             Game.State.DEAD -> {
                 dim(canvas, w, h)
-                textPaint.textSize = 70f * s
-                canvas.drawText("游戏结束", w / 2f, h * 0.34f, textPaint)
-                textPaint.textSize = 38f * s
+                pixText(canvas, "游戏结束", w / 2f, h * 0.34f, 70f * s, Color.WHITE, shadowDx, shadowDy)
                 val record = if (game.score >= game.highScore && game.score > 0) "  新纪录！" else ""
-                canvas.drawText("得分 ${game.score}$record", w / 2f, h * 0.48f, textPaint)
-                textPaint.textSize = 30f * s
-                textPaint.color = 0xFFFFD54A.toInt()
-                canvas.drawText("金币 ${game.coins}", w / 2f, h * 0.57f, textPaint)
-                textPaint.color = Color.WHITE
+                pixText(canvas, "得分 ${game.score}$record", w / 2f, h * 0.48f, 38f * s, Color.WHITE, shadowDx, shadowDy)
+                pixText(canvas, "金币 ${game.coins}", w / 2f, h * 0.57f, 30f * s, 0xFFFFD54A.toInt(), shadowDx, shadowDy)
                 if (game.deadTime > 0.6f) {
-                    canvas.drawText("点击屏幕再来一次", w / 2f, h * 0.68f, textPaint)
+                    pixText(canvas, "点击屏幕再来一次", w / 2f, h * 0.68f, 30f * s, Color.WHITE, shadowDx, shadowDy)
                 }
                 drawColorButton(canvas, w, h)
             }
             Game.State.RUNNING -> Unit
         }
-        textPaint.clearShadowLayer()
+    }
+
+    /** 整像素字号/坐标 + 硬阴影，保证离屏位图边缘是锐利色块 */
+    private fun pixText(
+        canvas: Canvas, text: String, x: Float, y: Float, size: Float, color: Int,
+        shadowDx: Float, shadowDy: Float
+    ) {
+        textPaint.textSize = size.toInt().coerceAtLeast(8).toFloat()
+        val ix = x.toInt().toFloat()
+        val iy = y.toInt().toFloat()
+        textPaint.color = 0x88000000.toInt()
+        canvas.drawText(text, ix + shadowDx, iy + shadowDy, textPaint)
+        textPaint.color = color
+        canvas.drawText(text, ix, iy, textPaint)
     }
 
     /** 像素风直角按钮（离屏坐标系） */
@@ -202,13 +210,18 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val s = h / 720f
         val bw = 320f * s
         val bh = 62f * s
-        colorBtn.set(w / 2f - bw / 2f, h * 0.855f, w / 2f + bw / 2f, h * 0.855f + bh)
+        colorBtn.set(
+            (w / 2f - bw / 2f).toInt().toFloat(),
+            (h * 0.855f).toInt().toFloat(),
+            (w / 2f + bw / 2f).toInt().toFloat(),
+            (h * 0.855f + bh).toInt().toFloat()
+        )
 
         btnPaint.style = Paint.Style.FILL
         btnPaint.color = 0xCC222C38.toInt()
         canvas.drawRect(colorBtn, btnPaint)
         btnPaint.style = Paint.Style.STROKE
-        btnPaint.strokeWidth = 3f * s
+        btnPaint.strokeWidth = 1f  // 离屏 1px 描边，放大后才是粗像素边
         btnPaint.color = 0xAAFFFFFF.toInt()
         canvas.drawRect(colorBtn, btnPaint)
         btnPaint.style = Paint.Style.FILL
@@ -216,16 +229,19 @@ class HudView(context: Context, private val game: Game) : View(context) {
         // 颜色小方块
         val idx = game.catColor % COLOR_NAMES.size
         btnPaint.color = COLOR_CHIPS[idx]
-        val cs = 15f * s
+        val cs = (15f * s).toInt().coerceAtLeast(2).toFloat()
+        val cx = (colorBtn.left + 30f * s).toInt().toFloat()
         canvas.drawRect(
-            colorBtn.left + 30f * s, colorBtn.centerY() - cs,
-            colorBtn.left + 30f * s + cs * 2f, colorBtn.centerY() + cs, btnPaint
+            cx, colorBtn.centerY() - cs,
+            cx + cs * 2f, colorBtn.centerY() + cs, btnPaint
         )
 
-        textPaint.textSize = 27f * s
-        canvas.drawText(
-            "猫咪颜色：${COLOR_NAMES[idx]} ↺",
-            colorBtn.centerX() + 14f * s, colorBtn.centerY() + 10f * s, textPaint
+        textPaint.textAlign = Paint.Align.CENTER
+        pixText(
+            canvas,
+            "猫咪颜色：${COLOR_NAMES[idx]}",
+            colorBtn.centerX() + 14f * s, colorBtn.centerY() + 10f * s, 27f * s,
+            Color.WHITE, 1f, 1f
         )
     }
 
