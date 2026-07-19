@@ -74,8 +74,8 @@ class Game {
             intArrayOf(200, 1000, 5000),       // 累计金币
             intArrayOf(2000, 10000, 50000),    // 累计距离
             intArrayOf(5, 25, 100),            // 任务数
-            intArrayOf(15, 30, 50),            // 最高连击
-            intArrayOf(1000, 5000, 15000)      // 最高分
+            intArrayOf(30, 100, 250),          // 最高连击
+            intArrayOf(3000, 8000, 20000)      // 最高分
         )
         val ACHIEVE_NAMES = arrayOf("金币收藏家", "长跑健将", "任务达人", "连击大师", "得分王")
         val ACHIEVE_TIERS = arrayOf("铜", "银", "金")
@@ -950,7 +950,7 @@ class Game {
         return when (type) {
             Q_COINS -> Quest(type, scale(30, 55, 90), scoreR(150, 220, 320), walletR(15, 25, 40), "收集金币")
             Q_DIST -> Quest(type, scale(400, 800, 1400), scoreR(180, 280, 400), walletR(18, 30, 50), "奔跑距离")
-            Q_COMBO -> Quest(type, scale(10, 18, 28), scoreR(200, 300, 450), walletR(20, 35, 55), "最高连击")
+            Q_COMBO -> Quest(type, scale(20, 40, 70), scoreR(200, 300, 450), walletR(20, 35, 55), "最高连击")
             Q_JUMP -> Quest(type, scale(8, 15, 25), scoreR(120, 180, 260), walletR(12, 20, 35), "跳跃次数")
             Q_SLIDE -> Quest(type, scale(5, 10, 16), scoreR(120, 180, 260), walletR(12, 20, 35), "铲滑次数")
             else -> Quest(type, scale(3, 6, 12), scoreR(160, 240, 360), walletR(16, 28, 45), "撞碎障碍")
