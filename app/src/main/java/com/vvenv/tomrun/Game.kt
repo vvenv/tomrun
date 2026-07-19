@@ -845,10 +845,11 @@ class Game {
         if (hl >= 2) helmetLayers = 1
         if (hl >= 3) doubleTime = 5f
         if (hl >= 1) enqueueBanner("小屋能量 Lv$hl！${homeLevelDesc(hl)}", 0xFF7DEBA0.toInt(), 2.0f)
-        var z = -45f
+        // 开局最近一波也要留足反应距离，避免一开始就从近处"冒出"
+        var z = -72f
         while (z > SPAWN_Z) {
             spawnWave(z, early = true)
-            z -= 24f + Random.nextFloat() * 14f
+            z -= 26f + Random.nextFloat() * 14f
         }
         gapRemaining = nextGap()
     }
@@ -970,7 +971,10 @@ class Game {
 
         gapRemaining -= dz
         while (gapRemaining <= 0f) {
-            spawnWave(SPAWN_Z - gapRemaining, early = false)
+            // 卡顿过冲时 gapRemaining 为负，会把波次生成得更近；钳制最小距离避免"眼前刷怪"
+            val minDist = (speed * 3.2f).coerceIn(72f, 180f)
+            val z = (SPAWN_Z - gapRemaining).coerceAtMost(-minDist)
+            spawnWave(z, early = false)
             gapRemaining += nextGap()
         }
         zipGap -= dz
@@ -1074,7 +1078,9 @@ class Game {
         universePrev = universe
         universe = portalTarget
         universeBlend = 0f
-        portalFlash = 1.0f
+        portalFlash = 0.55f
+        // 白闪期间仍在跑，给短暂无敌，避免闪完眼前突然撞上障碍
+        invulnTime = invulnTime.coerceAtLeast(1.0f)
         portalGap = 480f + Random.nextFloat() * 260f
         runPortals++
         totalPortals++

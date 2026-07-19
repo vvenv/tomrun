@@ -120,7 +120,8 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
             varying vec3 vLocal;
             varying float vDist;
             void main() {
-                float fog = smoothstep(55.0, 150.0, vDist) * 0.92;
+                // 雾起始推远：障碍物需更早可读；高速时 55 起雾会像"忽然冒出"
+                float fog = smoothstep(95.0, 200.0, vDist) * 0.78;
                 if (uMode == 1) {
                     float r = length(vLocal.xz) * 2.0;
                     float a = uColor.a * smoothstep(1.0, 0.30, r);

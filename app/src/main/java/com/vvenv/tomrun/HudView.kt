@@ -446,9 +446,9 @@ class HudView(context: Context, private val game: Game) : View(context) {
             }
         }
 
-        // 穿越白闪
+        // 穿越白闪（半透明，避免完全遮挡赛道导致撞障）
         if (game.portalFlash > 0f) {
-            val a = (min(1f, game.portalFlash) * 200).toInt()
+            val a = (min(1f, game.portalFlash / 0.55f) * 120).toInt()
             dimPaint.color = (a shl 24) or 0x00FFFFFF
             canvas.drawRect(0f, 0f, w, h, dimPaint)
         }
