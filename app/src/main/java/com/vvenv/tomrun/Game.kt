@@ -24,12 +24,15 @@ class Game {
         const val P_MAGNET = 4    // 磁铁：吸金币
         const val P_HELMET = 5    // 头盔：抗一次撞击
         const val P_DOUBLE = 6    // 加倍：得分 x2
+        const val OBST_RAMP = 7   // 施工跳台：沿斜坡跑上去越过路障
 
         val LANE_X = floatArrayOf(-2.2f, 0f, 2.2f)
         const val SPAWN_Z = -150f
         const val GRAVITY = 24f
         const val JUMP_V = 8.6f
         const val SLIDE_TIME = 0.75f
+        const val RAMP_LENGTH = 9f
+        const val RAMP_HEIGHT = 2.4f
 
         const val CABLE_H = 5.4f   // 索道钢缆高度
         const val RIDE_Y = 3.0f    // 滑索时猫的脚底高度
@@ -94,8 +97,9 @@ class Game {
     var velY = 0f
     var slideTimer = 0f
     var runPhase = 0f
+    private var groundY = 0f
     val sliding get() = slideTimer > 0f
-    val onGround get() = catY <= 0.001f
+    val onGround get() = catY <= groundY + 0.001f
 
     var speed = 14f
     var distance = 0f
@@ -172,6 +176,7 @@ class Game {
         entities.clear()
         ziplines.clear()
         lane = 1; catX = 0f; catY = 0f; velY = 0f
+        groundY = 0f
         slideTimer = 0f; runPhase = 0f
         speed = 14f; distance = 0f; score = 0; coins = 0
         deadTime = 0f
@@ -209,6 +214,11 @@ class Game {
         val targetX = LANE_X[lane]
         catX += (targetX - catX) * min(1f, dt * 12f)
 
+        // 斜坡随场景前移；站在坡面时脚底贴合坡面，离开顶端后自然下落
+        val wasGrounded = onGround && velY <= 0f
+        val nextGroundY = rampSurfaceAtPlayer(dz)
+        groundY = nextGroundY
+
         // 索道推进 / 清理
         for (zip in ziplines) zip.entryZ += dz
         ziplines.removeAll { it.exitZ > 12f }
@@ -222,10 +232,13 @@ class Game {
             if (r.exitZ >= 0f || r !in ziplines) riding = null
         } else {
             // 常规纵向物理
-            if (!onGround || velY > 0f) {
+            if (wasGrounded && nextGroundY >= catY - 0.08f) {
+                catY = nextGroundY
+                velY = 0f
+            } else if (!onGround || velY > 0f) {
                 velY -= GRAVITY * dt
                 catY += velY * dt
-                if (catY <= 0f) { catY = 0f; velY = 0f }
+                if (catY <= groundY) { catY = groundY; velY = 0f }
             }
             if (slideTimer > 0f) slideTimer -= dt
             // 入口经过时从地面进入索道
@@ -310,23 +323,24 @@ class Game {
         val r = Random.nextFloat()
         val freeLanes = mutableListOf(0, 1, 2)
         when {
-            r < 0.30f -> {
+            r < 0.25f -> {
                 val n = 1 + Random.nextInt(3)
                 freeLanes.shuffle()
                 for (i in 0 until n) entities.add(Entity(OBST_LOW, freeLanes[i], zBase))
                 coinArc(freeLanes[0], zBase)
             }
-            r < 0.60f -> {
+            r < 0.50f -> {
                 val n = 1 + Random.nextInt(2)
                 freeLanes.shuffle()
                 for (i in 0 until n) entities.add(Entity(OBST_BLOCK, freeLanes[i], zBase))
                 coinRow(freeLanes[2], zBase)
             }
-            r < 0.82f -> {
+            r < 0.68f -> {
                 val l = Random.nextInt(3)
                 entities.add(Entity(OBST_BAR, l, zBase))
                 coinRow(l, zBase)
             }
+            r < 0.82f -> spawnRampWave(zBase)
             else -> {
                 coinRow(Random.nextInt(3), zBase)
                 coinRow(Random.nextInt(3), zBase - 8f)
@@ -337,6 +351,34 @@ class Game {
             val kind = P_MAGNET + Random.nextInt(3)
             entities.add(Entity(kind, Random.nextInt(3), zBase - 10f, 1.2f))
         }
+    }
+
+    /** 施工跳台：两条道被木箱封住，剩余跑道可沿斜坡越过水泥路障 */
+    private fun spawnRampWave(zBase: Float) {
+        val rampLane = Random.nextInt(3)
+        entities.add(Entity(OBST_RAMP, rampLane, zBase))
+        for (l in 0..2) {
+            if (l != rampLane) entities.add(Entity(OBST_BLOCK, l, zBase))
+        }
+        val half = RAMP_LENGTH / 2f
+        for (i in 0 until 5) {
+            val localZ = half - 0.8f - i * (RAMP_LENGTH - 1.6f) / 4f
+            val surfaceY = RAMP_HEIGHT * (half - localZ) / RAMP_LENGTH
+            entities.add(Entity(COIN, rampLane, zBase + localZ, surfaceY + 1f))
+        }
+    }
+
+    /** 下一帧玩家脚下的斜坡高度；斜坡前端低、后端高 */
+    private fun rampSurfaceAtPlayer(dz: Float): Float {
+        val half = RAMP_LENGTH / 2f
+        for (e in entities) {
+            if (e.kind != OBST_RAMP || e.lane != lane) continue
+            val nextZ = e.z + dz
+            if (nextZ in -half..half && abs(e.x - catX) < 1.1f) {
+                return RAMP_HEIGHT * (nextZ + half) / RAMP_LENGTH
+            }
+        }
+        return 0f
     }
 
     private fun coinRow(lane: Int, zBase: Float) {
@@ -383,6 +425,7 @@ class Game {
                     val hit = when (e.kind) {
                         OBST_LOW -> catY < 0.55f
                         OBST_BAR -> !sliding || catY > 0.3f
+                        OBST_RAMP -> false
                         else -> true
                     }
                     if (hit) {

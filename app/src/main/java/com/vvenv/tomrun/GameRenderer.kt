@@ -6,9 +6,11 @@ import android.opengl.Matrix
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 import kotlin.math.abs
+import kotlin.math.atan
 import kotlin.math.floor
 import kotlin.math.min
 import kotlin.math.sin
+import kotlin.math.sqrt
 
 /**
  * 像素/体素风 3D 渲染：第三人称跟随相机，全方块世界 + 距离雾 + 软阴影。
@@ -169,6 +171,10 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         private val CABLE = floatArrayOf(0.25f, 0.26f, 0.30f, 1f)
         private val GANTRY = floatArrayOf(0.55f, 0.58f, 0.64f, 1f)
         private val GANTRY_IN = floatArrayOf(0.30f, 0.75f, 0.35f, 1f)
+        private val RAMP_YELLOW = floatArrayOf(0.96f, 0.66f, 0.10f, 1f)
+        private val RAMP_EDGE = floatArrayOf(0.76f, 0.38f, 0.05f, 1f)
+        private val CONCRETE = floatArrayOf(0.64f, 0.66f, 0.64f, 1f)
+        private val WARNING = floatArrayOf(0.94f, 0.28f, 0.10f, 1f)
     }
 
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
@@ -465,9 +471,33 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
                         drawPart(0f, 2.14f, 0f, 1.96f, 0.14f, 1.26f, WOOD_DARK)
                         popModel()
                     }
+                    Game.OBST_RAMP -> drawRamp(x, e.z)
                 }
             }
         }
+    }
+
+    /** 黄色施工跳台：从近端跑上坡，在顶端越过红白水泥路障 */
+    private fun drawRamp(x: Float, z: Float) {
+        val length = Game.RAMP_LENGTH
+        val height = Game.RAMP_HEIGHT
+        val slopeLength = sqrt(length * length + height * height)
+        val angle = Math.toDegrees(atan(height / length).toDouble()).toFloat()
+
+        pushModel(x, height / 2f, z)
+        Matrix.rotateM(model, 0, angle, 1f, 0f, 0f)
+        drawPart(0f, 0f, 0f, 1.9f, 0.24f, slopeLength, RAMP_YELLOW)
+        drawPart(-0.88f, 0.16f, 0f, 0.14f, 0.24f, slopeLength, RAMP_EDGE)
+        drawPart(0.88f, 0.16f, 0f, 0.14f, 0.24f, slopeLength, RAMP_EDGE)
+        popModel()
+
+        // 坡顶后的矮路障位于猫的腾空路径下方
+        pushModel(x, 0f, z - length / 2f - 0.65f)
+        drawPart(0f, 0.62f, 0f, 1.9f, 1.24f, 0.72f, CONCRETE)
+        for (i in -2..2) {
+            drawPart(i * 0.38f, 0.72f, -0.37f, 0.18f, 0.28f, 0.05f, if (i % 2 == 0) WARNING else DASH)
+        }
+        popModel()
     }
 
     /** 高空索道：入口/出口门架 + 钢缆 */
