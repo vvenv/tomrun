@@ -99,6 +99,7 @@ class MainActivity : Activity() {
 
     override fun onPause() {
         super.onPause()
+        game.pauseGame()   // 切后台自动暂停，回来时停在暂停菜单
         glView.onPause()
     }
 

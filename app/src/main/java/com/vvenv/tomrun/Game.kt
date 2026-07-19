@@ -103,6 +103,18 @@ class Game {
         val TRAIL_PRICES = intArrayOf(0, 500, 1200, 2500)
         val COLOR_NAMES = arrayOf("蓝灰", "橘黄", "乌黑", "粉红")
         val TRAIL_NAMES = arrayOf("无尾迹", "青色", "金色", "彩虹")
+        // 围巾（跑动时飘动）与帽子（吃到头盔时暂被头盔遮住）
+        const val SCARF_COUNT = 4
+        const val HAT_COUNT = 4
+        val SCARF_NAMES = arrayOf("无围巾", "火红围巾", "天青围巾", "星紫围巾")
+        val SCARF_PRICES = intArrayOf(0, 400, 1000, 2200)
+        val HAT_NAMES = arrayOf("无帽子", "红棒球帽", "青草帽", "金皇冠")
+        val HAT_PRICES = intArrayOf(0, 600, 1500, 2800)
+        // 商店标签页
+        const val SHOP_TAB_COLOR = 0
+        const val SHOP_TAB_TRAIL = 1
+        const val SHOP_TAB_SCARF = 2
+        const val SHOP_TAB_HAT = 3
 
         // 小屋：房屋主体 / 屋顶 / 院子装饰
         val HOUSE_NAMES = arrayOf("小木屋", "砖瓦房", "双层小楼", "梦幻城堡")
@@ -116,6 +128,8 @@ class Game {
         const val HOME_TAB_DECO = 2
         // 小屋能量等级门槛（按已购总价值）与开局奖励
         val HOME_LEVEL_SCORE = intArrayOf(600, 2200, 5000)
+        const val DEFAULT_CHARACTER_NAME = "汤姆"
+        const val CHARACTER_NAME_MAX_LENGTH = 8
 
         // 音效事件
         const val EV_JUMP = 0
@@ -231,8 +245,15 @@ class Game {
     // 外观
     @Volatile var catColor = 0
     @Volatile var trailStyle = 0
+    @Volatile var scarfStyle = 0
+    @Volatile var hatStyle = 0
     private var ownedColors = 1   // bit0 免费
     private var ownedTrails = 1
+    private var ownedScarves = 1
+    private var ownedHats = 1
+
+    // 暂停（仅 RUNNING 中有效）
+    @Volatile var paused = false
 
     // 平行宇宙
     @Volatile var universe = UNI_MEADOW
@@ -258,11 +279,18 @@ class Game {
     @Volatile var homeBrowseHouse = 0
     @Volatile var homeBrowseRoof = 0
     @Volatile var homeBrowseDeco = 0
+    @Volatile var characterName = DEFAULT_CHARACTER_NAME
+        private set
+    @Volatile var hasChosenCharacterName = false
+        private set
 
     // 菜单
     @Volatile var menuPanel = PANEL_MAIN
+    @Volatile var shopTab = SHOP_TAB_COLOR
     @Volatile var shopBrowseColor = 0
     @Volatile var shopBrowseTrail = 0
+    @Volatile var shopBrowseScarf = 0
+    @Volatile var shopBrowseHat = 0
 
     val floatTexts = ArrayList<FloatText>()
     val particles = ArrayList<Particle>()
@@ -319,6 +347,12 @@ class Game {
         totalQuests = p.getInt("totalQuests", 0)
         bestComboEver = p.getInt("bestCombo", 0)
         wallet = p.getInt("wallet", 0)
+        hasChosenCharacterName = p.contains("characterName")
+        characterName = p.getString("characterName", DEFAULT_CHARACTER_NAME)
+            ?.trim()
+            ?.take(CHARACTER_NAME_MAX_LENGTH)
+            ?.takeIf { it.isNotEmpty() }
+            ?: DEFAULT_CHARACTER_NAME
 
         // 兼容旧 achieveMask → 迁移为三级成就
         if (p.contains("achieveLv0")) {
@@ -343,6 +377,15 @@ class Game {
         shopBrowseColor = catColor
         shopBrowseTrail = trailStyle
 
+        ownedScarves = p.getInt("ownedScarves", 1) or 1
+        ownedHats = p.getInt("ownedHats", 1) or 1
+        scarfStyle = p.getInt("scarfStyle", 0).coerceIn(0, SCARF_COUNT - 1)
+        hatStyle = p.getInt("hatStyle", 0).coerceIn(0, HAT_COUNT - 1)
+        if (!ownsScarf(scarfStyle)) scarfStyle = 0
+        if (!ownsHat(hatStyle)) hatStyle = 0
+        shopBrowseScarf = scarfStyle
+        shopBrowseHat = hatStyle
+
         totalPortals = p.getInt("totalPortals", 0)
         seenMask = p.getInt("seenUniverses", 1) or 1
         universesSeen = Integer.bitCount(seenMask)
@@ -360,12 +403,24 @@ class Game {
 
     fun ownsColor(i: Int) = (ownedColors and (1 shl i)) != 0
     fun ownsTrail(i: Int) = (ownedTrails and (1 shl i)) != 0
+    fun ownsScarf(i: Int) = (ownedScarves and (1 shl i)) != 0
+    fun ownsHat(i: Int) = (ownedHats and (1 shl i)) != 0
     fun ownsHouse(i: Int) = (ownedHouses and (1 shl i)) != 0
     fun ownsRoof(i: Int) = (ownedRoofs and (1 shl i)) != 0
     fun ownsDeco(i: Int) = (ownedDecos and (1 shl i)) != 0
     fun seenUniverse(i: Int) = (seenMask and (1 shl i)) != 0
 
     fun decoOwnedCount(): Int = Integer.bitCount(ownedDecos)
+
+    @Synchronized fun renameCharacter(rawName: String): Boolean {
+        if (state == State.RUNNING) return false
+        val name = rawName.trim()
+        if (name.isEmpty() || name.length > CHARACTER_NAME_MAX_LENGTH) return false
+        characterName = name
+        hasChosenCharacterName = true
+        prefs?.edit()?.putString("characterName", name)?.apply()
+        return true
+    }
 
     /** 小屋繁荣值：已购项目总价值 */
     fun homeScore(): Int {
@@ -441,6 +496,88 @@ class Game {
         persistCosmetics()
         emit(EV_BUY, HAPTIC_MED)
         return "购买成功：${TRAIL_NAMES[i]}"
+    }
+
+    @Synchronized fun buyOrEquipScarf(): String {
+        if (state == State.RUNNING) return ""
+        val i = shopBrowseScarf
+        if (ownsScarf(i)) {
+            scarfStyle = i
+            persistCosmetics()
+            return "已戴上 ${SCARF_NAMES[i]}"
+        }
+        val price = SCARF_PRICES[i]
+        if (wallet < price) return "金币不足（需 $price）"
+        wallet -= price
+        ownedScarves = ownedScarves or (1 shl i)
+        scarfStyle = i
+        persistCosmetics()
+        emit(EV_BUY, HAPTIC_MED)
+        return "购买成功：${SCARF_NAMES[i]}"
+    }
+
+    @Synchronized fun buyOrEquipHat(): String {
+        if (state == State.RUNNING) return ""
+        val i = shopBrowseHat
+        if (ownsHat(i)) {
+            hatStyle = i
+            persistCosmetics()
+            return "已戴上 ${HAT_NAMES[i]}"
+        }
+        val price = HAT_PRICES[i]
+        if (wallet < price) return "金币不足（需 $price）"
+        wallet -= price
+        ownedHats = ownedHats or (1 shl i)
+        hatStyle = i
+        persistCosmetics()
+        emit(EV_BUY, HAPTIC_MED)
+        return "购买成功：${HAT_NAMES[i]}"
+    }
+
+    // ---------- 商店标签页 ----------
+    @Synchronized fun switchShopTab(tab: Int) {
+        if (state == State.RUNNING) return
+        shopTab = tab.coerceIn(SHOP_TAB_COLOR, SHOP_TAB_HAT)
+    }
+
+    @Synchronized fun browseShop(delta: Int) {
+        when (shopTab) {
+            SHOP_TAB_COLOR -> browseColor(delta)
+            SHOP_TAB_TRAIL -> browseTrail(delta)
+            SHOP_TAB_SCARF -> {
+                if (state == State.RUNNING) return
+                shopBrowseScarf = (shopBrowseScarf + delta + SCARF_COUNT) % SCARF_COUNT
+            }
+            else -> {
+                if (state == State.RUNNING) return
+                shopBrowseHat = (shopBrowseHat + delta + HAT_COUNT) % HAT_COUNT
+            }
+        }
+    }
+
+    fun buyOrEquipShop(): String = when (shopTab) {
+        SHOP_TAB_COLOR -> buyOrEquipColor()
+        SHOP_TAB_TRAIL -> buyOrEquipTrail()
+        SHOP_TAB_SCARF -> buyOrEquipScarf()
+        else -> buyOrEquipHat()
+    }
+
+    // ---------- 暂停 ----------
+    @Synchronized fun pauseGame() {
+        if (state == State.RUNNING) paused = true
+    }
+
+    @Synchronized fun resumeGame() {
+        paused = false
+    }
+
+    /** 暂停菜单里放弃本局：正常结算但不播死亡音效 */
+    @Synchronized fun quitRun() {
+        if (state != State.RUNNING) return
+        paused = false
+        settleRun()
+        state = State.DEAD
+        deadTime = 1f   // 跳过死亡冷却，直接可交互
     }
 
     // ---------- 小屋 ----------
@@ -678,6 +815,7 @@ class Game {
         shake = 0f; hapticPulse = 0; floatFlash = 0f; lastFloat = ""
         wavesSincePower = 0
         menuPanel = PANEL_MAIN
+        paused = false
         zipGap = 90f + Random.nextFloat() * 80f
         universe = UNI_MEADOW
         universePrev = UNI_MEADOW
@@ -711,6 +849,7 @@ class Game {
 
     // ---------- 主更新 ----------
     @Synchronized fun update(dt: Float) {
+        if (paused) return
         tickDayNight(dt)
         tickFeedback(dt)
         tickBanners(dt)
@@ -1304,8 +1443,12 @@ class Game {
             ?.putInt("wallet", wallet)
             ?.putInt("ownedColors", ownedColors)
             ?.putInt("ownedTrails", ownedTrails)
+            ?.putInt("ownedScarves", ownedScarves)
+            ?.putInt("ownedHats", ownedHats)
             ?.putInt("catColor", catColor)
             ?.putInt("trailStyle", trailStyle)
+            ?.putInt("scarfStyle", scarfStyle)
+            ?.putInt("hatStyle", hatStyle)
             ?.apply()
     }
 
@@ -1331,8 +1474,12 @@ class Game {
             .putInt("wallet", wallet)
             .putInt("ownedColors", ownedColors)
             .putInt("ownedTrails", ownedTrails)
+            .putInt("ownedScarves", ownedScarves)
+            .putInt("ownedHats", ownedHats)
             .putInt("catColor", catColor)
             .putInt("trailStyle", trailStyle)
+            .putInt("scarfStyle", scarfStyle)
+            .putInt("hatStyle", hatStyle)
             .putInt("totalPortals", totalPortals)
             .putInt("seenUniverses", seenMask)
             .putInt("ownedHouses", ownedHouses)
@@ -1340,6 +1487,7 @@ class Game {
             .putInt("ownedDecos", ownedDecos)
             .putInt("houseStyle", houseStyle)
             .putInt("roofStyle", roofStyle)
+            .putString("characterName", characterName)
         for (i in 0 until ACHIEVE_CATS) ed.putInt("achieveLv$i", achieveLevels[i])
         ed.apply()
     }

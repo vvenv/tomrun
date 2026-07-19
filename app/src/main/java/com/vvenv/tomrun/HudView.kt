@@ -1,5 +1,6 @@
 package com.vvenv.tomrun
 
+import android.app.AlertDialog
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
@@ -7,8 +8,11 @@ import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.os.SystemClock
+import android.text.InputFilter
 import android.view.MotionEvent
 import android.view.View
+import android.view.WindowManager
+import android.widget.EditText
 import kotlin.math.abs
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -48,22 +52,25 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private var toastLife = 0f
     private var secretTapCount = 0
     private var secretTapDeadline = 0L
+    private var renameDialog: AlertDialog? = null
 
     // 离屏按钮区域
     private val btnShop = RectF()
     private val btnHome = RectF()
     private val btnAchieve = RectF()
     private val btnBack = RectF()
-    private val btnColorL = RectF()
-    private val btnColorR = RectF()
-    private val btnColorBuy = RectF()
-    private val btnTrailL = RectF()
-    private val btnTrailR = RectF()
-    private val btnTrailBuy = RectF()
+    private val btnShopTabs = arrayOf(RectF(), RectF(), RectF(), RectF())
+    private val btnShopL = RectF()
+    private val btnShopR = RectF()
+    private val btnShopBuy = RectF()
+    private val btnPause = RectF()
+    private val btnResume = RectF()
+    private val btnQuit = RectF()
     private val btnHomeTabs = arrayOf(RectF(), RectF(), RectF())
     private val btnHomeL = RectF()
     private val btnHomeR = RectF()
     private val btnHomeBuy = RectF()
+    private val btnRename = RectF()
     private var homePhase = 0f
 
     // 庭院猫 AI：站立张望 / 散步 / 与装饰互动 / 打盹
@@ -95,6 +102,17 @@ class HudView(context: Context, private val game: Game) : View(context) {
             0xFFD9483B.toInt(), 0xFF3FA9A5.toInt(), 0xFF8C6BD9.toInt(), 0xFFF2C14E.toInt()
         )
         private val HOME_TAB_NAMES = arrayOf("房屋", "屋顶", "装饰")
+        private val SHOP_TAB_NAMES = arrayOf("配色", "尾迹", "围巾", "帽子")
+        /** 围巾颜色，与 3D 渲染配色呼应；0 为"无"占位 */
+        private val SCARF_CHIPS = intArrayOf(
+            0xFF888888.toInt(), 0xFFF23F3F.toInt(), 0xFF4DD8F2.toInt(), 0xFFA673FF.toInt()
+        )
+        private const val HAT_CAP = 0xFFE04545.toInt()
+        private const val HAT_CAP_DK = 0xFFA63030.toInt()
+        private const val HAT_STRAW = 0xFFD9C46A.toInt()
+        private const val HAT_STRAW_BAND = 0xFF4E9142.toInt()
+        private const val HAT_GOLD = 0xFFF2C14E.toInt()
+        private const val HAT_RUBY = 0xFFE0345A.toInt()
 
         // 庭院猫状态与姿势
         private const val CAT_IDLE = 0
@@ -110,6 +128,19 @@ class HudView(context: Context, private val game: Game) : View(context) {
         private const val POSE_JUMP = 6
     }
 
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        post {
+            if (!game.hasChosenCharacterName) showRenameDialog(firstTime = true)
+        }
+    }
+
+    override fun onDetachedFromWindow() {
+        renameDialog?.dismiss()
+        renameDialog = null
+        super.onDetachedFromWindow()
+    }
+
     override fun onTouchEvent(event: MotionEvent): Boolean {
         val swipeMin = 60f * (height / 720f)
         when (event.actionMasked) {
@@ -117,7 +148,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 downX = event.x; downY = event.y; consumed = false
             }
             MotionEvent.ACTION_MOVE -> {
-                if (!consumed && game.state == Game.State.RUNNING) {
+                if (!consumed && game.state == Game.State.RUNNING && !game.paused) {
                     val dx = event.x - downX
                     val dy = event.y - downY
                     if (abs(dx) > swipeMin || abs(dy) > swipeMin) {
@@ -139,7 +170,14 @@ class HudView(context: Context, private val game: Game) : View(context) {
 
     private fun handleTap(x: Float, y: Float) {
         if (game.state == Game.State.RUNNING) {
-            game.onTap()
+            when {
+                game.paused -> when {
+                    btnResume.contains(x, y) -> game.resumeGame()
+                    btnQuit.contains(x, y) -> game.quitRun()
+                }
+                btnPause.contains(x, y) -> game.pauseGame()
+                else -> game.onTap()
+            }
             return
         }
         // 死亡冷却
@@ -158,6 +196,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
             Game.PANEL_HOME -> {
                 when {
                     btnBack.contains(x, y) -> game.switchMenuPanel(Game.PANEL_MAIN)
+                    btnRename.contains(x, y) -> showRenameDialog(firstTime = false)
                     btnHomeTabs[0].contains(x, y) -> game.switchHomeTab(Game.HOME_TAB_HOUSE)
                     btnHomeTabs[1].contains(x, y) -> game.switchHomeTab(Game.HOME_TAB_ROOF)
                     btnHomeTabs[2].contains(x, y) -> game.switchHomeTab(Game.HOME_TAB_DECO)
@@ -169,18 +208,59 @@ class HudView(context: Context, private val game: Game) : View(context) {
             Game.PANEL_SHOP -> {
                 when {
                     btnBack.contains(x, y) -> game.switchMenuPanel(Game.PANEL_MAIN)
-                    btnColorL.contains(x, y) -> game.browseColor(-1)
-                    btnColorR.contains(x, y) -> game.browseColor(1)
-                    btnColorBuy.contains(x, y) -> showToast(game.buyOrEquipColor())
-                    btnTrailL.contains(x, y) -> game.browseTrail(-1)
-                    btnTrailR.contains(x, y) -> game.browseTrail(1)
-                    btnTrailBuy.contains(x, y) -> showToast(game.buyOrEquipTrail())
+                    btnShopTabs[0].contains(x, y) -> game.switchShopTab(Game.SHOP_TAB_COLOR)
+                    btnShopTabs[1].contains(x, y) -> game.switchShopTab(Game.SHOP_TAB_TRAIL)
+                    btnShopTabs[2].contains(x, y) -> game.switchShopTab(Game.SHOP_TAB_SCARF)
+                    btnShopTabs[3].contains(x, y) -> game.switchShopTab(Game.SHOP_TAB_HAT)
+                    btnShopL.contains(x, y) -> game.browseShop(-1)
+                    btnShopR.contains(x, y) -> game.browseShop(1)
+                    btnShopBuy.contains(x, y) -> showToast(game.buyOrEquipShop())
                 }
             }
             Game.PANEL_ACHIEVE -> {
                 if (btnBack.contains(x, y)) game.switchMenuPanel(Game.PANEL_MAIN)
             }
         }
+    }
+
+    private fun showRenameDialog(firstTime: Boolean) {
+        if (renameDialog?.isShowing == true) return
+        val input = EditText(context).apply {
+            if (!firstTime) {
+                setText(game.characterName)
+                selectAll()
+            }
+            hint = "角色名称"
+            isSingleLine = true
+            filters = arrayOf(InputFilter.LengthFilter(Game.CHARACTER_NAME_MAX_LENGTH))
+        }
+        val builder = AlertDialog.Builder(context)
+            .setTitle(if (firstTime) "欢迎！先给角色起个名字" else "设置角色名称")
+            .setMessage("名字将显示在你的世界和小屋中，最多 ${Game.CHARACTER_NAME_MAX_LENGTH} 个字符")
+            .setView(input)
+            .setPositiveButton("保存", null)
+        if (!firstTime) builder.setNegativeButton("取消", null)
+        val dialog = builder.create()
+        dialog.setCancelable(!firstTime)
+        dialog.setCanceledOnTouchOutside(false)
+        renameDialog = dialog
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                if (game.renameCharacter(input.text.toString())) {
+                    showToast(if (firstTime) "欢迎来到 ${game.characterName}的世界" else "角色名称已更新")
+                    invalidate()
+                    dialog.dismiss()
+                } else {
+                    input.error = "名称不能为空"
+                }
+            }
+            input.requestFocus()
+            dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
+        }
+        dialog.setOnDismissListener {
+            if (renameDialog === dialog) renameDialog = null
+        }
+        dialog.show()
     }
 
     /** Debug 包：主菜单标题在 4 秒内连点 7 次，切换仅供测试的不死模式。 */
@@ -252,9 +332,9 @@ class HudView(context: Context, private val game: Game) : View(context) {
             )
         }
 
-        // 左上角 buff
+        // 左上角 buff（跑酷中让位给暂停按钮）
         textPaint.textAlign = Paint.Align.LEFT
-        var buffY = 66f * s
+        var buffY = if (game.state == Game.State.RUNNING) 130f * s else 66f * s
         if (game.state == Game.State.RUNNING && game.immortalMode) {
             pixText(canvas, "测试 · 不死", 36f * s, buffY, 28f * s, 0xFF4DE8FF.toInt(), sdx, sdy)
             buffY += 36f * s
@@ -349,7 +429,10 @@ class HudView(context: Context, private val game: Game) : View(context) {
                     else -> drawMainMenu(canvas, w, h, s, sdx, sdy)
                 }
             }
-            Game.State.RUNNING -> Unit
+            Game.State.RUNNING -> {
+                drawPauseButton(canvas, s)
+                if (game.paused) drawPauseOverlay(canvas, w, h, s, sdx, sdy)
+            }
         }
 
         // 穿越白闪
@@ -402,7 +485,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 pixText(canvas, "点击屏幕再来一次", w / 2f, h * 0.94f, 28f * s, Color.WHITE, sdx, sdy)
             }
         } else {
-            pixText(canvas, "汤姆猫跑酷", w / 2f, h * 0.24f, 72f * s, Color.WHITE, sdx, sdy)
+            pixText(canvas, "${game.characterName}的世界", w / 2f, h * 0.24f, 72f * s, Color.WHITE, sdx, sdy)
             pixText(canvas, "点击屏幕开始", w / 2f, h * 0.36f, 32f * s, Color.WHITE, sdx, sdy)
             pixText(canvas, "左右换道 · 上滑跳跃 · 下滑铲滑", w / 2f, h * 0.44f, 24f * s, Color.WHITE, sdx, sdy)
             pixText(canvas, "传送门穿越平行宇宙 · 金币装扮小屋", w / 2f, h * 0.51f, 24f * s, Color.WHITE, sdx, sdy)
@@ -441,7 +524,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
 
     // ---------- 小屋 ----------
     private fun drawHome(canvas: Canvas, w: Float, h: Float, s: Float, sdx: Float, sdy: Float) {
-        pixText(canvas, "汤姆的小屋", w / 2f, h * 0.075f, 48f * s, Color.WHITE, sdx, sdy)
+        pixText(canvas, "${game.characterName}的小屋", w / 2f, h * 0.075f, 48f * s, Color.WHITE, sdx, sdy)
 
         // 浏览预览：房屋 / 屋顶标签页直接预览浏览项
         val house = if (game.homeTab == Game.HOME_TAB_HOUSE) game.homeBrowseHouse else game.houseStyle
@@ -523,6 +606,8 @@ class HudView(context: Context, private val game: Game) : View(context) {
 
         btnBack.set(w / 2f - 100f * s, h * 0.92f - 26f * s, w / 2f + 100f * s, h * 0.92f + 26f * s)
         drawBtn(canvas, btnBack, "返回", s)
+        btnRename.set(w / 2f + 116f * s, h * 0.92f - 26f * s, w / 2f + 216f * s, h * 0.92f + 26f * s)
+        drawBtn(canvas, btnRename, "改名", s)
     }
 
     private data class HomeRow(val name: String, val price: Int, val status: String, val action: String)
@@ -889,9 +974,12 @@ class HudView(context: Context, private val game: Game) : View(context) {
         drawPixelCat(canvas, x, footY, s, catDir, pose)
     }
 
-    /** 参数化像素猫：footY 为脚底，dir=1 朝右 / -1 朝左（水平镜像） */
-    private fun drawPixelCat(canvas: Canvas, x: Float, footY: Float, s: Float, dir: Float, pose: Int) {
-        val c = COLOR_CHIPS[game.catColor % COLOR_CHIPS.size]
+    /** 参数化像素猫：footY 为脚底，dir=1 朝右 / -1 朝左（水平镜像）；外观默认取当前装备 */
+    private fun drawPixelCat(
+        canvas: Canvas, x: Float, footY: Float, s: Float, dir: Float, pose: Int,
+        colorIdx: Int = game.catColor, scarf: Int = game.scarfStyle, hat: Int = game.hatStyle
+    ) {
+        val c = COLOR_CHIPS[colorIdx % COLOR_CHIPS.size]
         val cd = darken(c)
         val eye = 0xFF222222.toInt()
         val paw = 0xFFF2F2EE.toInt()
@@ -902,6 +990,29 @@ class HudView(context: Context, private val game: Game) : View(context) {
             btnPaint.color = color
             canvas.drawRect(min(x1, x2), footY + dyt * s, kotlin.math.max(x1, x2), footY + dyb * s, btnPaint)
         }
+        // 帽子：hL 为头部左沿、hT 为头顶（猫身坐标）
+        fun hatAt(hL: Float, hT: Float) {
+            when (hat) {
+                1 -> { // 红棒球帽
+                    rc(hL + 1f, hT - 9f, hL + 23f, hT + 1f, HAT_CAP)
+                    rc(hL + 20f, hT - 4f, hL + 34f, hT, HAT_CAP)
+                    rc(hL + 10f, hT - 12f, hL + 14f, hT - 8f, HAT_CAP_DK)
+                }
+                2 -> { // 青草帽
+                    rc(hL - 6f, hT - 4f, hL + 30f, hT, HAT_STRAW)
+                    rc(hL + 4f, hT - 12f, hL + 20f, hT - 4f, HAT_STRAW)
+                    rc(hL + 4f, hT - 6f, hL + 20f, hT - 3f, HAT_STRAW_BAND)
+                }
+                3 -> { // 金皇冠
+                    rc(hL + 4f, hT - 8f, hL + 20f, hT, HAT_GOLD)
+                    for (i in 0..2) {
+                        rc(hL + 5f + i * 6f, hT - 13f, hL + 9f + i * 6f, hT - 8f, HAT_GOLD)
+                    }
+                    rc(hL + 10f, hT - 6f, hL + 14f, hT - 2f, HAT_RUBY)
+                }
+            }
+        }
+        val scC = SCARF_CHIPS[scarf % SCARF_CHIPS.size]
         val t = homePhase
         when (pose) {
             POSE_NAP -> {
@@ -930,6 +1041,8 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 rc(-26f + tw, -10f, -14f, -4f, cd)            // 甩尾
                 rc(-14f, -6f, -6f, 0f, paw)
                 rc(2f, -6f, 10f, 0f, paw)
+                if (scarf > 0) rc(-4f, -30f, 16f, -24f, scC)  // 颈圈
+                if (hat > 0) hatAt(-4f, -50f)
             }
             else -> {
                 val walk = pose == POSE_WALK
@@ -954,6 +1067,12 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 val tailW = if (jump) 8f else kotlin.math.sin(t * 3f) * 6f
                 val tailDy = if (jump) -8f else 0f            // 跳跃时尾巴上扬
                 rc(-32f + tailW, -30f + tailDy, -18f, -24f + tailDy, cd)
+                if (scarf > 0) {
+                    rc(4f, -22f - bob, 22f, -15f - bob, scC)  // 颈圈
+                    val fl = kotlin.math.sin(t * 3f) * 3f     // 身后小飘带
+                    rc(-4f, -19f - bob + fl * 0.4f, 4f, -7f - bob + fl, scC)
+                }
+                if (hat > 0) hatAt(6f + headDx, -40f - bob + headDy)
                 if (walk) {
                     val sw = kotlin.math.sin(t * 9f) * 5f     // 前后爪交替
                     rc(-18f + sw, -6f, -10f + sw, 0f, paw)
@@ -970,50 +1089,153 @@ class HudView(context: Context, private val game: Game) : View(context) {
     }
 
     private fun drawShop(canvas: Canvas, w: Float, h: Float, s: Float, sdx: Float, sdy: Float) {
-        pixText(canvas, "外观商店", w / 2f, h * 0.16f, 48f * s, Color.WHITE, sdx, sdy)
-        pixText(canvas, "钱包 ${game.wallet}", w / 2f, h * 0.24f, 30f * s, 0xFFFFC21F.toInt(), sdx, sdy)
+        pixText(canvas, "外观商店", w / 2f, h * 0.115f, 48f * s, Color.WHITE, sdx, sdy)
+        pixText(canvas, "钱包 ${game.wallet}", w / 2f, h * 0.18f, 26f * s, 0xFFFFC21F.toInt(), sdx, sdy)
 
-        // 配色行
-        val cy = h * 0.38f
-        pixText(canvas, "猫咪配色", w / 2f, cy - 40f * s, 26f * s, Color.WHITE, sdx, sdy)
-        val ci = game.shopBrowseColor
-        btnColorL.set(w * 0.18f - 30f * s, cy - 24f * s, w * 0.18f + 30f * s, cy + 24f * s)
-        btnColorR.set(w * 0.82f - 30f * s, cy - 24f * s, w * 0.82f + 30f * s, cy + 24f * s)
-        drawBtn(canvas, btnColorL, "<", s)
-        drawBtn(canvas, btnColorR, ">", s)
-        btnPaint.style = Paint.Style.FILL
-        btnPaint.color = COLOR_CHIPS[ci]
-        canvas.drawRect(w / 2f - 22f * s, cy - 22f * s, w / 2f + 22f * s, cy + 22f * s, btnPaint)
-        val cStatus = when {
-            game.catColor == ci -> "已装备"
-            game.ownsColor(ci) -> "已拥有 · 点击装备"
-            else -> "价格 ${Game.COLOR_PRICES[ci]}"
+        // 试穿预览：浏览项实时穿在大号像素猫身上
+        val tab = game.shopTab
+        val pvColor = if (tab == Game.SHOP_TAB_COLOR) game.shopBrowseColor else game.catColor
+        val pvScarf = if (tab == Game.SHOP_TAB_SCARF) game.shopBrowseScarf else game.scarfStyle
+        val pvHat = if (tab == Game.SHOP_TAB_HAT) game.shopBrowseHat else game.hatStyle
+        val pvTrail = if (tab == Game.SHOP_TAB_TRAIL) game.shopBrowseTrail else game.trailStyle
+        val footY = h * 0.44f
+        if (pvTrail > 0) {
+            // 尾迹预览：身后一串渐隐色块
+            for (i in 0 until 5) {
+                val a = 220 - i * 40
+                val chip = if (pvTrail == 3) {
+                    intArrayOf(
+                        0xFFF25A5A.toInt(), 0xFFFFD75E.toInt(),
+                        0xFF6FBF56.toInt(), 0xFF57B6E8.toInt()
+                    )[i % 4]
+                } else TRAIL_CHIPS[pvTrail]
+                val k = (16f - i * 2f) * s
+                btnPaint.style = Paint.Style.FILL
+                btnPaint.color = withAlpha(chip, a)
+                canvas.drawRect(
+                    w / 2f - (78f + i * 34f) * s - k / 2f, footY - 52f * s - i * 5f * s - k / 2f,
+                    w / 2f - (78f + i * 34f) * s + k / 2f, footY - 52f * s - i * 5f * s + k / 2f,
+                    btnPaint
+                )
+            }
         }
-        pixText(canvas, "${Game.COLOR_NAMES[ci]}  $cStatus", w / 2f, cy + 48f * s, 24f * s, Color.WHITE, sdx, sdy)
-        btnColorBuy.set(w / 2f - 120f * s, cy + 60f * s, w / 2f + 120f * s, cy + 108f * s)
-        drawBtn(canvas, btnColorBuy, if (game.ownsColor(ci)) "装备配色" else "购买配色", s)
+        drawPixelCat(canvas, w / 2f, footY, s * 2f, 1f, POSE_STAND, pvColor, pvScarf, pvHat)
 
-        // 尾迹行
-        val ty = h * 0.68f
-        pixText(canvas, "奔跑尾迹", w / 2f, ty - 40f * s, 26f * s, Color.WHITE, sdx, sdy)
-        val ti = game.shopBrowseTrail
-        btnTrailL.set(w * 0.18f - 30f * s, ty - 24f * s, w * 0.18f + 30f * s, ty + 24f * s)
-        btnTrailR.set(w * 0.82f - 30f * s, ty - 24f * s, w * 0.82f + 30f * s, ty + 24f * s)
-        drawBtn(canvas, btnTrailL, "<", s)
-        drawBtn(canvas, btnTrailR, ">", s)
-        btnPaint.color = TRAIL_CHIPS[ti]
-        canvas.drawRect(w / 2f - 22f * s, ty - 22f * s, w / 2f + 22f * s, ty + 22f * s, btnPaint)
-        val tStatus = when {
-            game.trailStyle == ti -> "已装备"
-            game.ownsTrail(ti) -> "已拥有 · 点击装备"
-            else -> "价格 ${Game.TRAIL_PRICES[ti]}"
+        // 标签页
+        val tabW = 108f * s
+        val tabH = 44f * s
+        val tabY = h * 0.505f
+        for (i in 0..3) {
+            val cx = w / 2f + (i - 1.5f) * (tabW + 12f * s)
+            btnShopTabs[i].set(cx - tabW / 2f, tabY, cx + tabW / 2f, tabY + tabH)
+            btnPaint.style = Paint.Style.FILL
+            btnPaint.color = if (tab == i) 0xEE3A5068.toInt() else 0xCC222C38.toInt()
+            canvas.drawRect(btnShopTabs[i], btnPaint)
+            btnPaint.style = Paint.Style.STROKE
+            btnPaint.strokeWidth = 1f
+            btnPaint.color = if (tab == i) 0xFFFFD426.toInt() else 0xAAFFFFFF.toInt()
+            canvas.drawRect(btnShopTabs[i], btnPaint)
+            btnPaint.style = Paint.Style.FILL
+            pixText(
+                canvas, SHOP_TAB_NAMES[i], cx, tabY + tabH / 2f + 8f * s, 24f * s,
+                if (tab == i) 0xFFFFD426.toInt() else Color.WHITE, 1f, 1f
+            )
         }
-        pixText(canvas, "${Game.TRAIL_NAMES[ti]}  $tStatus", w / 2f, ty + 48f * s, 24f * s, Color.WHITE, sdx, sdy)
-        btnTrailBuy.set(w / 2f - 120f * s, ty + 60f * s, w / 2f + 120f * s, ty + 108f * s)
-        drawBtn(canvas, btnTrailBuy, if (game.ownsTrail(ti)) "装备尾迹" else "购买尾迹", s)
+
+        // 浏览行
+        val by = h * 0.625f
+        btnShopL.set(w * 0.18f - 30f * s, by - 24f * s, w * 0.18f + 30f * s, by + 24f * s)
+        btnShopR.set(w * 0.82f - 30f * s, by - 24f * s, w * 0.82f + 30f * s, by + 24f * s)
+        drawBtn(canvas, btnShopL, "<", s)
+        drawBtn(canvas, btnShopR, ">", s)
+        val row = when (tab) {
+            Game.SHOP_TAB_COLOR -> {
+                val i = game.shopBrowseColor
+                HomeRow(
+                    Game.COLOR_NAMES[i], Game.COLOR_PRICES[i],
+                    when {
+                        game.catColor == i -> "已装备"
+                        game.ownsColor(i) -> "已拥有"
+                        else -> ""
+                    },
+                    if (game.ownsColor(i)) "装备" else "购买"
+                )
+            }
+            Game.SHOP_TAB_TRAIL -> {
+                val i = game.shopBrowseTrail
+                HomeRow(
+                    Game.TRAIL_NAMES[i], Game.TRAIL_PRICES[i],
+                    when {
+                        game.trailStyle == i -> "已装备"
+                        game.ownsTrail(i) -> "已拥有"
+                        else -> ""
+                    },
+                    if (game.ownsTrail(i)) "装备" else "购买"
+                )
+            }
+            Game.SHOP_TAB_SCARF -> {
+                val i = game.shopBrowseScarf
+                HomeRow(
+                    Game.SCARF_NAMES[i], Game.SCARF_PRICES[i],
+                    when {
+                        game.scarfStyle == i -> "已戴上"
+                        game.ownsScarf(i) -> "已拥有"
+                        else -> ""
+                    },
+                    if (game.ownsScarf(i)) "戴上" else "购买"
+                )
+            }
+            else -> {
+                val i = game.shopBrowseHat
+                HomeRow(
+                    Game.HAT_NAMES[i], Game.HAT_PRICES[i],
+                    when {
+                        game.hatStyle == i -> "已戴上"
+                        game.ownsHat(i) -> "已拥有"
+                        else -> ""
+                    },
+                    if (game.ownsHat(i)) "戴上" else "购买"
+                )
+            }
+        }
+        val info = if (row.status.isEmpty()) "${row.name}  价格 ${row.price}" else "${row.name}  ${row.status}"
+        pixText(canvas, info, w / 2f, by + 8f * s, 26f * s, Color.WHITE, sdx, sdy)
+
+        btnShopBuy.set(w / 2f - 120f * s, h * 0.685f, w / 2f + 120f * s, h * 0.685f + 48f * s)
+        drawBtn(canvas, btnShopBuy, row.action, s)
 
         btnBack.set(w / 2f - 100f * s, h * 0.92f - 26f * s, w / 2f + 100f * s, h * 0.92f + 26f * s)
         drawBtn(canvas, btnBack, "返回", s)
+    }
+
+    // ---------- 暂停 ----------
+    private fun drawPauseButton(canvas: Canvas, s: Float) {
+        btnPause.set(30f * s, 30f * s, 92f * s, 92f * s)
+        btnPaint.style = Paint.Style.FILL
+        btnPaint.color = 0x88222C38.toInt()
+        canvas.drawRect(btnPause, btnPaint)
+        btnPaint.style = Paint.Style.STROKE
+        btnPaint.strokeWidth = 1f
+        btnPaint.color = 0xAAFFFFFF.toInt()
+        canvas.drawRect(btnPause, btnPaint)
+        btnPaint.style = Paint.Style.FILL
+        btnPaint.color = Color.WHITE
+        val cx = btnPause.centerX()
+        val cy = btnPause.centerY()
+        canvas.drawRect(cx - 12f * s, cy - 14f * s, cx - 4f * s, cy + 14f * s, btnPaint)
+        canvas.drawRect(cx + 4f * s, cy - 14f * s, cx + 12f * s, cy + 14f * s, btnPaint)
+    }
+
+    private fun drawPauseOverlay(canvas: Canvas, w: Float, h: Float, s: Float, sdx: Float, sdy: Float) {
+        dim(canvas, w, h)
+        dim(canvas, w, h)   // 双层压暗，突出暂停菜单
+        pixText(canvas, "已暂停", w / 2f, h * 0.32f, 64f * s, Color.WHITE, sdx, sdy)
+        pixText(canvas, "喝口水，休息一下吧", w / 2f, h * 0.40f, 26f * s, 0xFFAAD5FF.toInt(), sdx, sdy)
+
+        btnResume.set(w / 2f - 150f * s, h * 0.48f, w / 2f + 150f * s, h * 0.48f + 56f * s)
+        drawBtn(canvas, btnResume, "继续跑酷", s)
+        btnQuit.set(w / 2f - 150f * s, h * 0.60f, w / 2f + 150f * s, h * 0.60f + 56f * s)
+        drawBtn(canvas, btnQuit, "结束本局", s)
     }
 
     private fun drawAchieve(canvas: Canvas, w: Float, h: Float, s: Float, sdx: Float, sdy: Float) {

@@ -201,6 +201,20 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         )
         private val CAT_WHITE = floatArrayOf(0.95f, 0.95f, 0.92f, 1f)
 
+        // 围巾 / 帽子（下标 0 为"无"，占位）
+        private val SCARF_COLS = arrayOf(
+            floatArrayOf(0f, 0f, 0f, 0f),
+            floatArrayOf(0.95f, 0.25f, 0.25f, 1f),
+            floatArrayOf(0.30f, 0.85f, 0.95f, 1f),
+            floatArrayOf(0.65f, 0.45f, 1.0f, 1f)
+        )
+        private val HAT_RED = floatArrayOf(0.88f, 0.27f, 0.27f, 1f)
+        private val HAT_RED_DK = floatArrayOf(0.65f, 0.17f, 0.17f, 1f)
+        private val STRAW = floatArrayOf(0.85f, 0.77f, 0.42f, 1f)
+        private val STRAW_BAND = floatArrayOf(0.30f, 0.62f, 0.30f, 1f)
+        private val CROWN_GOLD = floatArrayOf(0.95f, 0.78f, 0.20f, 1f)
+        private val CROWN_RUBY = floatArrayOf(0.90f, 0.20f, 0.35f, 1f)
+
         private val RAIN_SKY = floatArrayOf(0.44f, 0.51f, 0.62f, 1f)
         private val SNOW_SKY = floatArrayOf(0.72f, 0.78f, 0.86f, 1f)
         private val GRASS_R = floatArrayOf(0.26f, 0.55f, 0.24f, 1f)
@@ -1256,6 +1270,15 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         drawPart(0f, 0.85f, 0f, 0.95f, 0.8f, 1.35f, c)
         drawPart(0f, 1.15f, 0.3f, 0.97f, 0.24f, 0.3f, cd)
         drawPart(0f, 1.15f, -0.25f, 0.97f, 0.24f, 0.3f, cd)
+
+        // 围巾：颈圈 + 随跑动向后飘的两节飘带
+        if (g.scarfStyle > 0) {
+            val sc = SCARF_COLS[g.scarfStyle % SCARF_COLS.size]
+            drawPart(0f, 1.30f, -0.30f, 1.0f, 0.22f, 0.34f, sc)
+            val fl = sin(g.runPhase * 1.1f) * 0.15f
+            drawPart(0.20f, 1.28f + fl * 0.4f, 0.30f, 0.24f, 0.16f, 0.55f, sc)
+            drawPart(0.20f, 1.22f + fl, 0.78f, 0.20f, 0.13f, 0.45f, sc)
+        }
         drawActivePowerUps(g)
 
         pushModel(0f, 1.75f, -0.42f)
@@ -1289,6 +1312,28 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         drawPart(0f, 0f, 0f, 0.24f, 0.26f, 0.14f, cd)
         popModel()
         drawPart(0f, -0.15f, -0.4f, 0.5f, 0.32f, 0.14f, CAT_WHITE)
+        // 帽子（随头部转动；吃到头盔时被头盔取代）
+        if (!g.helmet && g.hatStyle > 0) {
+            when (g.hatStyle) {
+                1 -> { // 红棒球帽：帽身 + 前伸帽檐 + 顶扣
+                    drawPart(0f, 0.47f, 0.05f, 0.82f, 0.26f, 0.75f, HAT_RED)
+                    drawPart(0f, 0.40f, -0.55f, 0.66f, 0.09f, 0.5f, HAT_RED)
+                    drawPart(0f, 0.63f, 0.05f, 0.16f, 0.1f, 0.16f, HAT_RED_DK)
+                }
+                2 -> { // 青草帽：宽帽檐 + 帽顶 + 绿帽带
+                    drawPart(0f, 0.42f, 0f, 1.35f, 0.08f, 1.3f, STRAW)
+                    drawPart(0f, 0.56f, 0f, 0.72f, 0.24f, 0.7f, STRAW)
+                    drawPart(0f, 0.49f, 0f, 0.76f, 0.07f, 0.74f, STRAW_BAND)
+                }
+                else -> { // 金皇冠：金环 + 三个尖齿 + 前宝石
+                    drawPart(0f, 0.50f, 0f, 0.66f, 0.16f, 0.64f, CROWN_GOLD)
+                    for (i in -1..1) {
+                        drawPart(i * 0.22f, 0.64f, 0f, 0.12f, 0.14f, 0.12f, CROWN_GOLD)
+                    }
+                    drawPart(0f, 0.52f, -0.34f, 0.12f, 0.12f, 0.06f, CROWN_RUBY)
+                }
+            }
+        }
         if (g.helmet) {
             drawPart(0f, 0.5f, 0f, 0.96f, 0.3f, 0.9f, HELMET_Y)
             drawPart(0f, 0.34f, -0.08f, 1.06f, 0.1f, 1.04f, HELMET_Y)
