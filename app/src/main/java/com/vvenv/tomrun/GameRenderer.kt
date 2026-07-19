@@ -822,10 +822,35 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         drawPart(0f, 1.15f, -0.25f, 0.97f, 0.24f, 0.3f, cd)
 
         pushModel(0f, 1.75f, -0.42f)
-        if (g.state == Game.State.DEAD) Matrix.rotateM(model, 0, 25f, 1f, 0f, 0f)
+        if (g.state == Game.State.DEAD) {
+            Matrix.rotateM(model, 0, 25f, 1f, 0f, 0f)
+        } else if (g.state == Game.State.RUNNING) {
+            // 跑动点头：与步频同相，落地时略埋
+            val nod = when {
+                g.sliding -> 12f
+                !g.onGround && !ridingZip -> if (g.velY > 0) -6f else 4f
+                else -> sin(g.runPhase * 2f) * 2.5f
+            }
+            // 变道时头先侧看；直线微摆
+            val yaw = lean * 1.4f + if (g.onGround && !g.sliding) sin(g.runPhase * 0.55f) * 4f else 0f
+            val roll = -lean * 0.35f
+            Matrix.rotateM(model, 0, nod, 1f, 0f, 0f)
+            Matrix.rotateM(model, 0, yaw, 0f, 1f, 0f)
+            Matrix.rotateM(model, 0, roll, 0f, 0f, 1f)
+        }
         drawPart(0f, 0f, 0f, 0.9f, 0.8f, 0.85f, c)
-        drawPart(-0.3f, 0.52f, 0f, 0.24f, 0.26f, 0.14f, cd)
-        drawPart(0.3f, 0.52f, 0f, 0.24f, 0.26f, 0.14f, cd)
+        // 耳朵：跑动时轻颤，左右相位错开
+        val earWiggle = if (g.state == Game.State.RUNNING && g.onGround && !g.sliding) {
+            sin(g.runPhase * 2.4f) * 6f
+        } else 0f
+        pushModel(-0.3f, 0.52f, 0f)
+        Matrix.rotateM(model, 0, -earWiggle, 0f, 0f, 1f)
+        drawPart(0f, 0f, 0f, 0.24f, 0.26f, 0.14f, cd)
+        popModel()
+        pushModel(0.3f, 0.52f, 0f)
+        Matrix.rotateM(model, 0, earWiggle * 0.85f, 0f, 0f, 1f)
+        drawPart(0f, 0f, 0f, 0.24f, 0.26f, 0.14f, cd)
+        popModel()
         drawPart(0f, -0.15f, -0.4f, 0.5f, 0.32f, 0.14f, CAT_WHITE)
         if (g.helmet) {
             drawPart(0f, 0.5f, 0f, 0.96f, 0.3f, 0.9f, HELMET_Y)
