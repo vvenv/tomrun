@@ -201,6 +201,12 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
             floatArrayOf(0.42f, 0.28f, 0.18f, 1f)
         )
         private val CAT_WHITE = floatArrayOf(0.95f, 0.95f, 0.92f, 1f)
+        private val CAT_PINK = floatArrayOf(0.96f, 0.62f, 0.72f, 1f)
+        private val CAT_NOSE = floatArrayOf(0.92f, 0.42f, 0.52f, 1f)
+        private val CAT_EYE = floatArrayOf(0.12f, 0.12f, 0.14f, 1f)
+        private val CAT_EYE_HL = floatArrayOf(1f, 1f, 1f, 1f)
+        /** 相对障碍物/跑道的体型；1 为原始建模尺寸。 */
+        private const val CAT_SCALE = 0.80f
 
         // 围巾 / 帽子（下标 0 为"无"，占位）
         private val SCARF_COLS = arrayOf(
@@ -399,11 +405,12 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         val shakeAmt = game.shake
         val sx = if (shakeAmt > 0f) sin(now * 0.00000005) * shakeAmt * 0.18f else 0.0
         val sy = if (shakeAmt > 0f) cos(now * 0.00000007) * shakeAmt * 0.12f else 0.0
-        val eyeY = 3.6f + game.catY * 0.22f + sy.toFloat()
-        val centerY = 1.5f + game.catY * 0.25f
+        // 正后方略抬高贴近：俯视能看清头顶双耳与背部轮廓，而不是一根竖柱
+        val eyeY = 4.35f + game.catY * 0.22f + sy.toFloat()
+        val centerY = 1.15f + game.catY * 0.28f
         Matrix.setLookAtM(
             view, 0,
-            camX + sx.toFloat(), eyeY, 7.4f,
+            camX + sx.toFloat(), eyeY, 6.0f,
             camX * 0.5f + sx.toFloat(), centerY, -8f,
             0f, 1f, 0f
         )
@@ -1163,13 +1170,13 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         if (trailEmit <= 0f && trailCount < trailX.size) {
             trailEmit = emitGap
             val i = trailCount++
-            // 与 drawCat 尾巴第三节对齐：尖端约 (0.05+wag*3, 1.72*squash, 0.9)
+            // 与 drawCat 尾巴尖端对齐（正中 + 轻摆）
             val bob = if (g.onGround) abs(sin(g.runPhase)) * 0.07f else 0f
             val squash = if (g.sliding) 0.5f else 1f
             val wag = sin(g.runPhase * 0.7f) * 0.12f
-            trailX[i] = g.catX + 0.05f + wag * 3f + (prand.nextFloat() - 0.5f) * 0.08f
-            trailY[i] = g.catY + bob + 1.72f * squash + (prand.nextFloat() - 0.5f) * 0.08f
-            trailZ[i] = 1.05f
+            trailX[i] = g.catX + wag * 2.2f * CAT_SCALE + (prand.nextFloat() - 0.5f) * 0.08f
+            trailY[i] = g.catY + bob + 1.55f * squash * CAT_SCALE + (prand.nextFloat() - 0.5f) * 0.08f
+            trailZ[i] = 0.95f * CAT_SCALE
             trailAge[i] = 0f
             trailSeed[i] = prand.nextFloat() * 6.28f
         }
@@ -1188,7 +1195,7 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
             val a = (0.62f * fade * boostK).coerceIn(0.05f, 0.75f)
             val col = floatArrayOf(base[0], base[1], base[2], a)
             // 尺寸随年龄缩小；轻微上飘 + 左右微摆
-            val size = (0.34f * (1f - t * 0.7f)) * boostK
+            val size = (0.28f * (1f - t * 0.7f)) * boostK
             val rise = t * 0.45f
             val sway = sin(trailSeed[i] + trailAge[i] * 7f) * 0.07f * t
             drawBox(trailX[i] + sway, trailY[i] + rise, trailZ[i], size, size * 0.9f, size, col)
@@ -1211,12 +1218,11 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
     private fun drawCat(dt: Float) {
         val g = game
         powerFxPhase = (powerFxPhase + dt * 5f) % 1000f
-        drawShadow(g.catX, 0f, 0.85f - min(g.catY * 0.10f, 0.3f))
+        drawShadow(g.catX, 0f, (0.95f - min(g.catY * 0.10f, 0.3f)) * CAT_SCALE)
 
         val squash = if (g.sliding) 0.5f else 1f
         val bob = if (g.onGround && g.state == Game.State.RUNNING) abs(sin(g.runPhase)) * 0.07f else 0f
 
-        // 装备尾迹（冲刺时加长加密）
         if (g.state == Game.State.RUNNING) {
             drawCosmeticTrail(g, dt)
         } else {
@@ -1226,7 +1232,7 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         pushModel(g.catX, g.catY + bob, 0f)
         if (g.state == Game.State.DEAD) {
             Matrix.rotateM(model, 0, -65f, 1f, 0f, 0f)
-            Matrix.translateM(model, 0, 0f, 0.3f, 0.3f)
+            Matrix.translateM(model, 0, 0f, 0.3f * CAT_SCALE, 0.3f * CAT_SCALE)
         }
         val c = CAT_MAIN[game.catColor % CAT_MAIN.size]
         val cd = CAT_DK[game.catColor % CAT_DK.size]
@@ -1234,27 +1240,30 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         val ridingZip = g.riding != null
         val lean = (Game.LANE_X[g.lane] - g.catX) * 9f
         Matrix.rotateM(model, 0, -lean, 0f, 0f, 1f)
-        Matrix.scaleM(model, 0, 1f, squash, 1f)
+        // 滑索握杆在缩小前绘制，保证顶端仍接到世界坐标缆绳
+        if (ridingZip) {
+            val reach = 1.9f * CAT_SCALE
+            val gripTop = Game.CABLE_H - g.catY
+            drawPart(0f, (reach + gripTop) / 2f, -0.2f, 0.1f, gripTop - reach, 0.1f, cd)
+            drawPart(0f, gripTop - 0.1f, -0.2f, 0.3f, 0.2f, 0.24f, GANTRY)
+        }
+        Matrix.scaleM(model, 0, CAT_SCALE, squash * CAT_SCALE, CAT_SCALE)
         if (!g.onGround && !ridingZip && g.state == Game.State.RUNNING) {
             Matrix.rotateM(model, 0, if (g.velY > 0) 14f else -10f, 1f, 0f, 0f)
         }
 
-        if (ridingZip) {
-            val grip = Game.CABLE_H - g.catY
-            drawPart(0f, (2.1f + grip) / 2f, -0.2f, 0.1f, grip - 2.05f, 0.1f, cd)
-            drawPart(0f, grip - 0.1f, -0.2f, 0.3f, 0.2f, 0.24f, GANTRY)
-        }
-
+        // 尾巴：同色三节，从背部正中上翘，左右轻摆
         val wag = sin(g.runPhase * 0.7f) * 0.12f
-        drawPart(0.05f + wag, 1.15f, 0.75f, 0.2f, 0.2f, 0.3f, c)
-        drawPart(0.05f + wag * 2f, 1.45f, 0.9f, 0.18f, 0.34f, 0.18f, c)
-        drawPart(0.05f + wag * 3f, 1.72f, 0.9f, 0.2f, 0.24f, 0.2f, cd)
+        drawPart(wag, 0.95f, 0.72f, 0.22f, 0.22f, 0.28f, c)
+        drawPart(wag * 1.6f, 1.25f, 0.85f, 0.20f, 0.28f, 0.20f, c)
+        drawPart(wag * 2.2f, 1.55f, 0.95f, 0.22f, 0.26f, 0.22f, cd)
 
+        // 四腿：略外撇，俯视能看见爪垫
         for (i in 0 until 4) {
             val front = i < 2
             val left = i % 2 == 0
-            val lx = if (left) -0.3f else 0.3f
-            val lz = if (front) -0.4f else 0.4f
+            val lx = if (left) -0.38f else 0.38f
+            val lz = if (front) -0.42f else 0.42f
             val phase = g.runPhase + if (i == 0 || i == 3) 0f else Math.PI.toFloat()
             val swing = when {
                 g.sliding -> 65f
@@ -1262,72 +1271,83 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
                 g.state == Game.State.RUNNING -> sin(phase) * 38f
                 else -> 0f
             }
-            pushModel(lx, 0.6f, lz)
+            pushModel(lx, 0.52f, lz)
             Matrix.rotateM(model, 0, swing, 1f, 0f, 0f)
-            drawPart(0f, -0.26f, 0f, 0.24f, 0.52f, 0.24f, if (left) c else cd)
-            drawPart(0f, -0.55f, 0f, 0.26f, 0.14f, 0.28f, CAT_WHITE)
+            drawPart(0f, -0.22f, 0f, 0.26f, 0.48f, 0.26f, if (left) c else cd)
+            drawPart(0f, -0.50f, 0.02f, 0.28f, 0.14f, 0.30f, CAT_WHITE)
             popModel()
         }
 
-        drawPart(0f, 0.85f, 0f, 0.95f, 0.8f, 1.35f, c)
-        drawPart(0f, 1.15f, 0.3f, 0.97f, 0.24f, 0.3f, cd)
-        drawPart(0f, 1.15f, -0.25f, 0.97f, 0.24f, 0.3f, cd)
+        // 身体：偏矮偏长，俯视像猫而不是竖柱
+        drawPart(0f, 0.72f, 0f, 1.05f, 0.72f, 1.45f, c)
+        drawPart(0f, 0.48f, -0.05f, 0.78f, 0.36f, 1.1f, CAT_WHITE)
+        drawPart(0f, 0.95f, 0.28f, 1.08f, 0.22f, 0.32f, cd)
+        drawPart(0f, 0.95f, -0.28f, 1.08f, 0.22f, 0.32f, cd)
 
-        // 围巾：颈圈 + 随跑动向后飘的两节飘带
         if (g.scarfStyle > 0) {
             val sc = SCARF_COLS[g.scarfStyle % SCARF_COLS.size]
-            drawPart(0f, 1.30f, -0.30f, 1.0f, 0.22f, 0.34f, sc)
+            drawPart(0f, 1.12f, -0.35f, 1.05f, 0.20f, 0.34f, sc)
             val fl = sin(g.runPhase * 1.1f) * 0.15f
-            drawPart(0.20f, 1.28f + fl * 0.4f, 0.30f, 0.24f, 0.16f, 0.55f, sc)
-            drawPart(0.20f, 1.22f + fl, 0.78f, 0.20f, 0.13f, 0.45f, sc)
+            drawPart(0.22f, 1.10f + fl * 0.4f, 0.25f, 0.24f, 0.16f, 0.55f, sc)
+            drawPart(0.22f, 1.04f + fl, 0.72f, 0.20f, 0.13f, 0.45f, sc)
         }
         drawActivePowerUps(g)
 
-        pushModel(0f, 1.75f, -0.42f)
+        // 头：略靠前；俯视时耳朵是主要辨识点
+        pushModel(0f, 1.48f, -0.55f)
         if (g.state == Game.State.DEAD) {
             Matrix.rotateM(model, 0, 25f, 1f, 0f, 0f)
         } else if (g.state == Game.State.RUNNING) {
-            // 跑动点头：与步频同相，落地时略埋
             val nod = when {
                 g.sliding -> 12f
                 !g.onGround && !ridingZip -> if (g.velY > 0) -6f else 4f
                 else -> sin(g.runPhase * 2f) * 2.5f
             }
-            // 变道时头先侧看；直线微摆
-            val yaw = lean * 1.4f + if (g.onGround && !g.sliding) sin(g.runPhase * 0.55f) * 4f else 0f
+            // 变道时头侧看，直线时微摆 —— 让侧脸偶尔露出来
+            val yaw = lean * 1.6f + if (g.onGround && !g.sliding) sin(g.runPhase * 0.55f) * 5f else 0f
             val roll = -lean * 0.35f
             Matrix.rotateM(model, 0, nod, 1f, 0f, 0f)
             Matrix.rotateM(model, 0, yaw, 0f, 1f, 0f)
             Matrix.rotateM(model, 0, roll, 0f, 0f, 1f)
         }
-        drawPart(0f, 0f, 0f, 0.9f, 0.8f, 0.85f, c)
-        // 耳朵：跑动时轻颤，左右相位错开
+        drawPart(0f, 0f, 0f, 0.92f, 0.78f, 0.88f, c)
+        drawPart(-0.40f, -0.06f, -0.15f, 0.20f, 0.30f, 0.36f, CAT_WHITE)
+        drawPart(0.40f, -0.06f, -0.15f, 0.20f, 0.30f, 0.36f, CAT_WHITE)
+        drawPart(0f, -0.16f, -0.42f, 0.46f, 0.32f, 0.16f, CAT_WHITE)
+        drawPart(0f, -0.10f, -0.50f, 0.14f, 0.10f, 0.08f, CAT_NOSE)
+        drawPart(-0.22f, 0.08f, -0.40f, 0.18f, 0.18f, 0.08f, CAT_EYE)
+        drawPart(0.22f, 0.08f, -0.40f, 0.18f, 0.18f, 0.08f, CAT_EYE)
+        drawPart(-0.18f, 0.12f, -0.44f, 0.06f, 0.06f, 0.04f, CAT_EYE_HL)
+        drawPart(0.26f, 0.12f, -0.44f, 0.06f, 0.06f, 0.04f, CAT_EYE_HL)
+
+        // 大三角耳：从正后俯视最显眼
         val earWiggle = if (g.state == Game.State.RUNNING && g.onGround && !g.sliding) {
-            sin(g.runPhase * 2.4f) * 6f
+            sin(g.runPhase * 2.4f) * 5f
         } else 0f
-        pushModel(-0.3f, 0.52f, 0f)
-        Matrix.rotateM(model, 0, -earWiggle, 0f, 0f, 1f)
-        drawPart(0f, 0f, 0f, 0.24f, 0.26f, 0.14f, cd)
+        pushModel(-0.32f, 0.42f, 0.05f)
+        Matrix.rotateM(model, 0, -18f - earWiggle, 0f, 0f, 1f)
+        drawPart(0f, 0.16f, 0f, 0.28f, 0.42f, 0.18f, cd)
+        drawPart(0f, 0.12f, -0.05f, 0.14f, 0.26f, 0.08f, CAT_PINK)
         popModel()
-        pushModel(0.3f, 0.52f, 0f)
-        Matrix.rotateM(model, 0, earWiggle * 0.85f, 0f, 0f, 1f)
-        drawPart(0f, 0f, 0f, 0.24f, 0.26f, 0.14f, cd)
+        pushModel(0.32f, 0.42f, 0.05f)
+        Matrix.rotateM(model, 0, 18f + earWiggle * 0.85f, 0f, 0f, 1f)
+        drawPart(0f, 0.16f, 0f, 0.28f, 0.42f, 0.18f, cd)
+        drawPart(0f, 0.12f, -0.05f, 0.14f, 0.26f, 0.08f, CAT_PINK)
         popModel()
-        drawPart(0f, -0.15f, -0.4f, 0.5f, 0.32f, 0.14f, CAT_WHITE)
-        // 帽子（随头部转动；吃到头盔时被头盔取代）
+
         if (!g.helmet && g.hatStyle > 0) {
             when (g.hatStyle) {
-                1 -> { // 红棒球帽：帽身 + 前伸帽檐 + 顶扣
+                1 -> {
                     drawPart(0f, 0.47f, 0.05f, 0.82f, 0.26f, 0.75f, HAT_RED)
                     drawPart(0f, 0.40f, -0.55f, 0.66f, 0.09f, 0.5f, HAT_RED)
                     drawPart(0f, 0.63f, 0.05f, 0.16f, 0.1f, 0.16f, HAT_RED_DK)
                 }
-                2 -> { // 青草帽：宽帽檐 + 帽顶 + 绿帽带
+                2 -> {
                     drawPart(0f, 0.42f, 0f, 1.35f, 0.08f, 1.3f, STRAW)
                     drawPart(0f, 0.56f, 0f, 0.72f, 0.24f, 0.7f, STRAW)
                     drawPart(0f, 0.49f, 0f, 0.76f, 0.07f, 0.74f, STRAW_BAND)
                 }
-                else -> { // 金皇冠：金环 + 三个尖齿 + 前宝石
+                else -> {
                     drawPart(0f, 0.50f, 0f, 0.66f, 0.16f, 0.64f, CROWN_GOLD)
                     for (i in -1..1) {
                         drawPart(i * 0.22f, 0.64f, 0f, 0.12f, 0.14f, 0.12f, CROWN_GOLD)
@@ -1351,45 +1371,43 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
     /** 把生效中的道具做成猫身上的装备，HUD 之外也能一眼辨认。 */
     private fun drawActivePowerUps(g: Game) {
         if (g.magnetTime > 0f) {
-            // 背负式马蹄磁铁；红蓝电荷沿身体两侧环绕。
-            drawPart(0f, 1.36f, 0.76f, 0.7f, 0.18f, 0.16f, MAGNET_RED)
-            drawPart(-0.27f, 1.08f, 0.76f, 0.16f, 0.56f, 0.16f, MAGNET_RED)
-            drawPart(0.27f, 1.08f, 0.76f, 0.16f, 0.56f, 0.16f, MAGNET_RED)
-            drawPart(-0.27f, 0.77f, 0.76f, 0.2f, 0.14f, 0.2f, MAGNET_TIP)
-            drawPart(0.27f, 0.77f, 0.76f, 0.2f, 0.14f, 0.2f, MAGNET_TIP)
-            for (i in 0 until 4) {
-                val a = powerFxPhase * 1.7f + i * (Math.PI.toFloat() / 2f)
-                val x = cos(a) * 0.95f
-                val y = 1.18f + sin(a * 1.35f) * 0.35f
-                val z = 0.12f + sin(a) * 0.82f
-                val k = 0.11f + 0.04f * abs(sin(a * 2f))
-                drawPart(x, y, z, k, k, k, if (i % 2 == 0) MAGNET_RED else MAGNET_BLUE)
+            // 小巧背挂磁铁，避免把猫身剪影撑成「红塔」
+            drawPart(0f, 1.05f, 0.78f, 0.48f, 0.14f, 0.12f, MAGNET_RED)
+            drawPart(-0.18f, 0.88f, 0.78f, 0.12f, 0.36f, 0.12f, MAGNET_RED)
+            drawPart(0.18f, 0.88f, 0.78f, 0.12f, 0.36f, 0.12f, MAGNET_RED)
+            drawPart(-0.18f, 0.68f, 0.78f, 0.14f, 0.10f, 0.14f, MAGNET_TIP)
+            drawPart(0.18f, 0.68f, 0.78f, 0.14f, 0.10f, 0.14f, MAGNET_TIP)
+            // 两侧各一颗电荷，少而干净
+            for (i in 0 until 2) {
+                val a = powerFxPhase * 2.2f + i * Math.PI.toFloat()
+                val x = cos(a) * 0.72f
+                val y = 0.95f + sin(a * 1.4f) * 0.18f
+                val z = 0.55f
+                drawPart(x, y, z, 0.10f, 0.10f, 0.10f, if (i == 0) MAGNET_RED else MAGNET_BLUE)
             }
         }
 
         if (g.doubleTime > 0f) {
-            // 紫金肩章 + 一对反向公转的积分核心，表达“x2”。
-            drawPart(-0.52f, 1.25f, 0f, 0.22f, 0.18f, 0.42f, DOUBLE_P)
-            drawPart(0.52f, 1.25f, 0f, 0.22f, 0.18f, 0.42f, DOUBLE_P)
-            drawPart(0f, 1.35f, 0.55f, 0.34f, 0.3f, 0.12f, DOUBLE_CORE)
+            drawPart(-0.55f, 1.05f, 0f, 0.20f, 0.16f, 0.38f, DOUBLE_P)
+            drawPart(0.55f, 1.05f, 0f, 0.20f, 0.16f, 0.38f, DOUBLE_P)
+            drawPart(0f, 1.15f, 0.55f, 0.30f, 0.26f, 0.12f, DOUBLE_CORE)
             for (i in 0 until 2) {
                 val a = powerFxPhase * 1.25f + i * Math.PI.toFloat()
-                pushModel(cos(a) * 0.78f, 1.55f + sin(a * 2f) * 0.16f, sin(a) * 0.62f)
+                pushModel(cos(a) * 0.72f, 1.35f + sin(a * 2f) * 0.14f, sin(a) * 0.55f)
                 Matrix.rotateM(model, 0, powerFxPhase * 95f + i * 90f, 0f, 1f, 0f)
-                drawPart(0f, 0f, 0f, 0.22f, 0.22f, 0.22f, if (i == 0) DOUBLE_P else DOUBLE_CORE)
+                drawPart(0f, 0f, 0f, 0.18f, 0.18f, 0.18f, if (i == 0) DOUBLE_P else DOUBLE_CORE)
                 popModel()
             }
         }
 
         if (g.boostTime > 0f) {
-            // 双推进器固定在背部，尾焰朝跑动反方向延伸。
             val flame = 0.28f + abs(sin(powerFxPhase * 3.2f)) * 0.22f
             for (side in intArrayOf(-1, 1)) {
                 val x = side * 0.38f
-                drawPart(x, 0.98f, 0.7f, 0.26f, 0.48f, 0.28f, BOOST_CYAN)
-                drawPart(x, 0.98f, 0.86f, 0.14f, 0.3f, 0.12f, BOOST_CORE)
-                drawPart(x, 0.98f, 1.08f, 0.16f, 0.22f, flame, BOOST_CORE)
-                drawPart(x, 0.98f, 1.35f + flame * 0.25f, 0.11f, 0.15f, flame * 0.7f, BOOST_CYAN)
+                drawPart(x, 0.85f, 0.72f, 0.24f, 0.40f, 0.26f, BOOST_CYAN)
+                drawPart(x, 0.85f, 0.88f, 0.12f, 0.26f, 0.12f, BOOST_CORE)
+                drawPart(x, 0.85f, 1.08f, 0.14f, 0.18f, flame, BOOST_CORE)
+                drawPart(x, 0.85f, 1.32f + flame * 0.25f, 0.10f, 0.12f, flame * 0.7f, BOOST_CYAN)
             }
         }
     }
