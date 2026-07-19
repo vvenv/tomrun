@@ -87,10 +87,11 @@
 | 类别 | 项目（价格） |
 |------|-------------|
 | 配色 | 蓝灰 免费 / 橘黄 300 / 乌黑 800 / 粉红 1500 |
-| 尾迹 | 无 免费 / 青色 500 / 金色 1200 / 彩虹 2500 |
+| 双脚光迹 | 无 免费 / 青色 500 / 金色 1200 / 彩虹 2500 |
 | 围巾 | 无 免费 / 火红 400 / 天青 1000 / 星紫 2200 |
 | 帽子 | 无 免费 / 红棒球帽 600 / 青草帽 1500 / 金皇冠 2800 |
 
+- 双脚光迹会沿猫跑动、换道与跳跃的路线弯曲，并逐渐淡出
 - 围巾在跑动时向后飘动；帽子随头部点头转动（吃到头盔时暂被头盔遮住）
 - 庭院里的猫同样穿戴当前装备的围巾与帽子
 - 装备状态与钱包余额持久保存
@@ -119,7 +120,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 ## 代码结构
 
 - [Game.kt](app/src/main/java/com/vvenv/tomrun/Game.kt) — 数值节奏、任务、成就、钱包商店、物理与生成
-- [GameRenderer.kt](app/src/main/java/com/vvenv/tomrun/GameRenderer.kt) — OpenGL 体素渲染与尾迹
+- [GameRenderer.kt](app/src/main/java/com/vvenv/tomrun/GameRenderer.kt) — OpenGL 体素渲染与双脚光迹
 - [HudView.kt](app/src/main/java/com/vvenv/tomrun/HudView.kt) — HUD、商店/成就面板、手势
 - [assets/fonts/](app/src/main/assets/fonts/) — Fusion Pixel 12px（zh_hans）
 - [SoundFx.kt](app/src/main/java/com/vvenv/tomrun/SoundFx.kt) — 程序化音效

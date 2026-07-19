@@ -113,7 +113,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
             0xFFD9483B.toInt(), 0xFF3FA9A5.toInt(), 0xFF8C6BD9.toInt(), 0xFFF2C14E.toInt()
         )
         private val HOME_TAB_NAMES = arrayOf("房屋", "屋顶", "装饰")
-        private val SHOP_TAB_NAMES = arrayOf("配色", "尾迹", "围巾", "帽子")
+        private val SHOP_TAB_NAMES = arrayOf("配色", "光迹", "围巾", "帽子")
         /** 围巾颜色，与 3D 渲染配色呼应；0 为"无"占位 */
         private val SCARF_CHIPS = intArrayOf(
             0xFF888888.toInt(), 0xFFF23F3F.toInt(), 0xFF4DD8F2.toInt(), 0xFFA673FF.toInt()
@@ -1294,23 +1294,20 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val pvTrail = if (tab == Game.SHOP_TAB_TRAIL) game.shopBrowseTrail else game.trailStyle
         val footY = h * 0.44f
         if (pvTrail > 0) {
-            // 尾迹预览：身后一串渐隐色块
-            for (i in 0 until 5) {
-                val a = 220 - i * 40
+            // 光迹预览：两排低矮光块从脚下向后渐隐
+            for (i in 6 downTo 1) {
+                val a = 205 - i * 25
                 val chip = if (pvTrail == 3) {
                     intArrayOf(
                         0xFFF25A5A.toInt(), 0xFFFFD75E.toInt(),
                         0xFF6FBF56.toInt(), 0xFF57B6E8.toInt()
-                    )[i % 4]
+                    )[(i - 1) % 4]
                 } else TRAIL_CHIPS[pvTrail]
-                val k = (16f - i * 2f) * s
+                val cx = w / 2f - (38f + i * 20f) * s
                 btnPaint.style = Paint.Style.FILL
                 btnPaint.color = withAlpha(chip, a)
-                canvas.drawRect(
-                    w / 2f - (78f + i * 34f) * s - k / 2f, footY - 52f * s - i * 5f * s - k / 2f,
-                    w / 2f - (78f + i * 34f) * s + k / 2f, footY - 52f * s - i * 5f * s + k / 2f,
-                    btnPaint
-                )
+                canvas.drawRect(cx - 8f * s, footY - 5f * s, cx + 8f * s, footY, btnPaint)
+                canvas.drawRect(cx - 8f * s, footY - 14f * s, cx + 8f * s, footY - 9f * s, btnPaint)
             }
         }
         drawPixelCat(canvas, w / 2f, footY, s * 2f, 1f, POSE_STAND, pvColor, pvScarf, pvHat)

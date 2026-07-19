@@ -85,12 +85,12 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
     private val lineY = FloatArray(28) { 0.4f + prand.nextFloat() * 3.5f }
     private val lineZ = FloatArray(28) { prand.nextFloat() * 30f - 28f }
 
-    // 尾迹历史采样（沿猫的真实轨迹）
-    private val trailX = FloatArray(48)
-    private val trailY = FloatArray(48)
-    private val trailZ = FloatArray(48)
-    private val trailAge = FloatArray(48)
-    private val trailSeed = FloatArray(48)
+    // 双脚光迹历史采样（沿猫的真实轨迹）
+    private val trailX = FloatArray(24)
+    private val trailY = FloatArray(24)
+    private val trailZ = FloatArray(24)
+    private val trailAge = FloatArray(24)
+    private val trailSeed = FloatArray(24)
     private var trailCount = 0
     private var trailEmit = 0f
 
@@ -1133,15 +1133,15 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
     }
 
     /**
-     * 体素尾迹：0 无 / 1 青 / 2 金 / 3 彩虹；冲刺时叠加强化。
-     * 采样猫的历史位置并随场景后移，尾迹沿真实轨迹弯曲（换道拐弯、跳跃拱起），
-     * 逐渐缩小淡出并轻微上飘；金色带闪光星屑，彩虹沿轨迹渐变流动。
+     * 双脚光迹：0 无 / 1 青 / 2 金 / 3 彩虹；冲刺时叠加强化。
+     * 两条低矮光带沿换道与跳跃轨迹弯曲，既能表现速度，又不会遮住角色本身。
      */
     private fun drawCosmeticTrail(g: Game, dt: Float) {
         val style = g.trailStyle
         val boost = g.boosting
         if (style == 0 && !boost) {
             trailCount = 0
+            trailEmit = 0f
             return
         }
 
@@ -1153,7 +1153,7 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         }
         // 淘汰过老/出屏的点（保持队列前段有效即可，简单压缩）
         var w = 0
-        val maxAge = if (boost) 0.55f else 0.42f
+        val maxAge = if (boost) 0.62f else 0.48f
         for (i in 0 until trailCount) {
             if (trailAge[i] < maxAge && trailZ[i] < 8f) {
                 trailX[w] = trailX[i]; trailY[w] = trailY[i]
@@ -1164,24 +1164,21 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         }
         trailCount = w
 
-        // 按间隔从尾巴尖端补充采样（冲刺时更密）
+        // 按间隔记录双脚中心；离地时光迹随跳跃形成弧线
         trailEmit -= dt
-        val emitGap = if (boost) 0.022f else 0.034f
+        val emitGap = if (boost) 0.035f else 0.055f
         if (trailEmit <= 0f && trailCount < trailX.size) {
             trailEmit = emitGap
             val i = trailCount++
-            // 与 drawCat 尾巴尖端对齐（正中 + 轻摆）
-            val bob = if (g.onGround) abs(sin(g.runPhase)) * 0.07f else 0f
-            val squash = if (g.sliding) 0.5f else 1f
-            val wag = sin(g.runPhase * 0.7f) * 0.12f
-            trailX[i] = g.catX + wag * 2.2f * CAT_SCALE + (prand.nextFloat() - 0.5f) * 0.08f
-            trailY[i] = g.catY + bob + 1.55f * squash * CAT_SCALE + (prand.nextFloat() - 0.5f) * 0.08f
-            trailZ[i] = 0.95f * CAT_SCALE
+            trailX[i] = g.catX
+            trailY[i] = g.catY + 0.05f
+            trailZ[i] = 0.20f
             trailAge[i] = 0f
             trailSeed[i] = prand.nextFloat() * 6.28f
         }
 
         mMode = 2
+        GLES20.glDepthMask(false)
         for (i in 0 until trailCount) {
             val t = (trailAge[i] / maxAge).coerceIn(0f, 1f)   // 0 新 → 1 将消失
             val fade = (1f - t) * (1f - t)
@@ -1192,25 +1189,29 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
                 else -> BOOST_TRAIL
             }
             val boostK = if (boost) 1.25f else 1f
-            val a = (0.62f * fade * boostK).coerceIn(0.05f, 0.75f)
+            val a = (0.58f * fade * boostK).coerceIn(0.03f, 0.72f)
             val col = floatArrayOf(base[0], base[1], base[2], a)
-            // 尺寸随年龄缩小；轻微上飘 + 左右微摆
-            val size = (0.28f * (1f - t * 0.7f)) * boostK
-            val rise = t * 0.45f
-            val sway = sin(trailSeed[i] + trailAge[i] * 7f) * 0.07f * t
-            drawBox(trailX[i] + sway, trailY[i] + rise, trailZ[i], size, size * 0.9f, size, col)
+            val width = 0.22f * (1f - t * 0.35f) * boostK
+            val length = 0.42f * boostK
+            val footGap = 0.31f * CAT_SCALE
+            val rise = t * 0.08f
+            drawBox(trailX[i] - footGap, trailY[i] + rise, trailZ[i], width, 0.055f, length, col)
+            drawBox(trailX[i] + footGap, trailY[i] + rise, trailZ[i], width, 0.055f, length, col)
 
-            // 金色：额外星屑闪光；彩虹：小亮点
+            // 金色和彩虹附带稀疏星屑
             if (style >= 2 && i % 3 == 0) {
                 val tw = 0.4f + 0.6f * abs(sin(trailSeed[i] * 5f + trailAge[i] * 18f))
                 val sp = floatArrayOf(1f, 1f, 0.92f, (a * tw).coerceAtMost(0.8f))
-                val ss = size * 0.35f
+                val ss = 0.10f * boostK
                 drawBox(
-                    trailX[i] - sway * 2f, trailY[i] + rise + 0.22f, trailZ[i],
+                    trailX[i] + sin(trailSeed[i]) * 0.48f,
+                    trailY[i] + 0.18f + t * 0.30f,
+                    trailZ[i],
                     ss, ss, ss, sp
                 )
             }
         }
+        GLES20.glDepthMask(true)
         mMode = 0
     }
 

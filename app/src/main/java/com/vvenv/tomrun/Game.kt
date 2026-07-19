@@ -98,13 +98,13 @@ class Game {
         val ACHIEVE_TIERS = arrayOf("铜", "银", "金")
         val ACHIEVE_REWARDS = intArrayOf(100, 250, 500)
 
-        // 外观：4 色 + 4 尾迹（0 免费）
+        // 外观：4 色 + 4 双脚光迹（0 免费）
         const val CAT_COLOR_COUNT = 4
         const val TRAIL_COUNT = 4
         val COLOR_PRICES = intArrayOf(0, 300, 800, 1500)
         val TRAIL_PRICES = intArrayOf(0, 500, 1200, 2500)
         val COLOR_NAMES = arrayOf("蓝灰", "橘黄", "乌黑", "粉红")
-        val TRAIL_NAMES = arrayOf("无尾迹", "青色", "金色", "彩虹")
+        val TRAIL_NAMES = arrayOf("无光迹", "青色", "金色", "彩虹")
         // 围巾（跑动时飘动）与帽子（吃到头盔时暂被头盔遮住）
         const val SCARF_COUNT = 4
         const val HAT_COUNT = 4
