@@ -63,14 +63,66 @@ class Game {
         const val Q_SLIDE = 4
         const val Q_SMASH = 5
         const val Q_PORTAL = 6
-        const val Q_WORD = 7
+        const val Q_RELIC = 7
 
-        /** 字母金币目标词（短词，便于一局拼 1–3 次） */
-        val WORD_POOL = arrayOf(
-            "CAT", "RUN", "TOM", "GOLD", "JUMP",
-            "COIN", "FAST", "LUCK", "MEGA", "STAR"
+        // 文物收集：跑道上稀有刷出，收进博物馆图鉴（寓教于乐）
+        const val RELIC_COMMON = 0
+        const val RELIC_RARE = 1
+        const val RELIC_LEGEND = 2
+        val RELIC_RARITY_NAMES = arrayOf("普通", "稀有", "传说")
+        val RELIC_SCORE = intArrayOf(100, 250, 500)
+        val RELIC_WALLET = intArrayOf(5, 15, 40)
+        val RELIC_NAMES = arrayOf(
+            "彩陶盆", "甲骨文", "青铜爵", "竹简", "秦半两", "汉瓦当", "唐三彩", "青花瓷",
+            "后母戊鼎", "越王勾践剑", "曾侯乙编钟", "兵马俑", "铜奔马", "兰亭集序",
+            "四羊方尊", "金缕玉衣", "清明上河图", "敦煌飞天",
+            // 新增（追加末尾，保持旧存档 bitmask 下标不变）
+            "玉琮", "铜镜", "算盘", "司南", "长信宫灯", "马王堆帛画", "三星堆面具", "莲鹤方壶"
         )
-        const val LETTER_HUD_MAX = 32
+        val RELIC_ERAS = arrayOf(
+            "新石器时代", "商代", "商周", "战国", "秦代", "汉代", "唐代", "元明",
+            "商代", "春秋", "战国", "秦代", "汉代", "东晋",
+            "商代", "汉代", "北宋", "唐代",
+            "良渚", "汉代", "明清", "战国", "汉代", "汉代", "商代", "春秋"
+        )
+        val RELIC_FACTS = arrayOf(
+            "半坡遗址出土，画着人面鱼纹",
+            "刻在龟甲兽骨上的最早汉字",
+            "古人宴饮用的三足酒杯",
+            "纸发明之前，字写在竹片上",
+            "统一天下后的圆形方孔钱",
+            "屋檐上刻着吉祥话的瓦头",
+            "黄绿白三彩釉的骆驼与骏马",
+            "白底蓝花，名扬海上丝绸之路",
+            "现存最重的青铜器，约832公斤",
+            "埋藏两千多年依然锋利如新",
+            "65件铜钟能演奏完整乐曲",
+            "守卫秦始皇陵的地下军团",
+            "马踏飞燕，中国旅游的标志",
+            "王羲之写下的天下第一行书",
+            "四角各立一只卷角羊的国宝",
+            "金丝串起两千多片玉的葬服",
+            "五米长卷画尽北宋都城繁华",
+            "莫高窟壁画里的飞舞仙女",
+            "内圆外方，象征天地相通",
+            "背面常铸神兽与吉祥铭文",
+            "一拨珠子就能快速算账",
+            "最早的指南工具，勺子指南",
+            "宫女跪捧，烟气吸入袖中",
+            "覆盖棺盖的T形升仙图",
+            "纵目巨耳的青铜神面",
+            "壶盖立着展翅欲飞的仙鹤"
+        )
+        val RELIC_RARITY = intArrayOf(
+            0, 0, 0, 0, 0, 0, 0, 0,
+            1, 1, 1, 1, 1, 1,
+            2, 2, 2, 2,
+            0, 0, 0, 1, 1, 1, 2, 2
+        )
+        val RELIC_COUNT = RELIC_NAMES.size
+        // 文物图鉴集齐一次性大奖（随件数上调）
+        const val MUSEUM_REWARD = 2200
+        const val RELIC_HUD_MAX = 8
 
         // 平行宇宙
         const val UNI_MEADOW = 0
@@ -88,21 +140,36 @@ class Game {
         // 宇宙图鉴集齐一次性大奖
         const val CODEX_REWARD = 1000
 
-        // 成就类别
+        // 成就类别（每类铜银金三级）
         const val A_COINS = 0
         const val A_DIST = 1
         const val A_QUESTS = 2
         const val A_COMBO = 3
         const val A_SCORE = 4
-        const val ACHIEVE_CATS = 5
+        const val A_PORTAL = 5
+        const val A_UNIVERSE = 6
+        const val A_RELIC = 7
+        const val A_STAR = 8
+        const val A_HOME = 9
+        const val ACHIEVE_CATS = 10
+        const val ACHIEVE_TIERS_PER = 3
+        const val ACHIEVE_MAX = ACHIEVE_CATS * ACHIEVE_TIERS_PER
         val ACHIEVE_TARGETS = arrayOf(
             intArrayOf(200, 1000, 5000),       // 累计金币
             intArrayOf(2000, 10000, 50000),    // 累计距离
             intArrayOf(5, 25, 100),            // 任务数
             intArrayOf(30, 100, 250),          // 最高连击
-            intArrayOf(3000, 8000, 20000)      // 最高分
+            intArrayOf(3000, 8000, 20000),     // 最高分
+            intArrayOf(3, 15, 50),             // 穿越次数
+            intArrayOf(2, 4, 6),               // 探索宇宙数
+            intArrayOf(5, 13, RELIC_COUNT),    // 文物图鉴
+            intArrayOf(1, 3, 5),               // 观星手册
+            intArrayOf(1, 2, 3)                // 小屋能量等级
         )
-        val ACHIEVE_NAMES = arrayOf("金币收藏家", "长跑健将", "任务达人", "连击大师", "得分王")
+        val ACHIEVE_NAMES = arrayOf(
+            "金币收藏家", "长跑健将", "任务达人", "连击大师", "得分王",
+            "平行旅人", "宇宙旅者", "考古少年", "观星少年", "筑巢达人"
+        )
         val ACHIEVE_TIERS = arrayOf("铜", "银", "金")
         val ACHIEVE_REWARDS = intArrayOf(100, 250, 500)
 
@@ -120,22 +187,29 @@ class Game {
         val SCARF_PRICES = intArrayOf(0, 400, 1000, 2200)
         val HAT_NAMES = arrayOf("无帽子", "红棒球帽", "青草帽", "金皇冠")
         val HAT_PRICES = intArrayOf(0, 600, 1500, 2800)
-        // 商店标签页
-        const val SHOP_TAB_COLOR = 0
-        const val SHOP_TAB_TRAIL = 1
-        const val SHOP_TAB_SCARF = 2
-        const val SHOP_TAB_HAT = 3
-
-        // 小屋：房屋主体 / 屋顶 / 院子装饰
+        // 小屋标签页：房屋 / 屋顶 / 庭院 / 猫装扮（同时可用于庭院）
         val HOUSE_NAMES = arrayOf("小木屋", "砖瓦房", "双层小楼", "梦幻城堡")
         val HOUSE_PRICES = intArrayOf(0, 800, 2000, 4500)
         val ROOF_NAMES = arrayOf("红屋顶", "青屋顶", "紫屋顶", "金屋顶")
         val ROOF_PRICES = intArrayOf(0, 250, 600, 1200)
         val DECO_NAMES = arrayOf("花坛", "木栅栏", "信箱", "秋千", "猫爬架", "小泳池", "望远镜", "彩旗")
         val DECO_PRICES = intArrayOf(150, 200, 250, 400, 550, 700, 900, 1200)
+        const val DECO_TELESCOPE = 6
+        /** 望月镜可观测天体；telescopeLevel 0~4 对应已解锁的最高索引 */
+        const val TELESCOPE_MAX_LEVEL = 4
+        val TELESCOPE_BODY_NAMES = arrayOf("月亮", "火星", "土星", "木星", "深空星云")
+        /** 从当前等级升到下一级所需金币 */
+        val TELESCOPE_UPGRADE_PRICES = intArrayOf(400, 800, 1500, 2500)
+        const val STARGAZE_AGE_PRIMARY = 0
+        const val STARGAZE_AGE_MIDDLE = 1
         const val HOME_TAB_HOUSE = 0
         const val HOME_TAB_ROOF = 1
         const val HOME_TAB_DECO = 2
+        const val HOME_TAB_COLOR = 3
+        const val HOME_TAB_TRAIL = 4
+        const val HOME_TAB_SCARF = 5
+        const val HOME_TAB_HAT = 6
+        const val HOME_TAB_COUNT = 7
         // 小屋能量等级门槛（按已购总价值）与开局奖励
         val HOME_LEVEL_SCORE = intArrayOf(600, 2200, 5000)
         const val DEFAULT_CHARACTER_NAME = "汤姆"
@@ -157,6 +231,8 @@ class Game {
         const val EV_ACHIEVE = 12
         const val EV_PORTAL = 13
         const val EV_BUY = 14
+        const val EV_PET = 15
+        const val EV_STARGAZE = 16
 
         const val W_SUNNY = 0
         const val W_RAIN = 1
@@ -168,7 +244,6 @@ class Game {
 
         // 菜单面板
         const val PANEL_MAIN = 0
-        const val PANEL_SHOP = 1
         const val PANEL_HOME = 2
     }
 
@@ -176,9 +251,9 @@ class Game {
         var x = LANE_X[lane]
         var taken = false
         var spin = Random.nextFloat() * 360f
-        /** 字母金币：'\u0000' 表示普通金币 */
-        var letter: Char = '\u0000'
-        val isLetterCoin get() = letter != '\u0000'
+        /** 文物金币：-1 表示普通金币，否则为 RELIC_NAMES 下标 */
+        var relicId: Int = -1
+        val isRelic get() = relicId >= 0
     }
 
     class Zip(val lane: Int, var entryZ: Float, val length: Float) {
@@ -233,11 +308,13 @@ class Game {
     private var comboTimer = 0f
     private var comboScore = 0
 
-    // 字母组词：本局目标词 + 已填字母位掩码
-    @Volatile var targetWord = ""
-    @Volatile var wordMask = 0
-    @Volatile var wordsCompleted = 0
-    private var wordStreak = 0
+    // 文物收集：本局发现数 + 持久图鉴位掩码
+    @Volatile var runRelics = 0
+    @Volatile var relicsFound = 0
+    private var relicMask = 0
+    private var museumRewarded = false
+    @Volatile var totalRelicPickups = 0
+    private var nextRelicAt = 0f
 
     val quests = ArrayList<Quest>(3)
     @Volatile var bestComboRun = 0
@@ -254,7 +331,7 @@ class Game {
 
     // 成就：每类 0~3 级
     val achieveLevels = IntArray(ACHIEVE_CATS)
-    @Volatile var achieveCount = 0   // 已完成级数总和 /15
+    @Volatile var achieveCount = 0   // 已完成级数总和 / ACHIEVE_MAX
     private val bannerQueue = ArrayList<Banner>()
     @Volatile var bannerText = ""
     @Volatile var bannerColor = 0xFFFFD426.toInt()
@@ -298,6 +375,15 @@ class Game {
     @Volatile var homeBrowseHouse = 0
     @Volatile var homeBrowseRoof = 0
     @Volatile var homeBrowseDeco = 0
+    /** 望月镜等级 0~4：决定可观测的最高天体索引 */
+    @Volatile var telescopeLevel = 0
+    /** 观测卡已读位掩码（bit i = 天体 i 至少读过一次） */
+    private var stargazeReadMask = 0
+    /** 今日是否已读过一张「新卡」；跨日重置 */
+    private var stargazeDailyNewDone = false
+    private var stargazeDayKey = ""
+    /** 小学 / 初中文案档位 */
+    @Volatile var stargazeAgeMode = STARGAZE_AGE_PRIMARY
     @Volatile var characterName = DEFAULT_CHARACTER_NAME
         private set
     @Volatile var hasChosenCharacterName = false
@@ -305,7 +391,6 @@ class Game {
 
     // 菜单
     @Volatile var menuPanel = PANEL_MAIN
-    @Volatile var shopTab = SHOP_TAB_COLOR
     @Volatile var shopBrowseColor = 0
     @Volatile var shopBrowseTrail = 0
     @Volatile var shopBrowseScarf = 0
@@ -355,12 +440,12 @@ class Game {
     val entities = ArrayList<Entity>()
     val ziplines = ArrayList<Zip>()
 
-    /** 字母金币屏幕标签（由 Renderer 投影，HudView 绘制），坐标为 0~1 */
-    val letterHudX = FloatArray(LETTER_HUD_MAX)
-    val letterHudY = FloatArray(LETTER_HUD_MAX)
-    val letterHudScale = FloatArray(LETTER_HUD_MAX)
-    val letterHudCh = CharArray(LETTER_HUD_MAX)
-    @Volatile var letterHudCount = 0
+    /** 文物屏幕标签（由 Renderer 投影，HudView 绘制），坐标为 0~1 */
+    val relicHudX = FloatArray(RELIC_HUD_MAX)
+    val relicHudY = FloatArray(RELIC_HUD_MAX)
+    val relicHudScale = FloatArray(RELIC_HUD_MAX)
+    val relicHudId = IntArray(RELIC_HUD_MAX)
+    @Volatile var relicHudCount = 0
 
     private var prefs: SharedPreferences? = null
     private var sessionPickupCoins = 0  // 本局拾取计入累计统计
@@ -383,7 +468,7 @@ class Game {
         // 兼容旧 achieveMask → 迁移为三级成就
         if (p.contains("achieveLv0")) {
             for (i in 0 until ACHIEVE_CATS) {
-                achieveLevels[i] = p.getInt("achieveLv$i", 0).coerceIn(0, 3)
+                achieveLevels[i] = p.getInt("achieveLv$i", 0).coerceIn(0, ACHIEVE_TIERS_PER)
             }
         } else {
             val mask = p.getInt("achieveMask", 0)
@@ -417,6 +502,15 @@ class Game {
         universesSeen = Integer.bitCount(seenMask)
         codexRewarded = p.getBoolean("codexRewarded", false)
 
+        relicMask = p.getInt("relicMask", 0)
+        // 只统计当前图鉴范围内的位，避免旧存档高位脏数据
+        relicMask = relicMask and ((1 shl RELIC_COUNT) - 1)
+        relicsFound = Integer.bitCount(relicMask)
+        museumRewarded = p.getBoolean("museumRewarded", false)
+        // 图鉴扩容后：未集齐新件数则允许再次领取全收集奖
+        if (museumRewarded && relicsFound < RELIC_COUNT) museumRewarded = false
+        totalRelicPickups = p.getInt("totalRelicPickups", 0)
+
         ownedHouses = p.getInt("ownedHouses", 1) or 1
         ownedRoofs = p.getInt("ownedRoofs", 1) or 1
         ownedDecos = p.getInt("ownedDecos", 0)
@@ -426,6 +520,132 @@ class Game {
         if (!ownsRoof(roofStyle)) roofStyle = 0
         homeBrowseHouse = houseStyle
         homeBrowseRoof = roofStyle
+        telescopeLevel = p.getInt("telescopeLevel", 0).coerceIn(0, TELESCOPE_MAX_LEVEL)
+        stargazeReadMask = p.getInt("stargazeReadMask", 0)
+        stargazeDayKey = p.getString("stargazeDayKey", "") ?: ""
+        stargazeDailyNewDone = p.getBoolean("stargazeDailyNewDone", false)
+        stargazeAgeMode = p.getInt("stargazeAgeMode", STARGAZE_AGE_PRIMARY)
+            .coerceIn(STARGAZE_AGE_PRIMARY, STARGAZE_AGE_MIDDLE)
+        refreshStargazeDay()
+        // 新类别可能已达标（旧存档），启动时静默补发解锁与奖励
+        tryUnlockAchievements(persist = true, quiet = true)
+    }
+
+    enum class StargazeViewResult { REVIEW, NEW_READ, BLOCKED_NEW }
+
+    fun stargazeCardRead(body: Int): Boolean =
+        body in 0..TELESCOPE_MAX_LEVEL && (stargazeReadMask and (1 shl body)) != 0
+
+    fun stargazeReadCount(): Int {
+        var n = 0
+        for (i in 0..telescopeLevel) if (stargazeCardRead(i)) n++
+        return n
+    }
+
+    fun canUnlockNewStargazeToday(): Boolean {
+        refreshStargazeDay()
+        return !stargazeDailyNewDone
+    }
+
+    /** 第一个尚未阅读、且已在镜筒等级内解锁的天体；-1 表示全部已读 */
+    fun firstUnreadStargazeBody(): Int {
+        for (i in 0..telescopeLevel) if (!stargazeCardRead(i)) return i
+        return -1
+    }
+
+    fun toggleStargazeAgeMode(): Int {
+        stargazeAgeMode = if (stargazeAgeMode == STARGAZE_AGE_PRIMARY) {
+            STARGAZE_AGE_MIDDLE
+        } else {
+            STARGAZE_AGE_PRIMARY
+        }
+        persistStargaze()
+        return stargazeAgeMode
+    }
+
+    fun stargazeAgeLabel(): String =
+        if (stargazeAgeMode == STARGAZE_AGE_MIDDLE) "初中" else "小学"
+
+    /** 切换或打开某张观测卡；每日最多标记一张新卡为已读 */
+    @Synchronized fun onStargazeView(body: Int): StargazeViewResult {
+        if (!canUseTelescope() || body < 0 || body > telescopeLevel) return StargazeViewResult.REVIEW
+        refreshStargazeDay()
+        if (stargazeCardRead(body)) return StargazeViewResult.REVIEW
+        if (stargazeDailyNewDone) return StargazeViewResult.BLOCKED_NEW
+        stargazeReadMask = stargazeReadMask or (1 shl body)
+        stargazeDailyNewDone = true
+        persistStargaze()
+        tryUnlockAchievements(persist = true)
+        return StargazeViewResult.NEW_READ
+    }
+
+    fun stargazeStatusLine(): String {
+        refreshStargazeDay()
+        val read = stargazeReadCount()
+        val total = telescopeLevel + 1
+        return when {
+            read >= total && !telescopeCanUpgrade() ->
+                "观测手册 ${read}/${total} · 今日已完成"
+            !canUnlockNewStargazeToday() ->
+                "观测手册 ${read}/${total} · 今日新卡已读，可复习旧卡"
+            firstUnreadStargazeBody() >= 0 ->
+                "观测手册 ${read}/${total} · 今日还可读 1 张新卡"
+            else ->
+                "观测手册 ${read}/${total} · 复习模式"
+        }
+    }
+
+    private fun refreshStargazeDay() {
+        val today = todayKey()
+        if (stargazeDayKey != today) {
+            stargazeDayKey = today
+            stargazeDailyNewDone = false
+        }
+    }
+
+    private fun todayKey(): String {
+        val c = java.util.Calendar.getInstance()
+        val y = c.get(java.util.Calendar.YEAR)
+        val m = c.get(java.util.Calendar.MONTH) + 1
+        val d = c.get(java.util.Calendar.DAY_OF_MONTH)
+        return "%04d%02d%02d".format(y, m, d)
+    }
+
+    private fun persistStargaze() {
+        refreshStargazeDay()
+        prefs?.edit()
+            ?.putInt("stargazeReadMask", stargazeReadMask)
+            ?.putString("stargazeDayKey", stargazeDayKey)
+            ?.putBoolean("stargazeDailyNewDone", stargazeDailyNewDone)
+            ?.putInt("stargazeAgeMode", stargazeAgeMode)
+            ?.apply()
+    }
+
+    fun canUseTelescope() = ownsDeco(DECO_TELESCOPE)
+
+    fun telescopeCanUpgrade() = canUseTelescope() && telescopeLevel < TELESCOPE_MAX_LEVEL
+
+    fun telescopeUpgradePrice(): Int =
+        if (telescopeCanUpgrade()) TELESCOPE_UPGRADE_PRICES[telescopeLevel] else 0
+
+    /** 升级望月镜，解锁下一个天体 */
+    @Synchronized fun upgradeTelescope(): String {
+        if (state == State.RUNNING) return ""
+        if (!canUseTelescope()) return "需要先在装饰里购买望远镜"
+        if (!telescopeCanUpgrade()) return "望月镜已达最高级"
+        val price = telescopeUpgradePrice()
+        if (wallet < price) return "金币不足（需 $price）"
+        wallet -= price
+        telescopeLevel++
+        persistHome()
+        emit(EV_BUY, HAPTIC_MED)
+        tryUnlockAchievements(persist = true)
+        return "升级成功！可观测 ${TELESCOPE_BODY_NAMES[telescopeLevel]}"
+    }
+
+    /** 打开望月镜时的反馈 */
+    fun yardStargaze() {
+        emit(EV_STARGAZE, HAPTIC_LIGHT)
     }
 
     fun ownsColor(i: Int) = (ownedColors and (1 shl i)) != 0
@@ -437,6 +657,8 @@ class Game {
     fun ownsDeco(i: Int) = (ownedDecos and (1 shl i)) != 0
     fun seenUniverse(i: Int) = (seenMask and (1 shl i)) != 0
     fun codexComplete() = universesSeen >= UNIVERSE_COUNT
+    fun relicCollected(i: Int) = (relicMask and (1 shl i)) != 0
+    fun museumComplete() = relicsFound >= RELIC_COUNT
 
     fun decoOwnedCount(): Int = Integer.bitCount(ownedDecos)
 
@@ -450,12 +672,17 @@ class Game {
         return true
     }
 
-    /** 小屋繁荣值：已购项目总价值 */
+    /** 小屋繁荣值：已购项目总价值（含猫装扮与庭院） */
     fun homeScore(): Int {
         var sum = 0
         for (i in 1 until HOUSE_PRICES.size) if (ownsHouse(i)) sum += HOUSE_PRICES[i]
         for (i in 1 until ROOF_PRICES.size) if (ownsRoof(i)) sum += ROOF_PRICES[i]
         for (i in DECO_PRICES.indices) if (ownsDeco(i)) sum += DECO_PRICES[i]
+        for (i in 0 until telescopeLevel) sum += TELESCOPE_UPGRADE_PRICES[i]
+        for (i in 1 until CAT_COLOR_COUNT) if (ownsColor(i)) sum += COLOR_PRICES[i]
+        for (i in 1 until TRAIL_COUNT) if (ownsTrail(i)) sum += TRAIL_PRICES[i]
+        for (i in 1 until SCARF_COUNT) if (ownsScarf(i)) sum += SCARF_PRICES[i]
+        for (i in 1 until HAT_COUNT) if (ownsHat(i)) sum += HAT_PRICES[i]
         return sum
     }
 
@@ -468,11 +695,13 @@ class Game {
     }
 
     fun homeLevelDesc(lv: Int = homeLevel()): String = when (lv) {
-        0 -> "装扮小屋可获开局奖励"
+        0 -> "装扮家与庭院可获开局奖励"
         1 -> "开局奖励：磁铁5s"
         2 -> "开局奖励：磁铁+头盔"
         else -> "开局奖励：磁铁+头盔+加倍"
     }
+
+    fun isCatHomeTab(tab: Int = homeTab) = tab in HOME_TAB_COLOR..HOME_TAB_HAT
 
     @Synchronized fun switchMenuPanel(panel: Int) {
         if (state == State.RUNNING) return
@@ -496,7 +725,7 @@ class Game {
         if (ownsColor(i)) {
             catColor = i
             persistCosmetics()
-            return "已装备 ${COLOR_NAMES[i]}"
+            return "已装备 ${COLOR_NAMES[i]}（猫与庭院）"
         }
         val price = COLOR_PRICES[i]
         if (wallet < price) return "金币不足（需 $price）"
@@ -505,7 +734,8 @@ class Game {
         catColor = i
         persistCosmetics()
         emit(EV_BUY, HAPTIC_MED)
-        return "购买成功：${COLOR_NAMES[i]}"
+        tryUnlockAchievements(persist = true)
+        return "购买成功：${COLOR_NAMES[i]}（猫与庭院）"
     }
 
     @Synchronized fun buyOrEquipTrail(): String {
@@ -514,7 +744,7 @@ class Game {
         if (ownsTrail(i)) {
             trailStyle = i
             persistCosmetics()
-            return "已装备 ${TRAIL_NAMES[i]}"
+            return "已装备 ${TRAIL_NAMES[i]}（猫与庭院）"
         }
         val price = TRAIL_PRICES[i]
         if (wallet < price) return "金币不足（需 $price）"
@@ -523,7 +753,8 @@ class Game {
         trailStyle = i
         persistCosmetics()
         emit(EV_BUY, HAPTIC_MED)
-        return "购买成功：${TRAIL_NAMES[i]}"
+        tryUnlockAchievements(persist = true)
+        return "购买成功：${TRAIL_NAMES[i]}（猫与庭院）"
     }
 
     @Synchronized fun buyOrEquipScarf(): String {
@@ -532,7 +763,7 @@ class Game {
         if (ownsScarf(i)) {
             scarfStyle = i
             persistCosmetics()
-            return "已戴上 ${SCARF_NAMES[i]}"
+            return "已戴上 ${SCARF_NAMES[i]}（猫与庭院）"
         }
         val price = SCARF_PRICES[i]
         if (wallet < price) return "金币不足（需 $price）"
@@ -541,7 +772,8 @@ class Game {
         scarfStyle = i
         persistCosmetics()
         emit(EV_BUY, HAPTIC_MED)
-        return "购买成功：${SCARF_NAMES[i]}"
+        tryUnlockAchievements(persist = true)
+        return "购买成功：${SCARF_NAMES[i]}（猫与庭院）"
     }
 
     @Synchronized fun buyOrEquipHat(): String {
@@ -550,7 +782,7 @@ class Game {
         if (ownsHat(i)) {
             hatStyle = i
             persistCosmetics()
-            return "已戴上 ${HAT_NAMES[i]}"
+            return "已戴上 ${HAT_NAMES[i]}（猫与庭院）"
         }
         val price = HAT_PRICES[i]
         if (wallet < price) return "金币不足（需 $price）"
@@ -559,35 +791,91 @@ class Game {
         hatStyle = i
         persistCosmetics()
         emit(EV_BUY, HAPTIC_MED)
-        return "购买成功：${HAT_NAMES[i]}"
+        tryUnlockAchievements(persist = true)
+        return "购买成功：${HAT_NAMES[i]}（猫与庭院）"
     }
 
-    // ---------- 商店标签页 ----------
-    @Synchronized fun switchShopTab(tab: Int) {
+    // ---------- 小屋（含猫装扮与庭院） ----------
+    @Synchronized fun switchHomeTab(tab: Int) {
         if (state == State.RUNNING) return
-        shopTab = tab.coerceIn(SHOP_TAB_COLOR, SHOP_TAB_HAT)
+        homeTab = tab.coerceIn(HOME_TAB_HOUSE, HOME_TAB_HAT)
     }
 
-    @Synchronized fun browseShop(delta: Int) {
-        when (shopTab) {
-            SHOP_TAB_COLOR -> browseColor(delta)
-            SHOP_TAB_TRAIL -> browseTrail(delta)
-            SHOP_TAB_SCARF -> {
-                if (state == State.RUNNING) return
+    @Synchronized fun browseHome(delta: Int) {
+        if (state == State.RUNNING) return
+        when (homeTab) {
+            HOME_TAB_HOUSE -> homeBrowseHouse =
+                (homeBrowseHouse + delta + HOUSE_NAMES.size) % HOUSE_NAMES.size
+            HOME_TAB_ROOF -> homeBrowseRoof =
+                (homeBrowseRoof + delta + ROOF_NAMES.size) % ROOF_NAMES.size
+            HOME_TAB_DECO -> homeBrowseDeco =
+                (homeBrowseDeco + delta + DECO_NAMES.size) % DECO_NAMES.size
+            HOME_TAB_COLOR -> browseColor(delta)
+            HOME_TAB_TRAIL -> browseTrail(delta)
+            HOME_TAB_SCARF -> {
                 shopBrowseScarf = (shopBrowseScarf + delta + SCARF_COUNT) % SCARF_COUNT
             }
             else -> {
-                if (state == State.RUNNING) return
                 shopBrowseHat = (shopBrowseHat + delta + HAT_COUNT) % HAT_COUNT
             }
         }
     }
 
-    fun buyOrEquipShop(): String = when (shopTab) {
-        SHOP_TAB_COLOR -> buyOrEquipColor()
-        SHOP_TAB_TRAIL -> buyOrEquipTrail()
-        SHOP_TAB_SCARF -> buyOrEquipScarf()
-        else -> buyOrEquipHat()
+    /** 购买 / 装备当前浏览的小屋或装扮项目；返回提示文案 */
+    @Synchronized fun buyOrEquipHome(): String {
+        if (state == State.RUNNING) return ""
+        when (homeTab) {
+            HOME_TAB_HOUSE -> {
+                val i = homeBrowseHouse
+                if (ownsHouse(i)) {
+                    houseStyle = i
+                    persistHome()
+                    return "已入住 ${HOUSE_NAMES[i]}"
+                }
+                val price = HOUSE_PRICES[i]
+                if (wallet < price) return "金币不足（需 $price）"
+                wallet -= price
+                ownedHouses = ownedHouses or (1 shl i)
+                houseStyle = i
+                persistHome()
+                emit(EV_BUY, HAPTIC_MED)
+                tryUnlockAchievements(persist = true)
+                return "乔迁新居：${HOUSE_NAMES[i]}！"
+            }
+            HOME_TAB_ROOF -> {
+                val i = homeBrowseRoof
+                if (ownsRoof(i)) {
+                    roofStyle = i
+                    persistHome()
+                    return "已换上 ${ROOF_NAMES[i]}"
+                }
+                val price = ROOF_PRICES[i]
+                if (wallet < price) return "金币不足（需 $price）"
+                wallet -= price
+                ownedRoofs = ownedRoofs or (1 shl i)
+                roofStyle = i
+                persistHome()
+                emit(EV_BUY, HAPTIC_MED)
+                tryUnlockAchievements(persist = true)
+                return "购买成功：${ROOF_NAMES[i]}"
+            }
+            HOME_TAB_DECO -> {
+                val i = homeBrowseDeco
+                if (ownsDeco(i)) return "${DECO_NAMES[i]} 已摆放在院子里"
+                val price = DECO_PRICES[i]
+                if (wallet < price) return "金币不足（需 $price）"
+                wallet -= price
+                ownedDecos = ownedDecos or (1 shl i)
+                persistHome()
+                emit(EV_BUY, HAPTIC_MED)
+                tryUnlockAchievements(persist = true)
+                return "已摆上：${DECO_NAMES[i]}"
+            }
+            HOME_TAB_COLOR -> return buyOrEquipColor()
+            HOME_TAB_TRAIL -> return buyOrEquipTrail()
+            HOME_TAB_SCARF -> return buyOrEquipScarf()
+            else -> return buyOrEquipHat()
+        }
     }
 
     // ---------- 暂停 ----------
@@ -608,74 +896,6 @@ class Game {
         deadTime = 1f   // 跳过死亡冷却，直接可交互
     }
 
-    // ---------- 小屋 ----------
-    @Synchronized fun switchHomeTab(tab: Int) {
-        if (state == State.RUNNING) return
-        homeTab = tab.coerceIn(HOME_TAB_HOUSE, HOME_TAB_DECO)
-    }
-
-    @Synchronized fun browseHome(delta: Int) {
-        if (state == State.RUNNING) return
-        when (homeTab) {
-            HOME_TAB_HOUSE -> homeBrowseHouse =
-                (homeBrowseHouse + delta + HOUSE_NAMES.size) % HOUSE_NAMES.size
-            HOME_TAB_ROOF -> homeBrowseRoof =
-                (homeBrowseRoof + delta + ROOF_NAMES.size) % ROOF_NAMES.size
-            else -> homeBrowseDeco =
-                (homeBrowseDeco + delta + DECO_NAMES.size) % DECO_NAMES.size
-        }
-    }
-
-    /** 购买 / 装备当前浏览的小屋项目；返回提示文案 */
-    @Synchronized fun buyOrEquipHome(): String {
-        if (state == State.RUNNING) return ""
-        when (homeTab) {
-            HOME_TAB_HOUSE -> {
-                val i = homeBrowseHouse
-                if (ownsHouse(i)) {
-                    houseStyle = i
-                    persistHome()
-                    return "已入住 ${HOUSE_NAMES[i]}"
-                }
-                val price = HOUSE_PRICES[i]
-                if (wallet < price) return "金币不足（需 $price）"
-                wallet -= price
-                ownedHouses = ownedHouses or (1 shl i)
-                houseStyle = i
-                persistHome()
-                emit(EV_BUY, HAPTIC_MED)
-                return "乔迁新居：${HOUSE_NAMES[i]}！"
-            }
-            HOME_TAB_ROOF -> {
-                val i = homeBrowseRoof
-                if (ownsRoof(i)) {
-                    roofStyle = i
-                    persistHome()
-                    return "已换上 ${ROOF_NAMES[i]}"
-                }
-                val price = ROOF_PRICES[i]
-                if (wallet < price) return "金币不足（需 $price）"
-                wallet -= price
-                ownedRoofs = ownedRoofs or (1 shl i)
-                roofStyle = i
-                persistHome()
-                emit(EV_BUY, HAPTIC_MED)
-                return "购买成功：${ROOF_NAMES[i]}"
-            }
-            else -> {
-                val i = homeBrowseDeco
-                if (ownsDeco(i)) return "${DECO_NAMES[i]} 已摆放在院子里"
-                val price = DECO_PRICES[i]
-                if (wallet < price) return "金币不足（需 $price）"
-                wallet -= price
-                ownedDecos = ownedDecos or (1 shl i)
-                persistHome()
-                emit(EV_BUY, HAPTIC_MED)
-                return "已摆上：${DECO_NAMES[i]}"
-            }
-        }
-    }
-
     /** 庭院随机事件奖励：只进入永久钱包，不计入跑酷局内收入。 */
     @Synchronized fun grantYardCoins(amount: Int, message: String? = null): String {
         if (amount <= 0) return ""
@@ -689,6 +909,11 @@ class Game {
         val h = hapticPulse
         hapticPulse = 0
         return h
+    }
+
+    /** 庭院里抚摸小猫时的反馈音效 */
+    fun yardPet() {
+        emit(EV_PET, HAPTIC_LIGHT)
     }
 
     private fun emit(event: Int, haptic: Int = 0) {
@@ -738,7 +963,7 @@ class Game {
         var bestPct = 0f
         for (c in 0 until ACHIEVE_CATS) {
             val lv = achieveLevels[c]
-            if (lv >= 3) continue
+            if (lv >= ACHIEVE_TIERS_PER) continue
             val target = ACHIEVE_TARGETS[c][lv]
             val cur = achieveProgress(c)
             val need = target - cur
@@ -748,7 +973,7 @@ class Game {
                 bestPct = (cur.toFloat() / target).coerceIn(0f, 1f)
             }
         }
-        if (bestCat < 0) return "成就已全部解锁"
+        if (bestCat < 0) return "荣誉已全部解锁"
         val lv = achieveLevels[bestCat]
         val target = ACHIEVE_TARGETS[bestCat][lv]
         val cur = achieveProgress(bestCat)
@@ -762,6 +987,11 @@ class Game {
         A_QUESTS -> totalQuests
         A_COMBO -> maxOf(bestComboEver, bestComboRun)
         A_SCORE -> maxOf(highScore, score)
+        A_PORTAL -> totalPortals
+        A_UNIVERSE -> universesSeen
+        A_RELIC -> relicsFound
+        A_STAR -> stargazeReadCount()
+        A_HOME -> homeLevel()
         else -> 0
     }
 
@@ -848,9 +1078,10 @@ class Game {
         bestComboRun = 0; missionBonus = 0
         runJumps = 0; runSlides = 0; runSmashes = 0
         runWalletEarn = 0; sessionPickupCoins = 0
-        wordsCompleted = 0; wordStreak = 0
-        letterHudCount = 0
-        pickNewWord()
+        runRelics = 0
+        relicHudCount = 0
+        // 首件文物约 180 米后出现，之后每 280~520 米一件
+        nextRelicAt = 180f + Random.nextFloat() * 120f
         bannerFlash = 0f; bannerText = ""
         shake = 0f; hapticPulse = 0; floatFlash = 0f; lastFloat = ""
         wavesSincePower = 0
@@ -870,9 +1101,9 @@ class Game {
         if (hl >= 1) magnetTime = 5f
         if (hl >= 2) helmetLayers = 1
         if (hl >= 3) doubleTime = 5f
-        if (hl >= 1) enqueueBanner("小屋能量 Lv$hl！${homeLevelDesc(hl)}", 0xFF7DEBA0.toInt(), 2.0f)
-        if (targetWord.isNotEmpty()) {
-            enqueueBanner("组词目标：$targetWord", 0xFFC77DFF.toInt(), 1.8f)
+        if (hl >= 1) enqueueBanner("家能量 Lv$hl！${homeLevelDesc(hl)}", 0xFF7DEBA0.toInt(), 2.0f)
+        if (!museumComplete()) {
+            enqueueBanner("留意路上的文物，收进藏品（$relicsFound/$RELIC_COUNT）", 0xFFC77DFF.toInt(), 1.8f)
         }
         // 开局最近一波也要留足反应距离，避免一开始就从近处"冒出"
         var z = -72f
@@ -1147,6 +1378,7 @@ class Game {
         shake = 0.30f
         spawnBurst(catX, 1.4f, 0f, floatArrayOf(0.6f, 0.85f, 1f, 1f), 16)
         emit(EV_PORTAL, HAPTIC_HEAVY)
+        tryUnlockAchievements(persist = false)
     }
 
     // ---------- 生成 ----------
@@ -1254,86 +1486,79 @@ class Game {
 
     private fun makeCoin(lane: Int, z: Float, y: Float): Entity {
         val e = Entity(COIN, lane, z, y)
-        val chance = if (targetWord.length >= 4) 0.14f else 0.10f
-        if (targetWord.isNotEmpty() && Random.nextFloat() < chance) {
-            e.letter = pickLetterForSpawn()
+        if (distance >= nextRelicAt) {
+            e.relicId = pickRelicForSpawn()
+            nextRelicAt = distance + 280f + Random.nextFloat() * 240f
         }
         return e
     }
 
-    /** 优先刷当前词还缺的字母，偶尔塞干扰字母 */
-    private fun pickLetterForSpawn(): Char {
-        val missing = buildString {
-            for (i in targetWord.indices) {
-                if ((wordMask and (1 shl i)) == 0) append(targetWord[i])
-            }
+    /** 先按稀有度掷骰（传说需 600 米后），再优先未收集的文物 */
+    private fun pickRelicForSpawn(): Int {
+        val roll = Random.nextFloat()
+        val rarity = when {
+            roll < 0.06f && distance > 600f -> RELIC_LEGEND
+            roll < 0.30f -> RELIC_RARE
+            else -> RELIC_COMMON
         }
-        if (missing.isNotEmpty() && Random.nextFloat() < 0.78f) {
-            return missing[Random.nextInt(missing.length)]
+        val pool = ArrayList<Int>(RELIC_COUNT)
+        for (i in 0 until RELIC_COUNT) {
+            if (RELIC_RARITY[i] == rarity && !relicCollected(i)) pool.add(i)
         }
-        return ('A' + Random.nextInt(26))
+        if (pool.isEmpty()) {
+            for (i in 0 until RELIC_COUNT) if (RELIC_RARITY[i] == rarity) pool.add(i)
+        }
+        return pool[Random.nextInt(pool.size)]
     }
 
-    fun wordSlotFilled(index: Int): Boolean =
-        index in targetWord.indices && (wordMask and (1 shl index)) != 0
-
-    private fun pickNewWord() {
-        var next = WORD_POOL[Random.nextInt(WORD_POOL.size)]
-        // 避免连续同一词
-        if (WORD_POOL.size > 1) {
-            var guard = 0
-            while (next == targetWord && guard++ < 6) {
-                next = WORD_POOL[Random.nextInt(WORD_POOL.size)]
-            }
-        }
-        targetWord = next
-        wordMask = 0
+    fun relicBannerColor(rarity: Int): Int = when (rarity) {
+        RELIC_LEGEND -> 0xFFFFD426.toInt()
+        RELIC_RARE -> 0xFF4DE8FF.toInt()
+        else -> 0xFF7DEBA0.toInt()
     }
 
-    private fun tryCollectLetter(e: Entity) {
-        val c = e.letter.uppercaseChar()
-        var applied = false
-        for (i in targetWord.indices) {
-            if ((wordMask and (1 shl i)) != 0) continue
-            if (targetWord[i] == c) {
-                wordMask = wordMask or (1 shl i)
-                applied = true
-                break
-            }
-        }
-        if (!applied) return
-        pushFloat("字母 $c", 0xFFC77DFF.toInt())
-        spawnBurst(e.x, e.y, e.z, floatArrayOf(0.78f, 0.45f, 1f, 1f), 4)
-        if (wordMask == (1 shl targetWord.length) - 1) completeWord()
-    }
-
-    private fun completeWord() {
-        val word = targetWord
-        val len = word.length
-        wordsCompleted++
-        wordStreak++
-        val scoreBonus = if (len >= 4) 400 else 200
-        val walletBonus = if (len >= 4) 10 else 5
+    private fun collectRelic(e: Entity) {
+        val id = e.relicId
+        if (id !in 0 until RELIC_COUNT) return
+        runRelics++
+        totalRelicPickups++
+        val rarity = RELIC_RARITY[id]
+        val scoreBonus = RELIC_SCORE[rarity]
         missionBonus += scoreBonus
-        if (wordStreak >= 2) missionBonus += 100 * (wordStreak - 1)
-        grantWallet(walletBonus)
-        if (len >= 4) {
-            if (Random.nextBoolean()) {
-                magnetTime = min(MAGNET_CAP, magnetTime + 4f)
-                pushFloat("磁铁奖励", 0xFFFF6B6B.toInt())
+        grantWallet(RELIC_WALLET[rarity])
+        val color = relicBannerColor(rarity)
+        enqueueBanner(
+            "发现${RELIC_RARITY_NAMES[rarity]}文物：${RELIC_NAMES[id]}（${RELIC_ERAS[id]}）+$scoreBonus",
+            color, 2.4f
+        )
+        // 寓教于乐：跟一条小知识横幅
+        enqueueBanner("小知识：${RELIC_FACTS[id]}", 0xFFAAD5FF.toInt(), 3.2f)
+        pushFloat(RELIC_NAMES[id], color)
+        spawnBurst(e.x, e.y, e.z, floatArrayOf(0.78f, 0.45f, 1f, 1f), 6)
+        if (!relicCollected(id)) {
+            relicMask = relicMask or (1 shl id)
+            relicsFound = Integer.bitCount(relicMask)
+            enqueueBanner("文物图鉴 +1（$relicsFound/$RELIC_COUNT）", 0xFFFFD426.toInt(), 2.2f)
+            if (!museumRewarded && museumComplete()) {
+                museumRewarded = true
+                grantWallet(MUSEUM_REWARD)
+                enqueueBanner(
+                    "藏品全收集！大奖 +$MUSEUM_REWARD 金币！",
+                    0xFFFFD426.toInt(), 3.6f
+                )
+                pushFloat("+$MUSEUM_REWARD 金币！", 0xFFFFD426.toInt())
+                spawnBurst(catX, 2.0f, 0f, floatArrayOf(1f, 0.84f, 0.10f, 1f), 14)
+                spawnBurst(catX - 1.2f, 1.5f, -1f, floatArrayOf(1f, 0.40f, 0.45f, 1f), 10)
+                spawnBurst(catX + 1.2f, 1.5f, -1f, floatArrayOf(0.35f, 0.70f, 1f, 1f), 10)
+                emit(EV_ACHIEVE, HAPTIC_HEAVY)
+                persistAll()   // 立即落盘，大奖不丢
             } else {
-                doubleTime = min(DOUBLE_CAP, doubleTime + 4f)
-                pushFloat("加倍奖励", 0xFFC77DFF.toInt())
+                emit(EV_ACHIEVE, HAPTIC_MED)
             }
+        } else {
+            emit(EV_QUEST, HAPTIC_MED)
         }
-        val streakTag = if (wordStreak >= 2) " 连词x$wordStreak" else ""
-        enqueueBanner("组词！$word +$scoreBonus$streakTag", 0xFFC77DFF.toInt(), 2.2f)
-        pushFloat("$word!", 0xFFE0A0FF.toInt())
-        emit(EV_QUEST, HAPTIC_MED)
-        pickNewWord()
-        if (targetWord.isNotEmpty()) {
-            enqueueBanner("下一词：$targetWord", 0xFFC77DFF.toInt(), 1.6f)
-        }
+        tryUnlockAchievements(persist = false)
     }
 
     // ---------- 碰撞 / 拾取 ----------
@@ -1423,7 +1648,7 @@ class Game {
         }
         bumpQuest(Q_COINS, 1)
         bumpQuest(Q_COMBO, 0) // 用 sync 刷新
-        if (e.isLetterCoin) tryCollectLetter(e)
+        if (e.isRelic) collectRelic(e)
     }
 
     private fun multForCombo(c: Int): Int {
@@ -1486,7 +1711,7 @@ class Game {
         quests.clear()
         val tier = playerTier()
         val pool = mutableListOf(
-            Q_COINS, Q_DIST, Q_COMBO, Q_JUMP, Q_SLIDE, Q_SMASH, Q_PORTAL, Q_WORD
+            Q_COINS, Q_DIST, Q_COMBO, Q_JUMP, Q_SLIDE, Q_SMASH, Q_PORTAL, Q_RELIC
         )
         pool.shuffle()
         for (i in 0 until 3) {
@@ -1506,7 +1731,7 @@ class Game {
             Q_JUMP -> Quest(type, scale(8, 15, 25), scoreR(120, 180, 260), walletR(12, 20, 35), "跳跃次数")
             Q_SLIDE -> Quest(type, scale(5, 10, 16), scoreR(120, 180, 260), walletR(12, 20, 35), "铲滑次数")
             Q_PORTAL -> Quest(type, scale(1, 2, 3), scoreR(150, 240, 360), walletR(15, 28, 45), "穿越传送门")
-            Q_WORD -> Quest(type, scale(1, 2, 3), scoreR(180, 280, 400), walletR(18, 30, 50), "组词次数")
+            Q_RELIC -> Quest(type, scale(1, 2, 3), scoreR(180, 280, 400), walletR(18, 30, 50), "发现文物")
             else -> Quest(type, scale(3, 6, 12), scoreR(160, 240, 360), walletR(16, 28, 45), "撞碎障碍")
         }
     }
@@ -1531,7 +1756,7 @@ class Game {
                 Q_SLIDE -> runSlides
                 Q_SMASH -> runSmashes
                 Q_PORTAL -> runPortals
-                Q_WORD -> wordsCompleted
+                Q_RELIC -> runRelics
                 else -> 0
             }
             q.progress = cur.coerceAtMost(q.target)
@@ -1560,10 +1785,10 @@ class Game {
     }
 
     // ---------- 成就 ----------
-    private fun tryUnlockAchievements(persist: Boolean) {
+    private fun tryUnlockAchievements(persist: Boolean, quiet: Boolean = false) {
         var unlocked = false
         for (c in 0 until ACHIEVE_CATS) {
-            while (achieveLevels[c] < 3) {
+            while (achieveLevels[c] < ACHIEVE_TIERS_PER) {
                 val lv = achieveLevels[c]
                 val target = ACHIEVE_TARGETS[c][lv]
                 if (achieveProgress(c) < target) break
@@ -1571,11 +1796,13 @@ class Game {
                 achieveCount = achieveLevels.sum()
                 val reward = ACHIEVE_REWARDS[lv]
                 grantWallet(reward)
-                enqueueBanner(
-                    "成就：${ACHIEVE_NAMES[c]}·${ACHIEVE_TIERS[lv]} +$reward",
-                    0xFFFFD426.toInt(), 2.8f
-                )
-                emit(EV_ACHIEVE, HAPTIC_MED)
+                if (!quiet) {
+                    enqueueBanner(
+                        "荣誉：${ACHIEVE_NAMES[c]}·${ACHIEVE_TIERS[lv]} +$reward",
+                        0xFFFFD426.toInt(), 2.8f
+                    )
+                    emit(EV_ACHIEVE, HAPTIC_MED)
+                }
                 unlocked = true
             }
         }
@@ -1630,6 +1857,11 @@ class Game {
             ?.putInt("ownedDecos", ownedDecos)
             ?.putInt("houseStyle", houseStyle)
             ?.putInt("roofStyle", roofStyle)
+            ?.putInt("telescopeLevel", telescopeLevel)
+            ?.putInt("stargazeReadMask", stargazeReadMask)
+            ?.putString("stargazeDayKey", stargazeDayKey)
+            ?.putBoolean("stargazeDailyNewDone", stargazeDailyNewDone)
+            ?.putInt("stargazeAgeMode", stargazeAgeMode)
             ?.apply()
     }
 
@@ -1653,11 +1885,19 @@ class Game {
             .putInt("totalPortals", totalPortals)
             .putInt("seenUniverses", seenMask)
             .putBoolean("codexRewarded", codexRewarded)
+            .putInt("relicMask", relicMask)
+            .putBoolean("museumRewarded", museumRewarded)
+            .putInt("totalRelicPickups", totalRelicPickups)
             .putInt("ownedHouses", ownedHouses)
             .putInt("ownedRoofs", ownedRoofs)
             .putInt("ownedDecos", ownedDecos)
             .putInt("houseStyle", houseStyle)
             .putInt("roofStyle", roofStyle)
+            .putInt("telescopeLevel", telescopeLevel)
+            .putInt("stargazeReadMask", stargazeReadMask)
+            .putString("stargazeDayKey", stargazeDayKey)
+            .putBoolean("stargazeDailyNewDone", stargazeDailyNewDone)
+            .putInt("stargazeAgeMode", stargazeAgeMode)
             .putString("characterName", characterName)
         for (i in 0 until ACHIEVE_CATS) ed.putInt("achieveLv$i", achieveLevels[i])
         ed.apply()

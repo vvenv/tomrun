@@ -107,6 +107,22 @@ class SoundFx(context: Context) {
             context, Game.EV_BUY, "buy",
             concat(tone(988f, 988f, 0.06f, 0.5f), tone(1319f, 1319f, 0.16f, 0.55f, decay = 1.8f))
         )
+        // 抚摸小猫：短促喵叫 + 低频呼噜
+        load(
+            context, Game.EV_PET, "pet",
+            concat(
+                tone(720f, 420f, 0.10f, 0.42f),
+                tone(280f, 220f, 0.14f, 0.28f, decay = 1.6f)
+            )
+        )
+        // 望月镜：轻柔星闪
+        load(
+            context, Game.EV_STARGAZE, "stargaze",
+            concat(
+                tone(880f, 1320f, 0.08f, 0.32f),
+                tone(660f, 990f, 0.12f, 0.28f, decay = 2f)
+            )
+        )
     }
 
     fun play(event: Int) {

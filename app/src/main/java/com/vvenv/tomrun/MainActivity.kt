@@ -37,7 +37,7 @@ class MainActivity : Activity() {
             soundFx?.play(event)
             // 事件自带 hapticPulse；再按事件补一档保底
             val pulse = when (event) {
-                Game.EV_COIN, Game.EV_JUMP, Game.EV_SLIDE -> Game.HAPTIC_LIGHT
+                Game.EV_COIN, Game.EV_JUMP, Game.EV_SLIDE, Game.EV_PET, Game.EV_STARGAZE -> Game.HAPTIC_LIGHT
                 Game.EV_POWER, Game.EV_COMBO, Game.EV_BOOST, Game.EV_SMASH,
                 Game.EV_QUEST, Game.EV_ACHIEVE, Game.EV_ZIP, Game.EV_RECORD,
                 Game.EV_BUY -> Game.HAPTIC_MED
