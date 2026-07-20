@@ -35,6 +35,10 @@ class Game {
         const val RAMP_HEIGHT = 2.4f
         const val CABLE_H = 5.4f
         const val RIDE_Y = 3.0f
+        /** 滑索悬挂高度：上滑升高、下滑降低 */
+        const val RIDE_Y_MIN = 0.5f
+        const val RIDE_Y_MAX = 3.6f
+        const val RIDE_STEP = 0.9f
 
         // 速度：慢起步，约 70 秒接近上限
         const val SPEED_START = 12f
@@ -424,6 +428,8 @@ class Game {
     var slideTimer = 0f
     var runPhase = 0f
     private var groundY = 0f
+    /** 滑索目标悬挂高度（手势上下调节） */
+    private var rideTargetY = RIDE_Y
     val sliding get() = slideTimer > 0f
     val onGround get() = catY <= groundY + 0.001f
 
@@ -1022,20 +1028,32 @@ class Game {
         }
     }
 
-    @Synchronized fun onSwipeUp() { if (state == State.RUNNING) jump() }
+    @Synchronized fun onSwipeUp() {
+        if (state != State.RUNNING) return
+        if (riding != null) {
+            rideTargetY = (rideTargetY + RIDE_STEP).coerceAtMost(RIDE_Y_MAX)
+            return
+        }
+        jump()
+    }
 
     @Synchronized fun onSwipeDown() {
         if (state != State.RUNNING) return
         if (riding != null) {
-            riding = null
-            velY = -14f
-        } else {
-            slideTimer = SLIDE_TIME
-            if (!onGround) velY = -14f
-            runSlides++
-            bumpQuest(Q_SLIDE, 1)
-            emit(EV_SLIDE, HAPTIC_LIGHT)
+            // 已贴最低仍下滑 → 松手落地；否则沿缆绳下降
+            if (rideTargetY <= RIDE_Y_MIN + 0.01f) {
+                riding = null
+                velY = -14f
+            } else {
+                rideTargetY = (rideTargetY - RIDE_STEP).coerceAtLeast(RIDE_Y_MIN)
+            }
+            return
         }
+        slideTimer = SLIDE_TIME
+        if (!onGround) velY = -14f
+        runSlides++
+        bumpQuest(Q_SLIDE, 1)
+        emit(EV_SLIDE, HAPTIC_LIGHT)
     }
 
     @Synchronized fun onSwipeLeft() {
@@ -1065,7 +1083,7 @@ class Game {
         bannerQueue.clear()
         quests.clear()
         lane = 1; catX = 0f; catY = 0f; velY = 0f
-        groundY = 0f
+        groundY = 0f; rideTargetY = RIDE_Y
         slideTimer = 0f; runPhase = 0f
         baseSpeed = SPEED_START; speed = SPEED_START
         distance = 0f; score = 0; coins = 0; runTime = 0f
@@ -1178,7 +1196,7 @@ class Game {
 
         val r = riding
         if (r != null) {
-            catY += (RIDE_Y - catY) * min(1f, dt * 8f)
+            catY += (rideTargetY - catY) * min(1f, dt * 8f)
             velY = 0f
             slideTimer = 0f
             if (r.exitZ >= 0f || r !in ziplines) {
@@ -1201,6 +1219,7 @@ class Game {
                     abs(catX - LANE_X[lane]) < 0.6f
                 ) {
                     riding = zip
+                    rideTargetY = RIDE_Y
                     emit(EV_ZIP, HAPTIC_MED)
                     break
                 }
@@ -1399,9 +1418,13 @@ class Game {
         val laneZ = Random.nextInt(3)
         val length = 30f + Random.nextFloat() * 50f
         ziplines.add(Zip(laneZ, SPAWN_Z, length))
+        // 高低交错，滑索上需上滑/下滑够到
+        val coinYs = floatArrayOf(CABLE_H - 1.1f, CABLE_H - 2.2f, CABLE_H - 3.3f)
         var cz = SPAWN_Z - 8f
+        var i = 0
         while (cz > SPAWN_Z - length + 4f) {
-            entities.add(makeCoin(laneZ, cz, CABLE_H - 1.1f))
+            entities.add(makeCoin(laneZ, cz, coinYs[i % coinYs.size]))
+            i++
             cz -= 4f
         }
     }
