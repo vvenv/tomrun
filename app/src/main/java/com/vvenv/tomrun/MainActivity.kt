@@ -15,6 +15,7 @@ import android.widget.FrameLayout
 class MainActivity : Activity() {
 
     private lateinit var glView: GLSurfaceView
+    private lateinit var hud: HudView
     private val game = Game()
     private var soundFx: SoundFx? = null
     private var vibrator: Vibrator? = null
@@ -24,6 +25,7 @@ class MainActivity : Activity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         game.attachPrefs(getSharedPreferences("tomrun", MODE_PRIVATE))
+        RelicIcons.init(resources, packageName)
         soundFx = SoundFx(this)
         vibrator = if (Build.VERSION.SDK_INT >= 31) {
             val vm = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
@@ -54,11 +56,19 @@ class MainActivity : Activity() {
             setRenderer(GameRenderer(game))
             renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
         }
+        hud = HudView(this, game)
         val root = FrameLayout(this)
         root.addView(glView)
-        root.addView(HudView(this, game))
+        root.addView(hud)
         setContentView(root)
         hideSystemUi()
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        if (hud.handleBackPressed()) return
+        @Suppress("DEPRECATION")
+        super.onBackPressed()
     }
 
     private fun vibrate(level: Int) {

@@ -1004,7 +1004,7 @@ class Game {
     }
 
     // ---------- 输入 ----------
-    /** Debug 测试开关：仅当前进程内有效，重启后自动关闭。 */
+    /** Debug 测试开关（不死 + 藏品全览）：仅当前进程内有效，重启后自动关闭。 */
     @Synchronized fun toggleImmortalMode(): Boolean {
         if (!BuildConfig.DEBUG) {
             immortalMode = false

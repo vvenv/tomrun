@@ -95,3 +95,6 @@ Desktop.ini
 # Claude / Cursor local settings
 .claude/
 .cursor/
+
+# Relic asset working copies (sources); ship only drawable-nodpi
+tools/relic_assets/

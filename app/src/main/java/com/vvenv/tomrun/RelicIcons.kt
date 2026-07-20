@@ -1,6 +1,8 @@
 package com.vvenv.tomrun
 
+import android.content.res.Resources
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -12,9 +14,23 @@ import kotlin.math.sin
 /**
  * 藏品像素配图：图鉴列表、跑道名牌与大图展柜共用。
  * [half] 为半宽（图标约 2*half 见方），坐标以中心为准。
- * 器物先烘焙到离屏 Bitmap，再整数倍最近邻放大，保持点阵锐利。
+ * 小图仍代码烘焙；大图优先加载 `relic_fancy_XX` 预制像素 PNG，缺失时回退烘焙。
  */
 object RelicIcons {
+
+    private var appResources: Resources? = null
+    private val fancyResIds = IntArray(Game.RELIC_COUNT) { 0 }
+
+    /** 在 Activity/Hud 创建时调用一次，绑定 drawable 资源。 */
+    fun init(resources: Resources, packageName: String = "com.vvenv.tomrun") {
+        appResources = resources
+        for (i in 0 until Game.RELIC_COUNT) {
+            fancyResIds[i] = resources.getIdentifier(
+                "relic_fancy_%02d".format(i), "drawable", packageName
+            )
+        }
+        clearCache()
+    }
 
     private val BRONZE = 0xFF5A8A6A.toInt()
     private val BRONZE_DK = 0xFF3E6450.toInt()
@@ -80,7 +96,8 @@ object RelicIcons {
         collected: Boolean,
         fancy: Boolean = false,
         phase: Float = 0f,
-        lightSurface: Boolean = false
+        lightSurface: Boolean = false,
+        withChrome: Boolean = true
     ) {
         paint.style = Paint.Style.FILL
         if (fancy && collected) {
@@ -90,23 +107,25 @@ object RelicIcons {
             blitCachedArtifact(canvas, id, cx, cy - half * 0.08f, artHalf, fancy = true)
             drawSparkles(canvas, paint, cx, cy, half, phase)
         } else {
-            paint.color = when {
-                lightSurface && collected -> 0x22C8962A
-                lightSurface -> 0x188A9098
-                collected -> 0x33201810
-                else -> 0x22101820
+            if (withChrome) {
+                paint.color = when {
+                    lightSurface && collected -> 0x22C8962A
+                    lightSurface -> 0x188A9098
+                    collected -> 0x33201810
+                    else -> 0x22101820
+                }
+                canvas.drawRect(cx - half, cy - half, cx + half, cy + half, paint)
+                paint.color = when {
+                    lightSurface && collected -> 0x88C8962A.toInt()
+                    lightSurface -> 0x669AA0A8.toInt()
+                    collected -> 0x55FFD426
+                    else -> 0x33888888
+                }
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = (half * 0.06f).coerceAtLeast(1f)
+                canvas.drawRect(cx - half, cy - half, cx + half, cy + half, paint)
+                paint.style = Paint.Style.FILL
             }
-            canvas.drawRect(cx - half, cy - half, cx + half, cy + half, paint)
-            paint.color = when {
-                lightSurface && collected -> 0x88C8962A.toInt()
-                lightSurface -> 0x669AA0A8.toInt()
-                collected -> 0x55FFD426
-                else -> 0x33888888
-            }
-            paint.style = Paint.Style.STROKE
-            paint.strokeWidth = (half * 0.06f).coerceAtLeast(1f)
-            canvas.drawRect(cx - half, cy - half, cx + half, cy + half, paint)
-            paint.style = Paint.Style.FILL
             if (!collected) {
                 drawMystery(canvas, paint, cx, cy, half)
             } else {
@@ -123,7 +142,11 @@ object RelicIcons {
         val src = bmp.width.toFloat()
         val target = displayHalf * 2f
         val dst: Float
-        if (target >= src) {
+        if (fancy) {
+            // 预制像素大图：尽量铺满展示区，最近邻保持锐利
+            dst = target
+            blitPaint.isFilterBitmap = false
+        } else if (target >= src) {
             dst = src * floor(target / src).toInt().coerceAtLeast(1)
             blitPaint.isFilterBitmap = false
         } else {
@@ -138,6 +161,12 @@ object RelicIcons {
         val safeId = id.coerceIn(0, Game.RELIC_COUNT - 1)
         val cache = if (fancy) fancyCache else simpleCache
         cache[safeId]?.let { return it }
+        if (fancy) {
+            loadFancyPng(safeId)?.let { png ->
+                cache[safeId] = png
+                return png
+            }
+        }
         val size = if (fancy) CACHE_FANCY else CACHE_SIMPLE
         val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         bmp.eraseColor(Color.TRANSPARENT)
@@ -150,6 +179,17 @@ object RelicIcons {
         if (fancy) refineFancy(bmp)
         cache[safeId] = bmp
         return bmp
+    }
+
+    private fun loadFancyPng(id: Int): Bitmap? {
+        val res = appResources ?: return null
+        val rid = fancyResIds.getOrNull(id) ?: 0
+        if (rid == 0) return null
+        val opts = BitmapFactory.Options().apply {
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+            inScaled = false // 保持像素点阵，不按密度缩放
+        }
+        return BitmapFactory.decodeResource(res, rid, opts)
     }
 
     /**
