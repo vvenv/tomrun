@@ -255,6 +255,8 @@ class Game {
         var x = LANE_X[lane]
         var taken = false
         var spin = Random.nextFloat() * 360f
+        /** 已被磁铁吸入，效果结束后仍继续飞向猫直到拾取 */
+        var magneted = false
         /** 文物金币：-1 表示普通金币，否则为 RELIC_NAMES 下标 */
         var relicId: Int = -1
         val isRelic get() = relicId >= 0
@@ -1230,11 +1232,14 @@ class Game {
         while (it.hasNext()) {
             val e = it.next()
             e.z += dz
-            if (magnetTime > 0f && e.kind == COIN && e.z > -26f && !e.taken) {
-                val pull = min(1f, dt * 8f)
-                e.x += (catX - e.x) * pull
-                e.y += (catY + 1f - e.y) * pull
-                e.z += (0f - e.z) * min(1f, dt * 4f)
+            if (e.kind == COIN && !e.taken && e.z > -26f) {
+                if (magnetTime > 0f) e.magneted = true
+                if (e.magneted) {
+                    val pull = min(1f, dt * 8f)
+                    e.x += (catX - e.x) * pull
+                    e.y += (catY + 1f - e.y) * pull
+                    e.z += (0f - e.z) * min(1f, dt * 4f)
+                }
             }
             if (e.z > 8f || e.taken) it.remove()
         }
@@ -1592,7 +1597,7 @@ class Game {
             if (e.taken) continue
             when (e.kind) {
                 COIN -> {
-                    val radius = if (magnetTime > 0f) 1.6f else 1.15f
+                    val radius = if (magnetTime > 0f || e.magneted) 1.6f else 1.15f
                     val dx = e.x - catX
                     val dy = e.y - catCenterY
                     if (abs(e.z) < 1.2f && dx * dx + dy * dy < radius * radius) {
