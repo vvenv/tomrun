@@ -1512,30 +1512,41 @@ object RelicIcons {
         }
     }
 
-    /** 何尊：鼓腹尊 + 高圈足 */
+    /** 何尊：喇叭口圆尊 + 四扉棱 + 雷纹带（非面具） */
     private fun drawHeZun(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
         if (!fancy) {
             px(canvas, paint, cx, cy, u, -3.5f, -1f, 7f, 5f, BRONZE)
             px(canvas, paint, cx, cy, u, -2.5f, -4.5f, 5f, 3.5f, BRONZE_LT)
+            // 两侧扉棱示意
+            px(canvas, paint, cx, cy, u, -4.5f, -3f, 1f, 6f, BRONZE_DK)
+            px(canvas, paint, cx, cy, u, 3.5f, -3f, 1f, 6f, BRONZE_DK)
             return
         }
         // 圈足
         px(canvas, paint, cx, cy, u, -3.5f, 5.0f, 7.0f, 2.5f, BRONZE_DK)
         px(canvas, paint, cx, cy, u, -3.0f, 5.4f, 6.0f, 1.8f, BRONZE)
         // 鼓腹
-        px(canvas, paint, cx, cy, u, -5.5f, -0.5f, 11f, 6.0f, BRONZE_DK)
-        px(canvas, paint, cx, cy, u, -5.0f, 0.0f, 10f, 5.0f, BRONZE)
-        px(canvas, paint, cx, cy, u, -4.5f, 0.5f, 9f, 4.0f, BRONZE_LT)
-        // 颈与口沿
-        px(canvas, paint, cx, cy, u, -3.5f, -4.5f, 7.0f, 4.5f, BRONZE)
-        px(canvas, paint, cx, cy, u, -4.0f, -5.5f, 8.0f, 1.5f, BRONZE_LT)
-        px(canvas, paint, cx, cy, u, -3.5f, -6.2f, 7.0f, 1.0f, BRONZE_DK)
-        // 饕餮纹带
-        px(canvas, paint, cx, cy, u, -4.0f, 1.5f, 8.0f, 1.8f, BRONZE_DK)
-        px(canvas, paint, cx, cy, u, -1.5f, 1.8f, 3.0f, 1.2f, GOLD_DK)
-        // 「中国」铭文暗示
-        px(canvas, paint, cx, cy, u, -1.2f, 3.5f, 2.4f, 0.7f, GOLD)
-        px(canvas, paint, cx, cy, u, -4.5f, -3.5f, 0.4f, 5f, 0x55B8E0C0)
+        px(canvas, paint, cx, cy, u, -5.0f, -0.5f, 10f, 6.0f, BRONZE_DK)
+        px(canvas, paint, cx, cy, u, -4.5f, 0.0f, 9f, 5.0f, BRONZE)
+        px(canvas, paint, cx, cy, u, -4.0f, 0.5f, 8f, 4.0f, BRONZE_LT)
+        // 颈与喇叭口（可见内口）
+        px(canvas, paint, cx, cy, u, -3.2f, -4.5f, 6.4f, 4.5f, BRONZE)
+        px(canvas, paint, cx, cy, u, -4.5f, -6.0f, 9.0f, 1.8f, BRONZE_LT)
+        px(canvas, paint, cx, cy, u, -3.8f, -5.5f, 7.6f, 0.9f, 0xFF2A4038.toInt())
+        // 四扉棱（左右可见两道）
+        px(canvas, paint, cx, cy, u, -6.2f, -5.5f, 1.1f, 11f, BRONZE_DK)
+        px(canvas, paint, cx, cy, u, 5.1f, -5.5f, 1.1f, 11f, BRONZE_DK)
+        px(canvas, paint, cx, cy, u, -6.0f, -5.2f, 0.55f, 10.4f, GOLD_DK)
+        px(canvas, paint, cx, cy, u, 5.3f, -5.2f, 0.55f, 10.4f, GOLD_DK)
+        // 雷纹带（几何，无人脸）
+        for (row in 0..2) {
+            val y = -2.5f + row * 2.2f
+            for (i in -3..3) {
+                px(canvas, paint, cx, cy, u, i * 1.15f - 0.35f, y, 0.7f, 0.7f, BRONZE_DK)
+            }
+            px(canvas, paint, cx, cy, u, -3.8f, y + 0.9f, 7.6f, 0.25f, GOLD_DK)
+        }
+        px(canvas, paint, cx, cy, u, -4.0f, -4.0f, 0.35f, 5f, 0x55B8E0C0)
     }
 
     /** 击鼓说唱俑：坐姿鼓腹陶俑 */

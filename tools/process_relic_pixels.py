@@ -5,6 +5,7 @@ Usage:
   python3 tools/process_relic_pixels.py              # sync + process all
   python3 tools/process_relic_pixels.py 10           # only id 10
   python3 tools/process_relic_pixels.py 10 --crop-top 0.11
+  python3 tools/process_relic_pixels.py 28 --pixelate 112
   python3 tools/process_relic_pixels.py --list
 """
 from __future__ import annotations
@@ -48,6 +49,7 @@ def process(
     crop_top: float = 0.0,
     dark_thresh: int = 85,
     size: int = SIZE,
+    pixelate: int | None = None,
 ) -> None:
     im = Image.open(src).convert("RGBA")
     w, h = im.size
@@ -76,7 +78,15 @@ def process(
     side = max(out.size)
     canvas = Image.new("RGBA", (side, side), (0, 0, 0, 0))
     canvas.paste(out, ((side - out.width) // 2, (side - out.height) // 2), out)
-    canvas = canvas.resize((size, size), Image.Resampling.LANCZOS)
+    # Optional chunky pixel look: box-downsample, palette quantize, nearest upscale
+    if pixelate and pixelate > 0 and pixelate < size:
+        canvas = canvas.resize((pixelate, pixelate), Image.Resampling.BOX)
+        alpha = canvas.split()[-1]
+        q = canvas.convert("RGB").quantize(colors=32, method=Image.Quantize.MEDIANCUT).convert("RGBA")
+        q.putalpha(alpha)
+        canvas = q.resize((size, size), Image.Resampling.NEAREST)
+    else:
+        canvas = canvas.resize((size, size), Image.Resampling.LANCZOS)
     r, g, b, a = canvas.split()
     a = a.point(lambda v: 0 if v < 25 else 255 if v > 180 else v)
     OUT.mkdir(parents=True, exist_ok=True)
@@ -98,6 +108,12 @@ def main() -> None:
     ap.add_argument("--crop-top", type=float, default=0.0, help="Fraction of height to crop from top (e.g. 0.11 for title)")
     ap.add_argument("--dark", type=int, default=85, help="RGB sum threshold treated as transparent bg")
     ap.add_argument("--size", type=int, default=SIZE, help="Output square size")
+    ap.add_argument(
+        "--pixelate",
+        type=int,
+        default=0,
+        help="Chunky pixel grid size before nearest upscale (e.g. 96); 0=off",
+    )
     ap.add_argument("--no-sync", action="store_true", help="Skip Cursor assets sync")
     ap.add_argument("--list", action="store_true", help="Show drawable coverage and exit")
     args = ap.parse_args()
@@ -133,6 +149,7 @@ def main() -> None:
             crop_top=args.crop_top,
             dark_thresh=args.dark,
             size=args.size,
+            pixelate=args.pixelate or None,
         )
     coverage()
 
