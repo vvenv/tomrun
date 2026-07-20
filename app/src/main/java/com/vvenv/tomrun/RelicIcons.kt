@@ -1,14 +1,18 @@
 package com.vvenv.tomrun
 
+import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.RectF
 import kotlin.math.cos
+import kotlin.math.floor
 import kotlin.math.sin
 
 /**
  * 藏品像素配图：图鉴列表、跑道名牌与大图展柜共用。
  * [half] 为半宽（图标约 2*half 见方），坐标以中心为准。
- * fancy 大图按实物轮廓与标志细节绘制，便于一眼认出。
+ * 器物先烘焙到离屏 Bitmap，再整数倍最近邻放大，保持点阵锐利。
  */
 object RelicIcons {
 
@@ -38,6 +42,34 @@ object RelicIcons {
     private val LOCKED = 0xFF5A6470.toInt()
     private val LOCKED_DK = 0xFF3A4450.toInt()
 
+    /** 大图离屏分辨率（逻辑像素）；调高可保留小数坐标细节 */
+    private const val CACHE_FANCY = 160
+    /** 列表/跑道小图离屏分辨率 */
+    private const val CACHE_SIMPLE = 40
+
+    private val fancyCache = arrayOfNulls<Bitmap>(Game.RELIC_COUNT)
+    private val simpleCache = arrayOfNulls<Bitmap>(Game.RELIC_COUNT)
+    private val blitRect = RectF()
+    private val blitPaint = Paint().apply {
+        isFilterBitmap = false
+        isAntiAlias = false
+        isDither = false
+    }
+    private val bakePaint = Paint().apply {
+        isAntiAlias = false
+        isFilterBitmap = false
+        style = Paint.Style.FILL
+    }
+
+    fun clearCache() {
+        for (i in fancyCache.indices) {
+            fancyCache[i]?.recycle()
+            fancyCache[i] = null
+            simpleCache[i]?.recycle()
+            simpleCache[i] = null
+        }
+    }
+
     fun draw(
         canvas: Canvas,
         paint: Paint,
@@ -52,9 +84,10 @@ object RelicIcons {
     ) {
         paint.style = Paint.Style.FILL
         if (fancy && collected) {
+            // 展柜框与闪点即时绘制（含动画）；器物走 Bitmap 缓存
             drawShowcaseFrame(canvas, paint, cx, cy, half, Game.RELIC_RARITY[id.coerceIn(0, Game.RELIC_COUNT - 1)], phase)
             val artHalf = half * 0.64f
-            drawArtifact(canvas, paint, id, cx, cy - half * 0.08f, artHalf, fancy = true)
+            blitCachedArtifact(canvas, id, cx, cy - half * 0.08f, artHalf, fancy = true)
             drawSparkles(canvas, paint, cx, cy, half, phase)
         } else {
             paint.color = when {
@@ -77,9 +110,106 @@ object RelicIcons {
             if (!collected) {
                 drawMystery(canvas, paint, cx, cy, half)
             } else {
-                drawArtifact(canvas, paint, id, cx, cy, half * 0.88f, fancy = false)
+                blitCachedArtifact(canvas, id, cx, cy, half * 0.88f, fancy = false)
             }
         }
+    }
+
+    /** 放大走整数倍最近邻（点阵锐利）；缩小按实际比例并开滤波（跑道名牌等小尺寸） */
+    private fun blitCachedArtifact(
+        canvas: Canvas, id: Int, cx: Float, cy: Float, displayHalf: Float, fancy: Boolean
+    ) {
+        val bmp = cachedArtifact(id, fancy)
+        val src = bmp.width.toFloat()
+        val target = displayHalf * 2f
+        val dst: Float
+        if (target >= src) {
+            dst = src * floor(target / src).toInt().coerceAtLeast(1)
+            blitPaint.isFilterBitmap = false
+        } else {
+            dst = target
+            blitPaint.isFilterBitmap = true
+        }
+        blitRect.set(cx - dst * 0.5f, cy - dst * 0.5f, cx + dst * 0.5f, cy + dst * 0.5f)
+        canvas.drawBitmap(bmp, null, blitRect, blitPaint)
+    }
+
+    private fun cachedArtifact(id: Int, fancy: Boolean): Bitmap {
+        val safeId = id.coerceIn(0, Game.RELIC_COUNT - 1)
+        val cache = if (fancy) fancyCache else simpleCache
+        cache[safeId]?.let { return it }
+        val size = if (fancy) CACHE_FANCY else CACHE_SIMPLE
+        val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        bmp.eraseColor(Color.TRANSPARENT)
+        val c = Canvas(bmp)
+        bakePaint.style = Paint.Style.FILL
+        bakePaint.shader = null
+        // half = size/2：器物坐标约 ±0.45*half，基本铺满画布
+        drawArtifact(c, bakePaint, safeId, size * 0.5f, size * 0.5f, size * 0.5f, fancy)
+        if (fancy) refineFancy(bmp)
+        cache[safeId] = bmp
+        return bmp
+    }
+
+    /**
+     * 大图烘焙后的像素级精修：
+     * 1. 剪影外 1~2px 深色描边，轮廓更立体清晰；
+     * 2. 剪影上缘受光提亮、下缘压暗，形成简单体积感。
+     * 只处理透明度边界，不改动器物内部结构。
+     */
+    private fun refineFancy(bmp: Bitmap) {
+        val w = bmp.width
+        val h = bmp.height
+        val src = IntArray(w * h)
+        bmp.getPixels(src, 0, w, 0, 0, w, h)
+        val out = src.copyOf()
+        val outlineR = (w / 80).coerceAtLeast(1)
+        val outline = 0xE0201A14.toInt()
+
+        fun solid(x: Int, y: Int): Boolean {
+            if (x < 0 || y < 0 || x >= w || y >= h) return false
+            return (src[y * w + x] ushr 24) > 0x50
+        }
+
+        fun nearSolid(x: Int, y: Int, r: Int): Boolean {
+            for (dy in -r..r) {
+                for (dx in -r..r) {
+                    if (dx == 0 && dy == 0) continue
+                    if (solid(x + dx, y + dy)) return true
+                }
+            }
+            return false
+        }
+
+        for (y in 0 until h) {
+            for (x in 0 until w) {
+                val i = y * w + x
+                if (!solid(x, y)) {
+                    if (nearSolid(x, y, outlineR)) out[i] = outline
+                    continue
+                }
+                val c = src[i]
+                // 上缘受光 / 下缘投影（只作用于剪影边界）
+                if (!solid(x, y - 1) || !solid(x, y - 2)) {
+                    out[i] = tint(c, 1.22f)
+                } else if (!solid(x, y + 1)) {
+                    out[i] = tint(c, 0.68f)
+                } else if (!solid(x - 1, y)) {
+                    out[i] = tint(c, 1.1f)
+                } else if (!solid(x + 1, y)) {
+                    out[i] = tint(c, 0.82f)
+                }
+            }
+        }
+        bmp.setPixels(out, 0, w, 0, 0, w, h)
+    }
+
+    private fun tint(color: Int, k: Float): Int {
+        val a = color ushr 24
+        val r = (((color shr 16) and 0xFF) * k).toInt().coerceIn(0, 255)
+        val g = (((color shr 8) and 0xFF) * k).toInt().coerceIn(0, 255)
+        val b = ((color and 0xFF) * k).toInt().coerceIn(0, 255)
+        return (a shl 24) or (r shl 16) or (g shl 8) or b
     }
 
     private fun drawShowcaseFrame(
