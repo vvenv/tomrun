@@ -348,6 +348,12 @@ object RelicIcons {
             23 -> drawSilkPainting(canvas, paint, cx, cy, u, fancy)
             24 -> drawMask(canvas, paint, cx, cy, u, fancy)
             25 -> drawLotusCrane(canvas, paint, cx, cy, u, fancy)
+            26 -> drawJadeDragon(canvas, paint, cx, cy, u, fancy)
+            27 -> drawSunBird(canvas, paint, cx, cy, u, fancy)
+            28 -> drawHeZun(canvas, paint, cx, cy, u, fancy)
+            29 -> drawStoryteller(canvas, paint, cx, cy, u, fancy)
+            30 -> drawTigerTally(canvas, paint, cx, cy, u, fancy)
+            31 -> drawBronzeChariot(canvas, paint, cx, cy, u, fancy)
             else -> drawDing(canvas, paint, cx, cy, u, fancy)
         }
     }
@@ -1439,6 +1445,195 @@ object RelicIcons {
         px(canvas, paint, cx, cy, u, -1.5f, 2.0f, 3.0f, 1.5f, GOLD)
         px(canvas, paint, cx, cy, u, -1.0f, 2.4f, 2.0f, 0.7f, GOLD_LT)
         px(canvas, paint, cx, cy, u, -3.5f, 0.8f, 0.4f, 4f, 0x55B8E0C0)
+    }
+
+    /** 红山玉龙：C形碧玉龙 */
+    private fun drawJadeDragon(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
+        if (!fancy) {
+            disc(canvas, paint, cx, cy, u, 0f, 0.5f, 4.2f, JADE)
+            px(canvas, paint, cx, cy, u, 1.5f, -3.5f, 2.5f, 2.2f, JADE_DK)
+            return
+        }
+        // C形龙身（开口向右）
+        paint.color = JADE_DK
+        canvas.drawCircle(cx, cy + u * 0.5f, u * 6.2f, paint)
+        paint.color = JADE
+        canvas.drawCircle(cx, cy + u * 0.5f, u * 5.4f, paint)
+        paint.color = 0xFF1A2030.toInt()
+        canvas.drawCircle(cx + u * 0.4f, cy + u * 0.5f, u * 3.6f, paint)
+        // 抹去右侧开口
+        paint.color = 0xFF1A2030.toInt()
+        canvas.drawRect(cx + u * 1.5f, cy - u * 2.5f, cx + u * 7f, cy + u * 3.5f, paint)
+        // 龙头（右上）
+        px(canvas, paint, cx, cy, u, 1.5f, -5.5f, 4.0f, 3.2f, JADE)
+        px(canvas, paint, cx, cy, u, 2.0f, -5.0f, 3.0f, 2.2f, JADE_LT)
+        px(canvas, paint, cx, cy, u, 4.5f, -4.5f, 1.8f, 1.0f, JADE_DK) // 吻
+        px(canvas, paint, cx, cy, u, 2.8f, -4.6f, 0.7f, 0.55f, 0xFF1A2030.toInt()) // 眼
+        // 鬣鬃
+        px(canvas, paint, cx, cy, u, 0.5f, -6.5f, 2.5f, 1.4f, JADE_LT)
+        px(canvas, paint, cx, cy, u, 1.0f, -7.0f, 1.2f, 1.0f, JADE)
+        // 高光
+        px(canvas, paint, cx, cy, u, -4.5f, -2.0f, 0.45f, 4.5f, 0x66FFFFFF)
+        disc(canvas, paint, cx, cy, u, -3.5f, 3.5f, 0.8f, JADE_LT)
+    }
+
+    /** 太阳神鸟：金箔四鸟绕日 */
+    private fun drawSunBird(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
+        if (!fancy) {
+            disc(canvas, paint, cx, cy, u, 0f, 0f, 2.2f, GOLD)
+            for (i in 0 until 4) {
+                val a = i * (Math.PI * 0.5).toFloat()
+                px(canvas, paint, cx, cy, u, cos(a) * 4f - 0.8f, sin(a) * 4f - 0.6f, 1.6f, 1.2f, GOLD_DK)
+            }
+            return
+        }
+        // 外圈与十二芒
+        disc(canvas, paint, cx, cy, u, 0f, 0f, 7.2f, GOLD_DK)
+        disc(canvas, paint, cx, cy, u, 0f, 0f, 6.5f, GOLD)
+        for (i in 0 until 12) {
+            val a = i * (Math.PI * 2 / 12).toFloat()
+            val x = cos(a) * 5.5f
+            val y = sin(a) * 5.5f
+            px(canvas, paint, cx, cy, u, x - 0.45f, y - 0.9f, 0.9f, 1.8f, GOLD_LT)
+        }
+        // 内圆（镂空感）
+        disc(canvas, paint, cx, cy, u, 0f, 0f, 3.2f, GOLD_DK)
+        disc(canvas, paint, cx, cy, u, 0f, 0f, 2.4f, 0xFF1A2030.toInt())
+        disc(canvas, paint, cx, cy, u, 0f, 0f, 1.4f, GOLD)
+        // 四只绕日神鸟
+        for (i in 0 until 4) {
+            val a = i * (Math.PI * 0.5).toFloat() + 0.4f
+            val bx = cos(a) * 4.6f
+            val by = sin(a) * 4.6f
+            px(canvas, paint, cx, cy, u, bx - 1.2f, by - 0.7f, 2.4f, 1.4f, GOLD_DK)
+            px(canvas, paint, cx, cy, u, bx - 0.9f, by - 0.4f, 1.8f, 0.8f, GOLD_LT)
+            px(canvas, paint, cx, cy, u, bx + 0.6f, by - 1.2f, 0.9f, 1.0f, GOLD) // 头
+            px(canvas, paint, cx, cy, u, bx - 1.5f, by + 0.2f, 1.0f, 0.7f, GOLD_DK) // 尾
+        }
+    }
+
+    /** 何尊：鼓腹尊 + 高圈足 */
+    private fun drawHeZun(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
+        if (!fancy) {
+            px(canvas, paint, cx, cy, u, -3.5f, -1f, 7f, 5f, BRONZE)
+            px(canvas, paint, cx, cy, u, -2.5f, -4.5f, 5f, 3.5f, BRONZE_LT)
+            return
+        }
+        // 圈足
+        px(canvas, paint, cx, cy, u, -3.5f, 5.0f, 7.0f, 2.5f, BRONZE_DK)
+        px(canvas, paint, cx, cy, u, -3.0f, 5.4f, 6.0f, 1.8f, BRONZE)
+        // 鼓腹
+        px(canvas, paint, cx, cy, u, -5.5f, -0.5f, 11f, 6.0f, BRONZE_DK)
+        px(canvas, paint, cx, cy, u, -5.0f, 0.0f, 10f, 5.0f, BRONZE)
+        px(canvas, paint, cx, cy, u, -4.5f, 0.5f, 9f, 4.0f, BRONZE_LT)
+        // 颈与口沿
+        px(canvas, paint, cx, cy, u, -3.5f, -4.5f, 7.0f, 4.5f, BRONZE)
+        px(canvas, paint, cx, cy, u, -4.0f, -5.5f, 8.0f, 1.5f, BRONZE_LT)
+        px(canvas, paint, cx, cy, u, -3.5f, -6.2f, 7.0f, 1.0f, BRONZE_DK)
+        // 饕餮纹带
+        px(canvas, paint, cx, cy, u, -4.0f, 1.5f, 8.0f, 1.8f, BRONZE_DK)
+        px(canvas, paint, cx, cy, u, -1.5f, 1.8f, 3.0f, 1.2f, GOLD_DK)
+        // 「中国」铭文暗示
+        px(canvas, paint, cx, cy, u, -1.2f, 3.5f, 2.4f, 0.7f, GOLD)
+        px(canvas, paint, cx, cy, u, -4.5f, -3.5f, 0.4f, 5f, 0x55B8E0C0)
+    }
+
+    /** 击鼓说唱俑：坐姿鼓腹陶俑 */
+    private fun drawStoryteller(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
+        if (!fancy) {
+            disc(canvas, paint, cx, cy, u, 0f, -2.5f, 2.2f, CLAY_LT)
+            px(canvas, paint, cx, cy, u, -2.5f, 0f, 5f, 4.5f, CLAY)
+            return
+        }
+        // 坐垫/腿
+        px(canvas, paint, cx, cy, u, -4.5f, 4.0f, 9.0f, 3.0f, CLAY_DK)
+        px(canvas, paint, cx, cy, u, -4.0f, 4.4f, 8.0f, 2.2f, CLAY)
+        // 鼓腹身躯
+        px(canvas, paint, cx, cy, u, -3.5f, -0.5f, 7.0f, 5.5f, CLAY)
+        px(canvas, paint, cx, cy, u, -3.0f, 0.0f, 6.0f, 4.5f, CLAY_LT)
+        // 头
+        disc(canvas, paint, cx, cy, u, 0f, -4.0f, 2.8f, CLAY_LT)
+        // 大笑嘴与眯眼
+        px(canvas, paint, cx, cy, u, -1.5f, -4.2f, 1.0f, 0.45f, CLAY_DK)
+        px(canvas, paint, cx, cy, u, 0.5f, -4.2f, 1.0f, 0.45f, CLAY_DK)
+        px(canvas, paint, cx, cy, u, -1.4f, -2.8f, 2.8f, 1.2f, 0xFF5A3020.toInt())
+        px(canvas, paint, cx, cy, u, -1.0f, -2.5f, 2.0f, 0.6f, 0xFF1A1020.toInt())
+        // 右臂扬槌
+        px(canvas, paint, cx, cy, u, 2.5f, -3.5f, 3.5f, 1.0f, CLAY)
+        px(canvas, paint, cx, cy, u, 5.2f, -5.5f, 0.7f, 3.0f, WOOD)
+        // 左臂按鼓
+        px(canvas, paint, cx, cy, u, -5.0f, 0.5f, 2.0f, 1.2f, CLAY)
+        disc(canvas, paint, cx, cy, u, -4.5f, 2.5f, 2.2f, CLAY_DK)
+        disc(canvas, paint, cx, cy, u, -4.5f, 2.5f, 1.6f, WOOD)
+        px(canvas, paint, cx, cy, u, -2.5f, -1.5f, 0.4f, 4f, 0x55FFE0C0)
+    }
+
+    /** 虎符：卧虎形兵符 */
+    private fun drawTigerTally(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
+        if (!fancy) {
+            px(canvas, paint, cx, cy, u, -5f, -1f, 10f, 3.5f, BRONZE)
+            px(canvas, paint, cx, cy, u, -5.5f, -2.5f, 3f, 2.5f, BRONZE_DK)
+            return
+        }
+        // 虎身
+        px(canvas, paint, cx, cy, u, -5.5f, -1.0f, 11f, 4.0f, BRONZE_DK)
+        px(canvas, paint, cx, cy, u, -5.0f, -0.5f, 10f, 3.0f, BRONZE)
+        px(canvas, paint, cx, cy, u, -4.5f, 0.0f, 9f, 2.0f, BRONZE_LT)
+        // 头
+        px(canvas, paint, cx, cy, u, -7.0f, -3.0f, 4.0f, 3.5f, BRONZE)
+        px(canvas, paint, cx, cy, u, -6.5f, -2.5f, 3.0f, 2.5f, BRONZE_LT)
+        px(canvas, paint, cx, cy, u, -7.2f, -1.5f, 1.5f, 1.2f, BRONZE_DK) // 吻
+        px(canvas, paint, cx, cy, u, -5.8f, -2.2f, 0.7f, 0.55f, 0xFF1A1020.toInt())
+        // 耳
+        px(canvas, paint, cx, cy, u, -6.0f, -4.2f, 1.2f, 1.4f, BRONZE_DK)
+        px(canvas, paint, cx, cy, u, -4.5f, -4.0f, 1.0f, 1.2f, BRONZE_DK)
+        // 四肢
+        px(canvas, paint, cx, cy, u, -4.5f, 2.5f, 1.5f, 2.5f, BRONZE_DK)
+        px(canvas, paint, cx, cy, u, -1.5f, 2.5f, 1.5f, 2.5f, BRONZE_DK)
+        px(canvas, paint, cx, cy, u, 1.5f, 2.5f, 1.5f, 2.5f, BRONZE_DK)
+        px(canvas, paint, cx, cy, u, 4.0f, 2.5f, 1.5f, 2.5f, BRONZE_DK)
+        // 尾上卷
+        px(canvas, paint, cx, cy, u, 5.0f, -3.5f, 1.2f, 3.5f, BRONZE)
+        px(canvas, paint, cx, cy, u, 4.0f, -4.0f, 2.2f, 1.0f, BRONZE_LT)
+        // 铭文脊线
+        px(canvas, paint, cx, cy, u, -3.0f, -0.2f, 6.0f, 0.45f, GOLD)
+        px(canvas, paint, cx, cy, u, -4.5f, -0.8f, 0.35f, 2.5f, 0x55B8E0C0)
+    }
+
+    /** 铜车马：双马驾辕彩绘御车 */
+    private fun drawBronzeChariot(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
+        if (!fancy) {
+            disc(canvas, paint, cx, cy, u, -2.5f, 2f, 2f, BRONZE_DK)
+            disc(canvas, paint, cx, cy, u, 3f, 2f, 2f, BRONZE_DK)
+            px(canvas, paint, cx, cy, u, -3f, -2f, 6f, 3.5f, BRONZE)
+            return
+        }
+        // 轮
+        disc(canvas, paint, cx, cy, u, -3.5f, 3.5f, 2.8f, BRONZE_DK)
+        disc(canvas, paint, cx, cy, u, -3.5f, 3.5f, 2.2f, BRONZE)
+        disc(canvas, paint, cx, cy, u, -3.5f, 3.5f, 0.7f, GOLD)
+        disc(canvas, paint, cx, cy, u, 4.0f, 3.5f, 2.8f, BRONZE_DK)
+        disc(canvas, paint, cx, cy, u, 4.0f, 3.5f, 2.2f, BRONZE)
+        disc(canvas, paint, cx, cy, u, 4.0f, 3.5f, 0.7f, GOLD)
+        // 舆箱
+        px(canvas, paint, cx, cy, u, -2.0f, -1.5f, 6.5f, 4.5f, BRONZE_DK)
+        px(canvas, paint, cx, cy, u, -1.5f, -1.0f, 5.5f, 3.5f, BRONZE)
+        px(canvas, paint, cx, cy, u, -1.2f, -0.6f, 4.9f, 1.2f, GOLD_DK) // 彩绘带
+        // 伞盖
+        px(canvas, paint, cx, cy, u, -0.5f, -5.5f, 4.0f, 1.2f, BRONZE_LT)
+        px(canvas, paint, cx, cy, u, 1.2f, -4.5f, 0.6f, 3.5f, BRONZE_DK)
+        // 辕与马（左侧）
+        px(canvas, paint, cx, cy, u, -6.5f, 0.5f, 5.0f, 0.7f, BRONZE_DK)
+        px(canvas, paint, cx, cy, u, -7.5f, -1.5f, 3.5f, 2.5f, BRONZE)
+        px(canvas, paint, cx, cy, u, -7.2f, -1.1f, 2.8f, 1.8f, BRONZE_LT)
+        disc(canvas, paint, cx, cy, u, -8.0f, -2.0f, 1.3f, BRONZE) // 马头
+        px(canvas, paint, cx, cy, u, -8.8f, -2.5f, 1.0f, 0.7f, BRONZE_DK)
+        px(canvas, paint, cx, cy, u, -7.0f, 1.5f, 0.8f, 2.5f, BRONZE_DK)
+        px(canvas, paint, cx, cy, u, -5.5f, 1.5f, 0.8f, 2.5f, BRONZE_DK)
+        // 御官示意
+        disc(canvas, paint, cx, cy, u, 1.5f, -2.5f, 1.1f, CLAY_LT)
+        px(canvas, paint, cx, cy, u, 0.7f, -1.5f, 1.6f, 2.0f, 0xFFC04040.toInt())
+        px(canvas, paint, cx, cy, u, -1.5f, -1.2f, 0.35f, 3f, 0x55B8E0C0)
     }
 }
 

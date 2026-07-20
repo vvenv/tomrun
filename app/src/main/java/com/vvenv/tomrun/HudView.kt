@@ -65,6 +65,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private val btnHonor = RectF()
     private val homeOverlayPanel = RectF()
     private val btnCatalogClose = RectF()
+    private val relicDetailFrame = RectF()
     private val hitHouse = RectF()
     private val hitRoof = RectF()
     private val hitYardDeco = RectF()
@@ -420,7 +421,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 when (homeSubView) {
                     HOME_SUB_COLLECTION -> {
                         if (museumDetailId >= 0) {
-                            if (btnCatalogClose.contains(x, y)) museumDetailId = -1
+                            if (!relicDetailFrame.contains(x, y)) museumDetailId = -1
                             return
                         }
                         when {
@@ -577,6 +578,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         museumDetailId = -1
         homeSubView = HOME_SUB_SCENE
         btnCatalogClose.setEmpty()
+        relicDetailFrame.setEmpty()
     }
 
     /**
@@ -3042,6 +3044,8 @@ class HudView(context: Context, private val game: Game) : View(context) {
             (game.relicCollected(museumDetailId) || previewAll)
         ) {
             drawRelicDetailOverlay(canvas, w, h, s, sdx, sdy, museumDetailId)
+        } else {
+            relicDetailFrame.setEmpty()
         }
     }
 
@@ -3089,12 +3093,9 @@ class HudView(context: Context, private val game: Game) : View(context) {
         canvas.drawRect(left, top, right, bottom, btnPaint)
         btnPaint.style = Paint.Style.FILL
 
-        val closeSize = 44f * s
-        btnCatalogClose.set(
-            right - 12f * s - closeSize, top + 12f * s,
-            right - 12f * s, top + 12f * s + closeSize
-        )
-        drawLightBtn(canvas, btnCatalogClose, "X", s)
+        relicDetailFrame.set(left, top, right, bottom)
+        // 详情浮层盖住图鉴时，禁用图鉴 X，改由点击外部关闭
+        btnCatalogClose.setEmpty()
 
         val cx = (left + right) * 0.5f
         val iconHalf = min(pw * 0.38f, ph * 0.30f)
@@ -3138,7 +3139,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         }
 
         lightText(
-            canvas, "点 X 或返回图鉴",
+            canvas, "点击外部关闭",
             cx, bottom - 36f * s, 20f * s, LIGHT_HINT
         )
     }
