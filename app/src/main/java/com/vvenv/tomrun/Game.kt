@@ -1463,8 +1463,11 @@ class Game {
                 coinArc(freeLanes[0], zBase)
             }
             else -> {
-                coinRow(Random.nextInt(3), zBase)
-                coinRow(Random.nextInt(3), zBase - 8f)
+                // 两列金币：同道可密排；分道则按变道时间拉开 Z，避免来不及换道
+                val laneA = Random.nextInt(3)
+                val laneB = Random.nextInt(3)
+                coinRow(laneA, zBase)
+                coinRow(laneB, zBase - coinLaneGap(laneA, laneB))
             }
         }
 
@@ -1505,6 +1508,17 @@ class Game {
 
     private fun coinRow(lane: Int, zBase: Float) {
         for (i in 0 until 5) entities.add(makeCoin(lane, zBase - 1.6f * i, 1.0f))
+    }
+
+    /** 两列金币起点间距：同道紧凑；分道按当前速度留足变道时间 */
+    private fun coinLaneGap(laneA: Int, laneB: Int): Float {
+        val rowSpan = 1.6f * 4f // 5 枚金币首尾跨度
+        val laneDelta = abs(laneA - laneB)
+        if (laneDelta == 0) return rowSpan + 1.6f // 同道：约 8f，与旧行为一致
+        // 变道插值约 τ=1/12s，邻道 ~0.35s、跨两道 ~0.55s，再加少许反应余量
+        val switchSecs = if (laneDelta == 1) 0.45f else 0.65f
+        val clearance = (speed * switchSecs).coerceAtLeast(if (laneDelta == 1) 10f else 14f)
+        return rowSpan + clearance
     }
 
     private fun coinArc(lane: Int, zBase: Float) {
