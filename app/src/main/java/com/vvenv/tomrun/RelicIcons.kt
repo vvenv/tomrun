@@ -144,8 +144,9 @@ object RelicIcons {
         val c = Canvas(bmp)
         bakePaint.style = Paint.Style.FILL
         bakePaint.shader = null
-        // half = size/2：器物坐标约 ±0.45*half，基本铺满画布
-        drawArtifact(c, bakePaint, safeId, size * 0.5f, size * 0.5f, size * 0.5f, fancy)
+        // 器物坐标最大约 ±9（剑首/鹤首），half = size*0.88 时恰好铺满画布不裁切
+        val bakeHalf = size * if (fancy) 0.88f else 0.5f
+        drawArtifact(c, bakePaint, safeId, size * 0.5f, size * 0.5f, bakeHalf, fancy)
         if (fancy) refineFancy(bmp)
         cache[safeId] = bmp
         return bmp
@@ -697,41 +698,117 @@ object RelicIcons {
         disc(canvas, paint, cx, cy, u, 0.5f, -1f, 0.35f, 0x884EC8A0.toInt())
     }
 
-    /** 曾侯乙编钟：横梁挂多枚甬钟 */
+    /** 曾侯乙编钟：双层红漆钟架，上排小甬钟、下排大甬钟 */
     private fun drawBells(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
-        // 木梁
-        px(canvas, paint, cx, cy, u, -7.2f, -6.5f, 14.4f, 1.5f, WOOD)
-        px(canvas, paint, cx, cy, u, -6.8f, -6.2f, 13.6f, 0.9f, WOOD_LT)
-        // 立柱
-        px(canvas, paint, cx, cy, u, -7.0f, -6.5f, 1.0f, 13f, WOOD)
-        px(canvas, paint, cx, cy, u, 6.0f, -6.5f, 1.0f, 13f, WOOD)
-        val sizes = if (fancy) {
-            floatArrayOf(1.0f, 1.15f, 1.35f, 1.55f, 1.75f)
-        } else {
-            floatArrayOf(1.2f, 1.4f, 1.6f)
-        }
-        val startX = if (fancy) -5.2f else -3.2f
-        val gap = if (fancy) 2.4f else 3.2f
-        for (i in sizes.indices) {
-            val x = startX + i * gap
-            val s = sizes[i]
-            val top = -5.0f
-            val h = 5.5f + s * 1.2f
-            // 挂纽
-            px(canvas, paint, cx, cy, u, x - 0.25f, -6.5f, 0.5f, 1.6f, GOLD)
-            // 甬钟身（上窄下宽）
-            px(canvas, paint, cx, cy, u, x - 0.9f * s, top, 1.8f * s, h * 0.35f, BRONZE_LT)
-            px(canvas, paint, cx, cy, u, x - 1.2f * s, top + h * 0.3f, 2.4f * s, h * 0.7f, BRONZE)
-            px(canvas, paint, cx, cy, u, x - 1.2f * s, top + h - 0.8f, 2.4f * s, 0.8f, BRONZE_DK)
-            if (fancy) {
-                // 枚（钟面乳钉）
-                for (row in 0..2) {
-                    for (col in -1..1) {
-                        disc(canvas, paint, cx, cy, u, x + col * 0.55f * s, top + 1.2f + row * 1.1f, 0.22f * s, GOLD_DK)
-                    }
-                }
-                px(canvas, paint, cx, cy, u, x - 0.7f * s, top + h * 0.55f, 1.4f * s, 0.4f, GOLD_LT)
+        if (!fancy) {
+            px(canvas, paint, cx, cy, u, -7.2f, -6.5f, 14.4f, 1.5f, WOOD)
+            px(canvas, paint, cx, cy, u, -6.8f, -6.2f, 13.6f, 0.9f, WOOD_LT)
+            px(canvas, paint, cx, cy, u, -7.0f, -6.5f, 1.0f, 13f, WOOD)
+            px(canvas, paint, cx, cy, u, 6.0f, -6.5f, 1.0f, 13f, WOOD)
+            val sizes = floatArrayOf(1.2f, 1.4f, 1.6f)
+            for (i in sizes.indices) {
+                val x = -3.2f + i * 3.2f
+                val s = sizes[i]
+                val top = -5.0f
+                val h = 5.5f + s * 1.2f
+                px(canvas, paint, cx, cy, u, x - 0.25f, -6.5f, 0.5f, 1.6f, GOLD)
+                px(canvas, paint, cx, cy, u, x - 0.9f * s, top, 1.8f * s, h * 0.35f, BRONZE_LT)
+                px(canvas, paint, cx, cy, u, x - 1.2f * s, top + h * 0.3f, 2.4f * s, h * 0.7f, BRONZE)
+                px(canvas, paint, cx, cy, u, x - 1.2f * s, top + h - 0.8f, 2.4f * s, 0.8f, BRONZE_DK)
             }
+            return
+        }
+
+        val LACQ = 0xFF8A3020.toInt()      // 红漆梁
+        val LACQ_DK = 0xFF5A1E14.toInt()   // 纹饰底
+        val LACQ_LT = 0xFFA84830.toInt()
+
+        // 红漆横梁：漆面 + 深色纹饰格 + 青铜端套
+        fun beam(top: Float, hgt: Float, halfW: Float) {
+            px(canvas, paint, cx, cy, u, -halfW, top, halfW * 2, hgt, LACQ)
+            px(canvas, paint, cx, cy, u, -halfW, top, halfW * 2, 0.25f, LACQ_LT)
+            px(canvas, paint, cx, cy, u, -halfW, top + hgt - 0.25f, halfW * 2, 0.25f, 0xFF3E140C.toInt())
+            // 纹饰格
+            var gx = -halfW + 1.3f
+            while (gx < halfW - 2.2f) {
+                px(canvas, paint, cx, cy, u, gx, top + 0.3f, 1.6f, hgt - 0.6f, LACQ_DK)
+                disc(canvas, paint, cx, cy, u, gx + 0.8f, top + hgt * 0.5f, 0.28f, GOLD_DK)
+                gx += 2.4f
+            }
+            // 青铜端套
+            px(canvas, paint, cx, cy, u, -halfW - 0.5f, top - 0.15f, 1.1f, hgt + 0.3f, BRONZE)
+            px(canvas, paint, cx, cy, u, halfW - 0.6f, top - 0.15f, 1.1f, hgt + 0.3f, BRONZE)
+            px(canvas, paint, cx, cy, u, -halfW - 0.5f, top - 0.15f, 1.1f, 0.3f, BRONZE_LT)
+            px(canvas, paint, cx, cy, u, halfW - 0.6f, top - 0.15f, 1.1f, 0.3f, BRONZE_LT)
+        }
+
+        // 甬钟：甬柱挂钩、合瓦形身、乳钉、篆带、于口两侧尖角
+        fun bell(x: Float, top: Float, hgt: Float, wTop: Float, wBot: Float, glyph: Boolean) {
+            // 甬（悬挂柱）
+            px(canvas, paint, cx, cy, u, x - 0.14f, top - 0.7f, 0.28f, 0.7f, GOLD_DK)
+            disc(canvas, paint, cx, cy, u, x, top - 0.7f, 0.2f, GOLD)
+            // 钟身：分段渐宽
+            val steps = 4
+            for (s in 0 until steps) {
+                val t = top + hgt * s / steps
+                val ww = wTop + (wBot - wTop) * (s + 1) / steps
+                val tone = when (s) {
+                    0 -> BRONZE_LT
+                    steps - 1 -> BRONZE_DK
+                    else -> BRONZE
+                }
+                px(canvas, paint, cx, cy, u, x - ww / 2, t, ww, hgt / steps + 0.06f, tone)
+            }
+            // 左缘受光
+            px(canvas, paint, cx, cy, u, x - wBot / 2 + 0.1f, top + hgt * 0.3f, 0.22f, hgt * 0.6f, 0x558EE8C0)
+            // 于口：底缘两侧下垂尖角（合瓦口弧线）
+            px(canvas, paint, cx, cy, u, x - wBot / 2, top + hgt, wBot * 0.28f, 0.5f, BRONZE_DK)
+            px(canvas, paint, cx, cy, u, x + wBot / 2 - wBot * 0.28f, top + hgt, wBot * 0.28f, 0.5f, BRONZE_DK)
+            // 篆带（中部横带）
+            px(canvas, paint, cx, cy, u, x - wBot / 2 + 0.15f, top + hgt * 0.52f, wBot - 0.3f, 0.32f, GOLD_DK)
+            // 枚（乳钉三列两段）
+            val cols = intArrayOf(-1, 0, 1)
+            for (row in 0..1) {
+                for (col in cols) {
+                    disc(canvas, paint, cx, cy, u, x + col * wBot * 0.26f, top + hgt * (0.18f + row * 0.18f), 0.16f, GOLD_DK)
+                }
+            }
+            // 铭文（大钟金字）
+            if (glyph) {
+                px(canvas, paint, cx, cy, u, x - 0.32f, top + hgt * 0.66f, 0.64f, 0.22f, GOLD)
+                px(canvas, paint, cx, cy, u, x - 0.12f, top + hgt * 0.6f, 0.24f, 0.7f, GOLD)
+                px(canvas, paint, cx, cy, u, x - 0.42f, top + hgt * 0.82f, 0.84f, 0.2f, GOLD)
+            }
+        }
+
+        // 青铜立柱（两侧承梁）
+        fun post(x: Float) {
+            px(canvas, paint, cx, cy, u, x - 0.45f, -7.4f, 0.9f, 14.6f, BRONZE)
+            px(canvas, paint, cx, cy, u, x - 0.45f, -7.4f, 0.3f, 14.6f, BRONZE_LT)
+            px(canvas, paint, cx, cy, u, x + 0.2f, -7.4f, 0.25f, 14.6f, BRONZE_DK)
+            // 柱头/柱础
+            px(canvas, paint, cx, cy, u, x - 0.7f, -7.6f, 1.4f, 0.5f, BRONZE_LT)
+            px(canvas, paint, cx, cy, u, x - 0.9f, 6.9f, 1.8f, 0.6f, BRONZE_DK)
+        }
+
+        post(-7.0f)
+        post(7.0f)
+
+        // 上层：梁 + 5 枚小甬钟
+        beam(-7.2f, 1.3f, 6.4f)
+        for (i in 0..4) {
+            val x = -5.0f + i * 2.5f
+            bell(x, -5.6f, 3.0f + i * 0.12f, 1.1f, 1.7f + i * 0.08f, glyph = false)
+        }
+
+        // 下层：梁 + 4 枚大甬钟（右侧更大）
+        beam(-1.4f, 1.4f, 6.6f)
+        val bigW = floatArrayOf(2.4f, 2.7f, 3.0f, 3.3f)
+        val bigH = floatArrayOf(5.2f, 5.6f, 6.0f, 6.4f)
+        var bx = -5.2f
+        for (i in 0..3) {
+            bell(bx, 0.7f, bigH[i], 1.5f, bigW[i], glyph = true)
+            bx += bigW[i] * 0.5f + (if (i < 3) bigW[i + 1] * 0.5f else 0f) + 0.65f
         }
     }
 
@@ -776,38 +853,79 @@ object RelicIcons {
         px(canvas, paint, cx, cy, u, -1.5f, -5.0f, 0.4f, 2.5f, 0x44FFE0C0)
     }
 
-    /** 铜奔马：马踏飞燕 */
+    /** 铜奔马：马踏飞燕——右后蹄踏燕，三足腾空 */
     private fun drawGallopingHorse(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
         if (!fancy) {
-            px(canvas, paint, cx, cy, u, -3.5f, -1.5f, 6.5f, 3f, BRONZE)
-            px(canvas, paint, cx, cy, u, 2.6f, -3.5f, 1.9f, 3f, BRONZE)
-            px(canvas, paint, cx, cy, u, -1.6f, 3.6f, 2.2f, 1.2f, 0xFF4A90C8.toInt())
+            px(canvas, paint, cx, cy, u, -3.2f, -1.2f, 6.0f, 2.8f, BRONZE)
+            px(canvas, paint, cx, cy, u, 2.2f, -3.2f, 2.2f, 2.8f, BRONZE)
+            px(canvas, paint, cx, cy, u, -1.6f, 1.8f, 0.9f, 3.0f, BRONZE_DK) // 踏燕后蹄
+            px(canvas, paint, cx, cy, u, -2.4f, 4.6f, 2.6f, 1.0f, BRONZE_DK) // 燕
             return
         }
-        // 飞燕（马踏）
-        px(canvas, paint, cx, cy, u, -1.5f, 5.0f, 3.2f, 1.3f, 0xFF3A70B0.toInt())
-        px(canvas, paint, cx, cy, u, -2.8f, 4.6f, 1.6f, 1.0f, 0xFF4A90C8.toInt()) // 翅
-        px(canvas, paint, cx, cy, u, 1.5f, 4.6f, 1.6f, 1.0f, 0xFF4A90C8.toInt())
-        disc(canvas, paint, cx, cy, u, 2.8f, 5.4f, 0.55f, 0xFF2A5080.toInt()) // 头
-        // 三腿腾空 + 一蹄踏燕
-        px(canvas, paint, cx, cy, u, -4.0f, 1.2f, 1.0f, 3.2f, BRONZE_DK) // 后
-        px(canvas, paint, cx, cy, u, -2.0f, 0.8f, 1.0f, 2.5f, BRONZE_DK)
-        px(canvas, paint, cx, cy, u, 1.5f, 0.5f, 1.0f, 2.2f, BRONZE_DK) // 前屈
-        px(canvas, paint, cx, cy, u, 3.2f, 1.5f, 0.9f, 3.8f, BRONZE_DK) // 踏燕之足
-        // 躯干（奔姿前倾）
-        px(canvas, paint, cx, cy, u, -4.5f, -2.0f, 8.5f, 3.8f, BRONZE)
-        px(canvas, paint, cx, cy, u, -4.0f, -1.6f, 7.5f, 3.0f, BRONZE_LT)
-        // 头颈高昂
-        px(canvas, paint, cx, cy, u, 3.0f, -4.5f, 1.8f, 3.5f, BRONZE)
-        px(canvas, paint, cx, cy, u, 3.5f, -5.8f, 3.0f, 2.2f, BRONZE_LT)
-        // 耳、鬃、尾
-        px(canvas, paint, cx, cy, u, 4.5f, -6.8f, 0.55f, 1.2f, BRONZE_DK)
-        px(canvas, paint, cx, cy, u, 5.3f, -6.6f, 0.55f, 1.0f, BRONZE_DK)
-        px(canvas, paint, cx, cy, u, 2.8f, -3.5f, 0.6f, 2.5f, BRONZE_DK) // 鬃
-        px(canvas, paint, cx, cy, u, -5.5f, -1.0f, 1.5f, 0.7f, BRONZE_DK) // 尾
-        px(canvas, paint, cx, cy, u, -6.2f, -0.5f, 1.0f, 2.2f, BRONZE_DK)
-        disc(canvas, paint, cx, cy, u, 6.0f, -5.0f, 0.35f, 0xFF2A2010.toInt()) // 眼
-        px(canvas, paint, cx, cy, u, -3.5f, -1.4f, 0.4f, 2.5f, 0x55B8E0C0)
+
+        // —— 飞燕（展翅，承右后蹄）——
+        px(canvas, paint, cx, cy, u, -2.8f, 6.2f, 3.2f, 1.1f, BRONZE_DK) // 身
+        px(canvas, paint, cx, cy, u, -4.6f, 5.5f, 2.0f, 0.95f, BRONZE)    // 左翅
+        px(canvas, paint, cx, cy, u, 0.2f, 5.5f, 2.0f, 0.95f, BRONZE)     // 右翅
+        px(canvas, paint, cx, cy, u, -5.0f, 5.2f, 0.9f, 0.55f, BRONZE_LT)
+        px(canvas, paint, cx, cy, u, 1.4f, 5.2f, 0.9f, 0.55f, BRONZE_LT)
+        disc(canvas, paint, cx, cy, u, 0.9f, 6.65f, 0.5f, BRONZE_DK)      // 燕头（朝前）
+        px(canvas, paint, cx, cy, u, 1.25f, 6.5f, 0.7f, 0.35f, BRONZE_LT) // 喙
+
+        // —— 四腿：右后踏燕，余三足腾空 ——
+        // 右后（支撑）：自臀垂至燕背
+        px(canvas, paint, cx, cy, u, -1.8f, 1.0f, 1.05f, 5.4f, BRONZE_DK)
+        px(canvas, paint, cx, cy, u, -1.6f, 1.0f, 0.35f, 5.0f, BRONZE)
+        px(canvas, paint, cx, cy, u, -2.0f, 6.0f, 1.4f, 0.55f, BRONZE_DK) // 蹄
+        // 左后：扬起后踢
+        px(canvas, paint, cx, cy, u, -4.8f, 0.0f, 1.0f, 2.0f, BRONZE_DK)
+        px(canvas, paint, cx, cy, u, -6.0f, 1.4f, 1.9f, 0.85f, BRONZE_DK)
+        px(canvas, paint, cx, cy, u, -6.6f, 1.7f, 0.9f, 0.55f, BRONZE)     // 蹄尖
+        // 右前：屈收于胸下
+        px(canvas, paint, cx, cy, u, 1.8f, 0.3f, 0.95f, 2.5f, BRONZE_DK)
+        px(canvas, paint, cx, cy, u, 2.4f, 2.4f, 1.6f, 0.8f, BRONZE_DK)
+        px(canvas, paint, cx, cy, u, 3.6f, 2.6f, 0.7f, 0.5f, BRONZE)
+        // 左前：前伸腾空
+        px(canvas, paint, cx, cy, u, 3.4f, -0.3f, 0.95f, 2.1f, BRONZE_DK)
+        px(canvas, paint, cx, cy, u, 4.1f, 1.4f, 2.3f, 0.85f, BRONZE_DK)
+        px(canvas, paint, cx, cy, u, 6.0f, 1.5f, 0.75f, 0.55f, BRONZE)
+
+        // —— 躯干（奔姿微前倾）——
+        px(canvas, paint, cx, cy, u, -4.8f, -2.2f, 9.0f, 4.0f, BRONZE_DK)
+        px(canvas, paint, cx, cy, u, -4.4f, -1.8f, 8.2f, 3.2f, BRONZE)
+        px(canvas, paint, cx, cy, u, -4.0f, -1.5f, 7.4f, 1.2f, BRONZE_LT) // 背光
+        // 胸肌 / 腹弧
+        px(canvas, paint, cx, cy, u, 1.5f, -0.6f, 2.8f, 2.4f, BRONZE)
+        px(canvas, paint, cx, cy, u, -3.8f, 0.6f, 5.5f, 1.1f, BRONZE_DK)
+
+        // —— 颈与头（昂首张口）——
+        px(canvas, paint, cx, cy, u, 2.8f, -4.8f, 2.0f, 3.6f, BRONZE)
+        px(canvas, paint, cx, cy, u, 3.1f, -4.5f, 1.2f, 3.0f, BRONZE_LT)
+        // 头骨
+        px(canvas, paint, cx, cy, u, 3.6f, -6.4f, 3.4f, 2.4f, BRONZE)
+        px(canvas, paint, cx, cy, u, 4.0f, -6.1f, 2.6f, 1.6f, BRONZE_LT)
+        // 张口
+        px(canvas, paint, cx, cy, u, 6.4f, -5.4f, 1.3f, 0.9f, BRONZE_DK)
+        px(canvas, paint, cx, cy, u, 6.55f, -5.2f, 0.95f, 0.35f, 0xFF2A2010.toInt())
+        // 下颌
+        px(canvas, paint, cx, cy, u, 5.2f, -4.4f, 1.8f, 0.7f, BRONZE_DK)
+        // 耳
+        px(canvas, paint, cx, cy, u, 4.4f, -7.4f, 0.55f, 1.15f, BRONZE_DK)
+        px(canvas, paint, cx, cy, u, 5.2f, -7.2f, 0.55f, 1.0f, BRONZE_DK)
+        // 竖鬃
+        px(canvas, paint, cx, cy, u, 2.6f, -5.8f, 0.7f, 2.8f, BRONZE_DK)
+        px(canvas, paint, cx, cy, u, 2.4f, -6.2f, 0.45f, 1.2f, BRONZE)
+        disc(canvas, paint, cx, cy, u, 5.5f, -5.6f, 0.32f, 0xFF1A1810.toInt()) // 眼
+
+        // —— 尾：扬起后垂 ——
+        px(canvas, paint, cx, cy, u, -5.6f, -1.6f, 1.6f, 0.75f, BRONZE_DK)
+        px(canvas, paint, cx, cy, u, -6.8f, -1.2f, 1.4f, 0.7f, BRONZE_DK)
+        px(canvas, paint, cx, cy, u, -7.2f, -0.4f, 0.95f, 2.6f, BRONZE_DK)
+        px(canvas, paint, cx, cy, u, -7.0f, 1.8f, 1.3f, 0.7f, BRONZE)
+
+        // 铜锈高光
+        px(canvas, paint, cx, cy, u, -3.2f, -1.6f, 0.4f, 2.4f, 0x55B8E0C0)
+        px(canvas, paint, cx, cy, u, 4.2f, -5.8f, 0.3f, 1.4f, 0x44C8F0D0)
     }
 
     /** 兰亭序：展开手卷 + 行书墨迹 + 朱印 */
