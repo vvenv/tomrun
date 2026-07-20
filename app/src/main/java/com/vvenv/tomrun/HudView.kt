@@ -157,7 +157,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        val swipeMin = 60f * (height / 720f)
+        val swipeMin = 60f * hudScale(width.toFloat(), height.toFloat())
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 downX = event.x; downY = event.y; consumed = false
@@ -316,18 +316,28 @@ class HudView(context: Context, private val game: Game) : View(context) {
         postInvalidateOnAnimation()
     }
 
+    /** 横屏短边 /720；竖屏 /560，整体再放大一档，按钮更好点 */
+    private fun hudScale(w: Float, h: Float): Float =
+        if (h > w) min(w, h) / 560f else min(w, h) / 720f
+
+    /** 顶部安全区偏移：竖屏时整体下移避开挖孔/圆角，供暂停/返回按钮共用 */
+    private var hudTop = 0f
+
     private fun drawHud(canvas: Canvas, w: Float, h: Float) {
-        val s = h / 720f
+        val portrait = h > w
+        val s = hudScale(w, h)
+        val top = if (portrait) h * 0.035f else 0f
+        hudTop = top
         val sdx = 1f
         val sdy = 1f
 
         // 右上角：跑酷中只保留核心的得分与金币，最高分/钱包在菜单里再展示
         textPaint.textAlign = Paint.Align.RIGHT
-        pixText(canvas, "得分 ${game.score}", w - 36f * s, 66f * s, 42f * s, Color.WHITE, sdx, sdy)
-        pixText(canvas, "金币 ${game.coins}", w - 36f * s, 106f * s, 28f * s, 0xFFFFD54A.toInt(), sdx, sdy)
+        pixText(canvas, "得分 ${game.score}", w - 36f * s, top + 66f * s, 42f * s, Color.WHITE, sdx, sdy)
+        pixText(canvas, "金币 ${game.coins}", w - 36f * s, top + 106f * s, 28f * s, 0xFFFFD54A.toInt(), sdx, sdy)
         if (game.state != Game.State.RUNNING) {
-            pixText(canvas, "最高 ${game.highScore}", w - 36f * s, 142f * s, 28f * s, Color.WHITE, sdx, sdy)
-            pixText(canvas, "钱包 ${game.wallet}", w - 36f * s, 178f * s, 26f * s, 0xFFFFC21F.toInt(), sdx, sdy)
+            pixText(canvas, "最高 ${game.highScore}", w - 36f * s, top + 142f * s, 28f * s, Color.WHITE, sdx, sdy)
+            pixText(canvas, "钱包 ${game.wallet}", w - 36f * s, top + 178f * s, 26f * s, 0xFFFFC21F.toInt(), sdx, sdy)
         }
         if (game.state == Game.State.RUNNING && game.combo > 0) {
             val cColor = when {
@@ -338,20 +348,22 @@ class HudView(context: Context, private val game: Game) : View(context) {
             val next = game.comboToNext()
             val line = if (next > 0) "连击 ${game.combo} x${game.comboMult}  差$next"
             else "连击 ${game.combo} x${game.comboMult} MAX"
-            pixText(canvas, line, w - 36f * s, 142f * s, 26f * s, cColor, sdx, sdy)
+            pixText(canvas, line, w - 36f * s, top + 142f * s, 26f * s, cColor, sdx, sdy)
         }
 
-        // 顶部中央：当前宇宙
+        // 顶部中央：当前宇宙（竖屏时挖孔在正上方，额外多让一行）
         if (game.state == Game.State.RUNNING && game.universe != Game.UNI_MEADOW) {
             pixText(
-                canvas, "· ${Game.UNIVERSE_NAMES[game.universe]} ·", w / 2f, 66f * s, 26f * s,
+                canvas, "· ${Game.UNIVERSE_NAMES[game.universe]} ·", w / 2f,
+                top + (if (portrait) 106f else 66f) * s, 26f * s,
                 UNI_HUD[game.universe % UNI_HUD.size], sdx, sdy
             )
         }
 
-        // 左上角 buff（跑酷中让位给暂停按钮）
+        // 左上角 buff：跑酷时紧贴暂停按钮下方，避免被按钮盖住
         textPaint.textAlign = Paint.Align.LEFT
-        var buffY = if (game.state == Game.State.RUNNING) 130f * s else 66f * s
+        val pauseBottom = top + 30f * s + 100f * s   // 与 drawPauseButton 同尺寸
+        var buffY = if (game.state == Game.State.RUNNING) pauseBottom + 32f * s else top + 66f * s
         if (game.state == Game.State.RUNNING && game.immortalMode) {
             pixText(canvas, "测试 · 不死", 36f * s, buffY, 28f * s, 0xFF4DE8FF.toInt(), sdx, sdy)
             buffY += 36f * s
@@ -378,10 +390,10 @@ class HudView(context: Context, private val game: Game) : View(context) {
             buffY += 36f * s
         }
 
-        // 局内任务
+        // 局内任务（竖屏时抬高避开手势条）
         if (game.state == Game.State.RUNNING) {
             textPaint.textAlign = Paint.Align.LEFT
-            var qy = h - 36f * s
+            var qy = h - (if (portrait) 84f else 36f) * s
             for (i in game.quests.indices.reversed()) {
                 val q = game.quests[i]
                 val color = if (q.done) 0xFF7DEBA0.toInt() else 0xDDFFFFFF.toInt()
@@ -400,7 +412,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
             val rise = (0.9f - game.floatFlash) * 18f * s
             textPaint.textAlign = Paint.Align.RIGHT
             pixText(
-                canvas, game.lastFloat, w - 36f * s, 182f * s - rise, 26f * s,
+                canvas, game.lastFloat, w - 36f * s, top + 182f * s - rise, 26f * s,
                 (alpha shl 24) or (game.lastFloatColor and 0x00FFFFFF), sdx, sdy
             )
         }
@@ -507,23 +519,24 @@ class HudView(context: Context, private val game: Game) : View(context) {
             pixText(canvas, "点击屏幕开始", w / 2f, h * 0.46f, 32f * s, withAlpha(Color.WHITE, blink), sdx, sdy)
         }
 
-        // 商店 / 小屋：两个核心操作按钮居中
-        val bw = 168f * s
-        val bh = 56f * s
-        val gap = 20f * s
-        val y = h * 0.73f
+        // 商店 / 小屋：竖屏接近半宽，触控更舒服
+        val portrait = h > w
+        val bw = if (portrait) w * 0.42f else 168f * s
+        val bh = if (portrait) 92f * s else 56f * s
+        val gap = if (portrait) 20f * s else 20f * s
+        val y = if (portrait) h * 0.68f else h * 0.73f
         btnShop.set(w / 2f - bw - gap / 2f, y, w / 2f - gap / 2f, y + bh)
         btnHome.set(w / 2f + gap / 2f, y, w / 2f + bw + gap / 2f, y + bh)
         drawBtn(canvas, btnShop, "商店", s)
         drawBtn(canvas, btnHome, "小屋", s)
 
-        // 底部两角小图标：左「帮助」右「成就」，只读信息收进浮层
-        val iconSize = 52f * s
-        val iconY = h - 36f * s
-        btnHelp.set(36f * s, iconY - iconSize, 36f * s + iconSize, iconY)
+        // 底部两角：帮助 / 成就
+        val iconSize = if (portrait) 100f * s else 52f * s
+        val iconY = h - (if (portrait) 64f else 36f) * s
+        btnHelp.set(28f * s, iconY - iconSize, 28f * s + iconSize, iconY)
         drawBtn(canvas, btnHelp, "?", s)
-        val achieveW = 96f * s
-        btnAchieve.set(w - 36f * s - achieveW, iconY - iconSize, w - 36f * s, iconY)
+        val achieveW = if (portrait) 176f * s else 96f * s
+        btnAchieve.set(w - 28f * s - achieveW, iconY - iconSize, w - 28f * s, iconY)
         drawBtn(canvas, btnAchieve, "成就", s)
 
         if (showHelp) drawHelpOverlay(canvas, w, h, s, sdx, sdy)
@@ -573,12 +586,14 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val ghostDeco = if (game.homeTab == Game.HOME_TAB_DECO) game.homeBrowseDeco else -1
         drawHomeScene(canvas, w, h, s, house, roof, ghostDeco)
 
-        // 标签页
-        val tabW = 120f * s
-        val tabH = 44f * s
+        // 标签页（竖屏按屏宽均分，避免缩放后仍显小）
+        val portrait = h > w
+        val tabGap = if (portrait) 10f * s else 12f * s
+        val tabW = if (portrait) min(140f * s, (w * 0.90f - 2f * tabGap) / 3f) else 120f * s
+        val tabH = if (portrait) 56f * s else 44f * s
         val tabY = h * 0.575f
         for (i in 0..2) {
-            val cx = w / 2f + (i - 1) * (tabW + 12f * s)
+            val cx = w / 2f + (i - 1) * (tabW + tabGap)
             btnHomeTabs[i].set(cx - tabW / 2f, tabY, cx + tabW / 2f, tabY + tabH)
             btnPaint.style = Paint.Style.FILL
             btnPaint.color = if (game.homeTab == i) 0xEE3A5068.toInt() else 0xCC222C38.toInt()
@@ -596,8 +611,10 @@ class HudView(context: Context, private val game: Game) : View(context) {
 
         // 浏览行
         val by = h * 0.68f
-        btnHomeL.set(w * 0.18f - 30f * s, by - 24f * s, w * 0.18f + 30f * s, by + 24f * s)
-        btnHomeR.set(w * 0.82f - 30f * s, by - 24f * s, w * 0.82f + 30f * s, by + 24f * s)
+        val arrowHalf = if (portrait) 40f * s else 30f * s
+        val arrowH = if (portrait) 32f * s else 24f * s
+        btnHomeL.set(w * 0.18f - arrowHalf, by - arrowH, w * 0.18f + arrowHalf, by + arrowH)
+        btnHomeR.set(w * 0.82f - arrowHalf, by - arrowH, w * 0.82f + arrowHalf, by + arrowH)
         drawBtn(canvas, btnHomeL, "<", s)
         drawBtn(canvas, btnHomeR, ">", s)
         val (name, price, status, action) = when (game.homeTab) {
@@ -637,7 +654,12 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val info = if (status.isEmpty()) "$name  价格 $price" else "$name  $status"
         pixText(canvas, info, w / 2f, by + 8f * s, 26f * s, Color.WHITE, sdx, sdy)
 
-        btnHomeBuy.set(w / 2f - 120f * s, h * 0.735f, w / 2f + 120f * s, h * 0.735f + 48f * s)
+        btnHomeBuy.set(
+            w / 2f - (if (portrait) min(160f * s, w * 0.36f) else 120f * s),
+            h * 0.735f,
+            w / 2f + (if (portrait) min(160f * s, w * 0.36f) else 120f * s),
+            h * 0.735f + (if (portrait) 60f * s else 48f * s)
+        )
         drawBtn(canvas, btnHomeBuy, action, s)
 
         pixText(
@@ -646,10 +668,11 @@ class HudView(context: Context, private val game: Game) : View(context) {
         )
 
         val bottomY = h * 0.92f
-        val bottomW = 180f * s
+        val bottomW = if (portrait) min(220f * s, w * 0.50f) else 180f * s
+        val bottomH = if (portrait) 32f * s else 26f * s
         btnRename.set(
-            w / 2f - bottomW / 2f, bottomY - 26f * s,
-            w / 2f + bottomW / 2f, bottomY + 26f * s
+            w / 2f - bottomW / 2f, bottomY - bottomH,
+            w / 2f + bottomW / 2f, bottomY + bottomH
         )
         drawBtn(canvas, btnRename, "角色改名", s)
 
@@ -1308,12 +1331,14 @@ class HudView(context: Context, private val game: Game) : View(context) {
         }
         drawPixelCat(canvas, w / 2f, footY, s * 2f, 1f, POSE_STAND, pvColor, pvScarf, pvHat)
 
-        // 标签页
-        val tabW = 108f * s
-        val tabH = 44f * s
+        // 标签页（竖屏按屏宽均分四格）
+        val portrait = h > w
+        val tabGap = if (portrait) 8f * s else 12f * s
+        val tabW = if (portrait) min(120f * s, (w * 0.92f - 3f * tabGap) / 4f) else 108f * s
+        val tabH = if (portrait) 56f * s else 44f * s
         val tabY = h * 0.505f
         for (i in 0..3) {
-            val cx = w / 2f + (i - 1.5f) * (tabW + 12f * s)
+            val cx = w / 2f + (i - 1.5f) * (tabW + tabGap)
             btnShopTabs[i].set(cx - tabW / 2f, tabY, cx + tabW / 2f, tabY + tabH)
             btnPaint.style = Paint.Style.FILL
             btnPaint.color = if (tab == i) 0xEE3A5068.toInt() else 0xCC222C38.toInt()
@@ -1331,8 +1356,10 @@ class HudView(context: Context, private val game: Game) : View(context) {
 
         // 浏览行
         val by = h * 0.625f
-        btnShopL.set(w * 0.18f - 30f * s, by - 24f * s, w * 0.18f + 30f * s, by + 24f * s)
-        btnShopR.set(w * 0.82f - 30f * s, by - 24f * s, w * 0.82f + 30f * s, by + 24f * s)
+        val arrowHalf = if (portrait) 40f * s else 30f * s
+        val arrowH = if (portrait) 32f * s else 24f * s
+        btnShopL.set(w * 0.18f - arrowHalf, by - arrowH, w * 0.18f + arrowHalf, by + arrowH)
+        btnShopR.set(w * 0.82f - arrowHalf, by - arrowH, w * 0.82f + arrowHalf, by + arrowH)
         drawBtn(canvas, btnShopL, "<", s)
         drawBtn(canvas, btnShopR, ">", s)
         val row = when (tab) {
@@ -1388,7 +1415,12 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val info = if (row.status.isEmpty()) "${row.name}  价格 ${row.price}" else "${row.name}  ${row.status}"
         pixText(canvas, info, w / 2f, by + 8f * s, 26f * s, Color.WHITE, sdx, sdy)
 
-        btnShopBuy.set(w / 2f - 120f * s, h * 0.685f, w / 2f + 120f * s, h * 0.685f + 48f * s)
+        btnShopBuy.set(
+            w / 2f - (if (portrait) min(160f * s, w * 0.36f) else 120f * s),
+            h * 0.685f,
+            w / 2f + (if (portrait) min(160f * s, w * 0.36f) else 120f * s),
+            h * 0.685f + (if (portrait) 60f * s else 48f * s)
+        )
         drawBtn(canvas, btnShopBuy, row.action, s)
 
         drawBackButton(canvas, s)
@@ -1396,13 +1428,16 @@ class HudView(context: Context, private val game: Game) : View(context) {
 
     /** 统一的左上角返回按钮，与跑酷中的暂停按钮同位 */
     private fun drawBackButton(canvas: Canvas, s: Float) {
-        btnBack.set(30f * s, 30f * s, 30f * s + 120f * s, 30f * s + 52f * s)
+        val bw = 140f * s
+        val bh = 60f * s
+        btnBack.set(30f * s, hudTop + 30f * s, 30f * s + bw, hudTop + 30f * s + bh)
         drawBtn(canvas, btnBack, "< 返回", s)
     }
 
     // ---------- 暂停 ----------
     private fun drawPauseButton(canvas: Canvas, s: Float) {
-        btnPause.set(30f * s, 30f * s, 92f * s, 92f * s)
+        val size = 100f * s
+        btnPause.set(30f * s, hudTop + 30f * s, 30f * s + size, hudTop + 30f * s + size)
         btnPaint.style = Paint.Style.FILL
         btnPaint.color = 0x88222C38.toInt()
         canvas.drawRect(btnPause, btnPaint)
@@ -1423,9 +1458,12 @@ class HudView(context: Context, private val game: Game) : View(context) {
         dim(canvas, w, h)   // 双层压暗，突出暂停菜单
         pixText(canvas, "已暂停", w / 2f, h * 0.34f, 64f * s, Color.WHITE, sdx, sdy)
 
-        btnResume.set(w / 2f - 150f * s, h * 0.48f, w / 2f + 150f * s, h * 0.48f + 56f * s)
+        val portrait = h > w
+        val halfW = if (portrait) min(180f * s, w * 0.40f) else 150f * s
+        val bh = if (portrait) 68f * s else 56f * s
+        btnResume.set(w / 2f - halfW, h * 0.48f, w / 2f + halfW, h * 0.48f + bh)
         drawBtn(canvas, btnResume, "继续跑酷", s)
-        btnQuit.set(w / 2f - 150f * s, h * 0.60f, w / 2f + 150f * s, h * 0.60f + 56f * s)
+        btnQuit.set(w / 2f - halfW, h * 0.60f, w / 2f + halfW, h * 0.60f + bh)
         drawBtn(canvas, btnQuit, "结束本局", s)
     }
 
@@ -1499,7 +1537,8 @@ class HudView(context: Context, private val game: Game) : View(context) {
         canvas.drawRect(r, btnPaint)
         btnPaint.style = Paint.Style.FILL
         textPaint.textAlign = Paint.Align.CENTER
-        pixText(canvas, label, r.centerX(), r.centerY() + 8f * s, 24f * s, Color.WHITE, 1f, 1f)
+        val labelSize = min(32f * s, r.height() * 0.45f).coerceAtLeast(24f * s)
+        pixText(canvas, label, r.centerX(), r.centerY() + labelSize * 0.32f, labelSize, Color.WHITE, 1f, 1f)
     }
 
     private fun fittedTextSize(text: String, preferredSize: Float, maxWidth: Float, minSize: Float): Float {

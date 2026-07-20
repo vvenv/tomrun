@@ -920,7 +920,10 @@ class Game {
             catY += (RIDE_Y - catY) * min(1f, dt * 8f)
             velY = 0f
             slideTimer = 0f
-            if (r.exitZ >= 0f || r !in ziplines) riding = null
+            if (r.exitZ >= 0f || r !in ziplines) {
+                riding = null
+                dismountGrace()
+            }
         } else {
             if (wasGrounded && nextGroundY >= catY - 0.08f) {
                 catY = nextGroundY
@@ -1078,6 +1081,8 @@ class Game {
         universe = portalTarget
         universeBlend = 0f
         portalFlash = 0.55f
+        // 刚进新宇宙：闪光 + 换景需要适应，前方一段距离不留障碍
+        clearObstaclesAhead((speed * 2.5f).coerceAtLeast(55f))
         // 白闪期间仍在跑，给短暂无敌，避免闪完眼前突然撞上障碍
         invulnTime = invulnTime.coerceAtLeast(1.0f)
         portalGap = 480f + Random.nextFloat() * 260f
@@ -1115,6 +1120,19 @@ class Game {
     }
 
     // ---------- 生成 ----------
+    /** 安全缓冲：清掉前方一段距离内的障碍物，给玩家留足反应时间 */
+    private fun clearObstaclesAhead(dist: Float) {
+        entities.removeAll {
+            it.z > -dist && (it.kind == OBST_LOW || it.kind == OBST_BAR ||
+                it.kind == OBST_BLOCK || it.kind == OBST_RAMP)
+        }
+    }
+
+    /** 下滑索缓冲：落点附近不留障碍，避免刚落地反应不及 */
+    private fun dismountGrace() {
+        clearObstaclesAhead((speed * 1.7f).coerceAtLeast(40f))
+    }
+
     private fun spawnZipline() {
         val laneZ = Random.nextInt(3)
         val length = 30f + Random.nextFloat() * 50f

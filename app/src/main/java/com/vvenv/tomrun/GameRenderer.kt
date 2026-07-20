@@ -12,6 +12,7 @@ import kotlin.math.floor
 import kotlin.math.min
 import kotlin.math.sin
 import kotlin.math.sqrt
+import kotlin.math.tan
 
 /**
  * 像素/体素风 3D 渲染：第三人称跟随相机，全方块世界 + 距离雾 + 软阴影。
@@ -42,6 +43,9 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
     private var mMode = 0
     private var aspect = 1.6f
     private var powerFxPhase = 0f
+
+    /** 横屏参考宽高比：竖屏时用它把垂直 FOV 换算成「同等水平视野」，保证三道刚好入镜。 */
+    private val REF_ASPECT = 1.6f
 
     // 天气 + 昼夜混合后的场景配色
     private val skyCol = FloatArray(4) { 1f }
@@ -388,8 +392,24 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
 
     override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
         GLES20.glViewport(0, 0, width, height)
-        aspect = width.toFloat() / height
-        Matrix.perspectiveM(proj, 0, 52f, aspect, 0.5f, 400f)
+        aspect = if (height > 0) width.toFloat() / height else 1.6f
+        applyProjection(52f)
+    }
+
+    /**
+     * 宽屏：直接用垂直 FOV（原横屏手感）。
+     * 窄屏：锚定「参考横屏」的水平 FOV，反推垂直 FOV，避免三条道被挤扁。
+     */
+    private fun applyProjection(vFovDeg: Float) {
+        val vFov = vFovDeg.coerceIn(50f, 68f)
+        val vertical = if (aspect >= 1f) {
+            vFov
+        } else {
+            val halfV = Math.toRadians(vFov.toDouble() / 2.0)
+            val halfH = atan(tan(halfV) * REF_ASPECT)
+            Math.toDegrees(2.0 * atan(tan(halfH) / aspect.toDouble())).toFloat()
+        }
+        Matrix.perspectiveM(proj, 0, vertical, aspect, 0.5f, 400f)
     }
 
     override fun onDrawFrame(gl: GL10?) {
@@ -407,22 +427,25 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         GLES20.glEnableVertexAttribArray(aNormal)
         setSkyFog()
 
-        // 动态 FOV：速度越高视野越宽；冲刺再加一点
+        // 动态 FOV：速度越高视野越宽；冲刺再加一点（竖屏走水平锚定）
         val spd = game.speed
         val fov = 52f + (spd - 14f) * 0.55f + (if (game.boosting) 4f else 0f)
-        Matrix.perspectiveM(proj, 0, fov.coerceIn(50f, 68f), aspect, 0.5f, 400f)
+        applyProjection(fov)
 
         camX += (game.catX * 0.55f - camX) * min(1f, dt * 6f)
         val shakeAmt = game.shake
         val sx = if (shakeAmt > 0f) sin(now * 0.00000005) * shakeAmt * 0.18f else 0.0
         val sy = if (shakeAmt > 0f) cos(now * 0.00000007) * shakeAmt * 0.12f else 0.0
-        // 正后方略抬高贴近：俯视能看清头顶双耳与背部轮廓，而不是一根竖柱
-        val eyeY = 4.35f + game.catY * 0.22f + sy.toFloat()
-        val centerY = 1.15f + game.catY * 0.28f
+        // 竖屏：抬高俯视，地平线上移、猫压到约下 1/4，赛道更长
+        val portrait = aspect < 1f
+        val eyeY = (if (portrait) 6.8f else 4.35f) + game.catY * 0.22f + sy.toFloat()
+        val centerY = (if (portrait) 0.15f else 1.15f) + game.catY * 0.28f
+        val eyeZ = if (portrait) 5.2f else 6.0f
+        val lookZ = if (portrait) -12f else -8f
         Matrix.setLookAtM(
             view, 0,
-            camX + sx.toFloat(), eyeY, 6.0f,
-            camX * 0.5f + sx.toFloat(), centerY, -8f,
+            camX + sx.toFloat(), eyeY, eyeZ,
+            camX * 0.5f + sx.toFloat(), centerY, lookZ,
             0f, 1f, 0f
         )
         Matrix.multiplyMM(vp, 0, proj, 0, view, 0)
