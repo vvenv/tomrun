@@ -43,6 +43,7 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
     private var mMode = 0
     private var aspect = 1.6f
     private var powerFxPhase = 0f
+    private val projectTmp = FloatArray(2)
 
     /** 横屏参考宽高比：竖屏时用它把垂直 FOV 换算成「同等水平视野」，保证三道刚好入镜。 */
     private val REF_ASPECT = 1.6f
@@ -158,6 +159,8 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         private val ROCK = floatArrayOf(0.60f, 0.59f, 0.56f, 1f)
         private val METAL = floatArrayOf(0.55f, 0.58f, 0.64f, 1f)
         private val GOLD = floatArrayOf(1.0f, 0.84f, 0.10f, 1f)
+        private val LETTER_GOLD = floatArrayOf(0.78f, 0.42f, 1.0f, 1f)
+        private val LETTER_CORE = floatArrayOf(1.0f, 0.88f, 0.45f, 1f)
         private val CLOUD = floatArrayOf(1f, 1f, 1f, 1f)
         private val SUN = floatArrayOf(1.0f, 0.90f, 0.35f, 1f)
         private val MOON = floatArrayOf(0.92f, 0.94f, 1.0f, 1f)
@@ -449,6 +452,7 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
             0f, 1f, 0f
         )
         Matrix.multiplyMM(vp, 0, proj, 0, view, 0)
+        publishLetterLabels()
 
         drawSky()
         drawTrack()
@@ -464,6 +468,45 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
 
         GLES20.glDisableVertexAttribArray(aPos)
         GLES20.glDisableVertexAttribArray(aNormal)
+    }
+
+    /** 把字母金币投影到 0~1 屏幕坐标，供 HUD 叠字 */
+    private fun publishLetterLabels() {
+        var n = 0
+        synchronized(game) {
+            if (game.state != Game.State.RUNNING) {
+                game.letterHudCount = 0
+                return
+            }
+            for (e in game.entities) {
+                if (n >= Game.LETTER_HUD_MAX) break
+                if (!e.isLetterCoin || e.taken) continue
+                if (e.z > 3f || e.z < -70f) continue
+                // 字母浮在金币正上方
+                if (!projectWorld(e.x, e.y + 0.95f, e.z, projectTmp)) continue
+                game.letterHudX[n] = projectTmp[0]
+                game.letterHudY[n] = projectTmp[1]
+                game.letterHudScale[n] = (1.15f / (1f + abs(e.z) * 0.035f)).coerceIn(0.5f, 1.35f)
+                game.letterHudCh[n] = e.letter.uppercaseChar()
+                n++
+            }
+            game.letterHudCount = n
+        }
+    }
+
+    /** 世界坐标 → 归一化屏幕坐标 (x,y ∈ 0~1，原点左上)。失败返回 false。 */
+    private fun projectWorld(x: Float, y: Float, z: Float, out: FloatArray): Boolean {
+        val m = vp
+        val cw = m[3] * x + m[7] * y + m[11] * z + m[15]
+        if (cw <= 0.05f) return false
+        val cx = m[0] * x + m[4] * y + m[8] * z + m[12]
+        val cy = m[1] * x + m[5] * y + m[9] * z + m[13]
+        val ndcX = cx / cw
+        val ndcY = cy / cw
+        if (ndcX < -1.15f || ndcX > 1.15f || ndcY < -1.2f || ndcY > 1.2f) return false
+        out[0] = ndcX * 0.5f + 0.5f
+        out[1] = 1f - (ndcY * 0.5f + 0.5f)
+        return true
     }
 
     // ---------- 天气 / 昼夜配色 ----------
@@ -1005,7 +1048,12 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
                         if (e.z < 1.5f && e.y < 2f) drawShadow(x, e.z, 0.5f)
                         pushModel(x, e.y, e.z)
                         Matrix.rotateM(model, 0, e.spin, 0f, 1f, 0f)
-                        drawPart(0f, 0f, 0f, 0.62f, 0.62f, 0.2f, GOLD)
+                        if (e.isLetterCoin) {
+                            drawPart(0f, 0f, 0f, 0.72f, 0.72f, 0.24f, LETTER_GOLD)
+                            drawPart(0f, 0f, 0.06f, 0.38f, 0.38f, 0.18f, LETTER_CORE)
+                        } else {
+                            drawPart(0f, 0f, 0f, 0.62f, 0.62f, 0.2f, GOLD)
+                        }
                         popModel()
                     }
                     Game.P_MAGNET -> {

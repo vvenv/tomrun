@@ -63,6 +63,14 @@ class Game {
         const val Q_SLIDE = 4
         const val Q_SMASH = 5
         const val Q_PORTAL = 6
+        const val Q_WORD = 7
+
+        /** 字母金币目标词（短词，便于一局拼 1–3 次） */
+        val WORD_POOL = arrayOf(
+            "CAT", "RUN", "TOM", "GOLD", "JUMP",
+            "COIN", "FAST", "LUCK", "MEGA", "STAR"
+        )
+        const val LETTER_HUD_MAX = 32
 
         // 平行宇宙
         const val UNI_MEADOW = 0
@@ -168,6 +176,9 @@ class Game {
         var x = LANE_X[lane]
         var taken = false
         var spin = Random.nextFloat() * 360f
+        /** 字母金币：'\u0000' 表示普通金币 */
+        var letter: Char = '\u0000'
+        val isLetterCoin get() = letter != '\u0000'
     }
 
     class Zip(val lane: Int, var entryZ: Float, val length: Float) {
@@ -221,6 +232,12 @@ class Game {
     @Volatile var comboNextAt = 5   // 距离下一级所需连击数
     private var comboTimer = 0f
     private var comboScore = 0
+
+    // 字母组词：本局目标词 + 已填字母位掩码
+    @Volatile var targetWord = ""
+    @Volatile var wordMask = 0
+    @Volatile var wordsCompleted = 0
+    private var wordStreak = 0
 
     val quests = ArrayList<Quest>(3)
     @Volatile var bestComboRun = 0
@@ -337,6 +354,13 @@ class Game {
 
     val entities = ArrayList<Entity>()
     val ziplines = ArrayList<Zip>()
+
+    /** 字母金币屏幕标签（由 Renderer 投影，HudView 绘制），坐标为 0~1 */
+    val letterHudX = FloatArray(LETTER_HUD_MAX)
+    val letterHudY = FloatArray(LETTER_HUD_MAX)
+    val letterHudScale = FloatArray(LETTER_HUD_MAX)
+    val letterHudCh = CharArray(LETTER_HUD_MAX)
+    @Volatile var letterHudCount = 0
 
     private var prefs: SharedPreferences? = null
     private var sessionPickupCoins = 0  // 本局拾取计入累计统计
@@ -824,6 +848,9 @@ class Game {
         bestComboRun = 0; missionBonus = 0
         runJumps = 0; runSlides = 0; runSmashes = 0
         runWalletEarn = 0; sessionPickupCoins = 0
+        wordsCompleted = 0; wordStreak = 0
+        letterHudCount = 0
+        pickNewWord()
         bannerFlash = 0f; bannerText = ""
         shake = 0f; hapticPulse = 0; floatFlash = 0f; lastFloat = ""
         wavesSincePower = 0
@@ -844,6 +871,9 @@ class Game {
         if (hl >= 2) helmetLayers = 1
         if (hl >= 3) doubleTime = 5f
         if (hl >= 1) enqueueBanner("小屋能量 Lv$hl！${homeLevelDesc(hl)}", 0xFF7DEBA0.toInt(), 2.0f)
+        if (targetWord.isNotEmpty()) {
+            enqueueBanner("组词目标：$targetWord", 0xFFC77DFF.toInt(), 1.8f)
+        }
         // 开局最近一波也要留足反应距离，避免一开始就从近处"冒出"
         var z = -72f
         while (z > SPAWN_Z) {
@@ -1139,7 +1169,7 @@ class Game {
         ziplines.add(Zip(laneZ, SPAWN_Z, length))
         var cz = SPAWN_Z - 8f
         while (cz > SPAWN_Z - length + 4f) {
-            entities.add(Entity(COIN, laneZ, cz, CABLE_H - 1.1f))
+            entities.add(makeCoin(laneZ, cz, CABLE_H - 1.1f))
             cz -= 4f
         }
     }
@@ -1197,7 +1227,7 @@ class Game {
         for (i in 0 until 5) {
             val localZ = half - 0.8f - i * (RAMP_LENGTH - 1.6f) / 4f
             val surfaceY = RAMP_HEIGHT * (half - localZ) / RAMP_LENGTH
-            entities.add(Entity(COIN, rampLane, zBase + localZ, surfaceY + 1f))
+            entities.add(makeCoin(rampLane, zBase + localZ, surfaceY + 1f))
         }
     }
 
@@ -1214,12 +1244,96 @@ class Game {
     }
 
     private fun coinRow(lane: Int, zBase: Float) {
-        for (i in 0 until 5) entities.add(Entity(COIN, lane, zBase - 1.6f * i, 1.0f))
+        for (i in 0 until 5) entities.add(makeCoin(lane, zBase - 1.6f * i, 1.0f))
     }
 
     private fun coinArc(lane: Int, zBase: Float) {
         val ys = floatArrayOf(1.0f, 1.8f, 2.3f, 1.8f, 1.0f)
-        for (i in ys.indices) entities.add(Entity(COIN, lane, zBase + 3.2f - 1.6f * i, ys[i]))
+        for (i in ys.indices) entities.add(makeCoin(lane, zBase + 3.2f - 1.6f * i, ys[i]))
+    }
+
+    private fun makeCoin(lane: Int, z: Float, y: Float): Entity {
+        val e = Entity(COIN, lane, z, y)
+        val chance = if (targetWord.length >= 4) 0.14f else 0.10f
+        if (targetWord.isNotEmpty() && Random.nextFloat() < chance) {
+            e.letter = pickLetterForSpawn()
+        }
+        return e
+    }
+
+    /** 优先刷当前词还缺的字母，偶尔塞干扰字母 */
+    private fun pickLetterForSpawn(): Char {
+        val missing = buildString {
+            for (i in targetWord.indices) {
+                if ((wordMask and (1 shl i)) == 0) append(targetWord[i])
+            }
+        }
+        if (missing.isNotEmpty() && Random.nextFloat() < 0.78f) {
+            return missing[Random.nextInt(missing.length)]
+        }
+        return ('A' + Random.nextInt(26))
+    }
+
+    fun wordSlotFilled(index: Int): Boolean =
+        index in targetWord.indices && (wordMask and (1 shl index)) != 0
+
+    private fun pickNewWord() {
+        var next = WORD_POOL[Random.nextInt(WORD_POOL.size)]
+        // 避免连续同一词
+        if (WORD_POOL.size > 1) {
+            var guard = 0
+            while (next == targetWord && guard++ < 6) {
+                next = WORD_POOL[Random.nextInt(WORD_POOL.size)]
+            }
+        }
+        targetWord = next
+        wordMask = 0
+    }
+
+    private fun tryCollectLetter(e: Entity) {
+        val c = e.letter.uppercaseChar()
+        var applied = false
+        for (i in targetWord.indices) {
+            if ((wordMask and (1 shl i)) != 0) continue
+            if (targetWord[i] == c) {
+                wordMask = wordMask or (1 shl i)
+                applied = true
+                break
+            }
+        }
+        if (!applied) return
+        pushFloat("字母 $c", 0xFFC77DFF.toInt())
+        spawnBurst(e.x, e.y, e.z, floatArrayOf(0.78f, 0.45f, 1f, 1f), 4)
+        if (wordMask == (1 shl targetWord.length) - 1) completeWord()
+    }
+
+    private fun completeWord() {
+        val word = targetWord
+        val len = word.length
+        wordsCompleted++
+        wordStreak++
+        val scoreBonus = if (len >= 4) 400 else 200
+        val walletBonus = if (len >= 4) 10 else 5
+        missionBonus += scoreBonus
+        if (wordStreak >= 2) missionBonus += 100 * (wordStreak - 1)
+        grantWallet(walletBonus)
+        if (len >= 4) {
+            if (Random.nextBoolean()) {
+                magnetTime = min(MAGNET_CAP, magnetTime + 4f)
+                pushFloat("磁铁奖励", 0xFFFF6B6B.toInt())
+            } else {
+                doubleTime = min(DOUBLE_CAP, doubleTime + 4f)
+                pushFloat("加倍奖励", 0xFFC77DFF.toInt())
+            }
+        }
+        val streakTag = if (wordStreak >= 2) " 连词x$wordStreak" else ""
+        enqueueBanner("组词！$word +$scoreBonus$streakTag", 0xFFC77DFF.toInt(), 2.2f)
+        pushFloat("$word!", 0xFFE0A0FF.toInt())
+        emit(EV_QUEST, HAPTIC_MED)
+        pickNewWord()
+        if (targetWord.isNotEmpty()) {
+            enqueueBanner("下一词：$targetWord", 0xFFC77DFF.toInt(), 1.6f)
+        }
     }
 
     // ---------- 碰撞 / 拾取 ----------
@@ -1309,6 +1423,7 @@ class Game {
         }
         bumpQuest(Q_COINS, 1)
         bumpQuest(Q_COMBO, 0) // 用 sync 刷新
+        if (e.isLetterCoin) tryCollectLetter(e)
     }
 
     private fun multForCombo(c: Int): Int {
@@ -1371,7 +1486,7 @@ class Game {
         quests.clear()
         val tier = playerTier()
         val pool = mutableListOf(
-            Q_COINS, Q_DIST, Q_COMBO, Q_JUMP, Q_SLIDE, Q_SMASH, Q_PORTAL
+            Q_COINS, Q_DIST, Q_COMBO, Q_JUMP, Q_SLIDE, Q_SMASH, Q_PORTAL, Q_WORD
         )
         pool.shuffle()
         for (i in 0 until 3) {
@@ -1391,6 +1506,7 @@ class Game {
             Q_JUMP -> Quest(type, scale(8, 15, 25), scoreR(120, 180, 260), walletR(12, 20, 35), "跳跃次数")
             Q_SLIDE -> Quest(type, scale(5, 10, 16), scoreR(120, 180, 260), walletR(12, 20, 35), "铲滑次数")
             Q_PORTAL -> Quest(type, scale(1, 2, 3), scoreR(150, 240, 360), walletR(15, 28, 45), "穿越传送门")
+            Q_WORD -> Quest(type, scale(1, 2, 3), scoreR(180, 280, 400), walletR(18, 30, 50), "组词次数")
             else -> Quest(type, scale(3, 6, 12), scoreR(160, 240, 360), walletR(16, 28, 45), "撞碎障碍")
         }
     }
@@ -1415,6 +1531,7 @@ class Game {
                 Q_SLIDE -> runSlides
                 Q_SMASH -> runSmashes
                 Q_PORTAL -> runPortals
+                Q_WORD -> wordsCompleted
                 else -> 0
             }
             q.progress = cur.coerceAtMost(q.target)

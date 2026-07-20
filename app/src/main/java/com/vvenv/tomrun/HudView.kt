@@ -114,6 +114,12 @@ class HudView(context: Context, private val game: Game) : View(context) {
         )
         private val HOME_TAB_NAMES = arrayOf("房屋", "屋顶", "装饰")
         private val SHOP_TAB_NAMES = arrayOf("配色", "光迹", "围巾", "帽子")
+        /** 跑酷连击 / 横幅 / 纪录等 toast 统一高度 */
+        private const val RUN_BANNER_Y = 0.283f
+        /** 商店 / 小屋面板标题：同字号、同相对返回按钮的纵坐标 */
+        private const val PANEL_TITLE_SIZE = 48f
+        private const val PANEL_TITLE_DY = 64f
+        private const val PANEL_SUB_DY = 104f
         /** 围巾颜色，与 3D 渲染配色呼应；0 为"无"占位 */
         private val SCARF_CHIPS = intArrayOf(
             0xFF888888.toInt(), 0xFFF23F3F.toInt(), 0xFF4DD8F2.toInt(), 0xFFA673FF.toInt()
@@ -330,122 +336,157 @@ class HudView(context: Context, private val game: Game) : View(context) {
         hudTop = top
         val sdx = 1f
         val sdy = 1f
+        // 商店/小屋为独立面板：不叠主菜单计分与 buff，避免挡标题/返回
+        val inSubPanel = (game.state == Game.State.READY || game.state == Game.State.DEAD) &&
+            (game.menuPanel == Game.PANEL_SHOP || game.menuPanel == Game.PANEL_HOME)
 
-        // 右上角：跑酷中只保留核心的得分与金币，最高分/钱包在菜单里再展示
-        textPaint.textAlign = Paint.Align.RIGHT
-        pixText(canvas, "得分 ${game.score}", w - 36f * s, top + 66f * s, 42f * s, Color.WHITE, sdx, sdy)
-        pixText(canvas, "金币 ${game.coins}", w - 36f * s, top + 106f * s, 28f * s, 0xFFFFD54A.toInt(), sdx, sdy)
-        if (game.state != Game.State.RUNNING) {
-            pixText(canvas, "最高 ${game.highScore}", w - 36f * s, top + 142f * s, 28f * s, Color.WHITE, sdx, sdy)
-            pixText(canvas, "钱包 ${game.wallet}", w - 36f * s, top + 178f * s, 26f * s, 0xFFFFC21F.toInt(), sdx, sdy)
-        }
-        if (game.state == Game.State.RUNNING && game.combo > 0) {
-            val cColor = when {
-                game.comboMult >= 5 -> 0xFFFF6B6B.toInt()
-                game.comboMult >= 3 -> 0xFFFFC21F.toInt()
-                else -> 0xFF7DEBA0.toInt()
-            }
-            val next = game.comboToNext()
-            val line = if (next > 0) "连击 ${game.combo} x${game.comboMult}  差$next"
-            else "连击 ${game.combo} x${game.comboMult} MAX"
-            pixText(canvas, line, w - 36f * s, top + 142f * s, 26f * s, cColor, sdx, sdy)
-        }
+        if (!inSubPanel) {
+            // 字母金币：世界投影标签叠在金币上方（先画，HUD 文字盖在上面）
+            drawLetterBillboards(canvas, w, h, s, sdx, sdy)
 
-        // 顶部中央：当前宇宙（竖屏时挖孔在正上方，额外多让一行）
-        if (game.state == Game.State.RUNNING && game.universe != Game.UNI_MEADOW) {
-            pixText(
-                canvas, "· ${Game.UNIVERSE_NAMES[game.universe]} ·", w / 2f,
-                top + (if (portrait) 106f else 66f) * s, 26f * s,
-                UNI_HUD[game.universe % UNI_HUD.size], sdx, sdy
-            )
-        }
-
-        // 左上角 buff：跑酷时紧贴暂停按钮下方，避免被按钮盖住
-        textPaint.textAlign = Paint.Align.LEFT
-        val pauseBottom = top + 30f * s + 100f * s   // 与 drawPauseButton 同尺寸
-        var buffY = if (game.state == Game.State.RUNNING) pauseBottom + 32f * s else top + 66f * s
-        if (game.state == Game.State.RUNNING && game.immortalMode) {
-            pixText(canvas, "测试 · 不死", 36f * s, buffY, 28f * s, 0xFF4DE8FF.toInt(), sdx, sdy)
-            buffY += 36f * s
-        }
-        if (game.helmetLayers > 0) {
-            pixText(canvas, if (game.helmetLayers >= 2) "头盔 x2" else "头盔",
-                36f * s, buffY, 28f * s, 0xFFFFC21F.toInt(), sdx, sdy)
-            buffY += 36f * s
-        }
-        if (game.magnetTime > 0f) {
-            pixText(canvas, "磁铁 ${game.magnetLeft()}s", 36f * s, buffY, 28f * s, 0xFFFF6B6B.toInt(), sdx, sdy)
-            buffY += 36f * s
-        }
-        if (game.doubleTime > 0f) {
-            pixText(canvas, "加倍 ${game.doubleLeft()}s", 36f * s, buffY, 28f * s, 0xFFC77DFF.toInt(), sdx, sdy)
-            buffY += 36f * s
-        }
-        if (game.boostTime > 0f) {
-            pixText(canvas, "冲刺 ${game.boostLeft()}s", 36f * s, buffY, 28f * s, 0xFF4DE8FF.toInt(), sdx, sdy)
-            buffY += 36f * s
-        }
-        if (game.riding != null) {
-            pixText(canvas, "滑索中", 36f * s, buffY, 28f * s, 0xFF7DEBA0.toInt(), sdx, sdy)
-            buffY += 36f * s
-        }
-
-        // 局内任务（竖屏时抬高避开手势条）
-        if (game.state == Game.State.RUNNING) {
-            textPaint.textAlign = Paint.Align.LEFT
-            var qy = h - (if (portrait) 84f else 36f) * s
-            for (i in game.quests.indices.reversed()) {
-                val q = game.quests[i]
-                val color = if (q.done) 0xFF7DEBA0.toInt() else 0xDDFFFFFF.toInt()
-                val mark = if (q.done) "√" else "·"
-                pixText(
-                    canvas, "$mark ${q.label} ${q.progress}/${q.target}",
-                    36f * s, qy, 24f * s, color, sdx, sdy
-                )
-                qy -= 32f * s
-            }
-        }
-
-        // 飘分：收拢到右上角计分区下方，不遮挡赛道视线走廊
-        if (game.state == Game.State.RUNNING && game.floatFlash > 0f && game.lastFloat.isNotEmpty()) {
-            val alpha = (min(1f, game.floatFlash / 0.35f) * 255).toInt()
-            val rise = (0.9f - game.floatFlash) * 18f * s
+            // 右上角：跑酷才显示得分/金币；菜单只留最高分与钱包
             textPaint.textAlign = Paint.Align.RIGHT
-            pixText(
-                canvas, game.lastFloat, w - 36f * s, top + 182f * s - rise, 26f * s,
-                (alpha shl 24) or (game.lastFloatColor and 0x00FFFFFF), sdx, sdy
-            )
-        }
-        textPaint.textAlign = Paint.Align.CENTER
+            if (game.state == Game.State.RUNNING) {
+                pixText(canvas, "得分 ${game.score}", w - 36f * s, top + 66f * s, 42f * s, Color.WHITE, sdx, sdy)
+                pixText(canvas, "金币 ${game.coins}", w - 36f * s, top + 106f * s, 28f * s, 0xFFFFD54A.toInt(), sdx, sdy)
+                if (game.combo > 0) {
+                    val cColor = when {
+                        game.comboMult >= 5 -> 0xFFFF6B6B.toInt()
+                        game.comboMult >= 3 -> 0xFFFFC21F.toInt()
+                        else -> 0xFF7DEBA0.toInt()
+                    }
+                    val next = game.comboToNext()
+                    val line = if (next > 0) "连击 ${game.combo} x${game.comboMult}  差$next"
+                    else "连击 ${game.combo} x${game.comboMult} MAX"
+                    pixText(canvas, line, w - 36f * s, top + 142f * s, 26f * s, cColor, sdx, sdy)
+                }
+            } else {
+                pixText(canvas, "最高 ${game.highScore}", w - 36f * s, top + 66f * s, 28f * s, Color.WHITE, sdx, sdy)
+                pixText(canvas, "钱包 ${game.wallet}", w - 36f * s, top + 102f * s, 26f * s, 0xFFFFC21F.toInt(), sdx, sdy)
+            }
 
-        // 连击升级：上方通知带，缩小并远离障碍物出现区域
-        if (game.state == Game.State.RUNNING && game.comboFlash > 0f) {
-            val t = 1.4f - game.comboFlash
-            val pop = 1f + 0.25f * (1f - min(1f, t * 5f))
-            val alpha = (min(1f, game.comboFlash / 0.4f) * 255).toInt()
-            pixText(
-                canvas, "连击 x${game.comboMult}！", w / 2f, h * 0.283f, 40f * s * pop,
-                (alpha shl 24) or 0x00FFC21F, sdx, sdy
-            )
-        }
+            // 左上角 buff：仅跑酷中显示；组词目标与头盔首行对齐
+            textPaint.textAlign = Paint.Align.LEFT
+            val pauseBottom = top + 30f * s + 100f * s   // 与 drawPauseButton 同尺寸
+            val buffStartY = pauseBottom + 32f * s
+            var buffY = buffStartY
+            if (game.state == Game.State.RUNNING) {
+                if (game.immortalMode) {
+                    pixText(canvas, "测试 · 不死", 36f * s, buffY, 28f * s, 0xFF4DE8FF.toInt(), sdx, sdy)
+                    buffY += 36f * s
+                }
+                if (game.helmetLayers > 0) {
+                    pixText(canvas, if (game.helmetLayers >= 2) "头盔 x2" else "头盔",
+                        36f * s, buffY, 28f * s, 0xFFFFC21F.toInt(), sdx, sdy)
+                    buffY += 36f * s
+                }
+                if (game.magnetTime > 0f) {
+                    pixText(canvas, "磁铁 ${game.magnetLeft()}s", 36f * s, buffY, 28f * s, 0xFFFF6B6B.toInt(), sdx, sdy)
+                    buffY += 36f * s
+                }
+                if (game.doubleTime > 0f) {
+                    pixText(canvas, "加倍 ${game.doubleLeft()}s", 36f * s, buffY, 28f * s, 0xFFC77DFF.toInt(), sdx, sdy)
+                    buffY += 36f * s
+                }
+                if (game.boostTime > 0f) {
+                    pixText(canvas, "冲刺 ${game.boostLeft()}s", 36f * s, buffY, 28f * s, 0xFF4DE8FF.toInt(), sdx, sdy)
+                    buffY += 36f * s
+                }
+                if (game.riding != null) {
+                    pixText(canvas, "滑索中", 36f * s, buffY, 28f * s, 0xFF7DEBA0.toInt(), sdx, sdy)
+                    buffY += 36f * s
+                }
+            }
 
-        // 通用横幅队列（任务/成就/穿越）：上移出视线走廊
-        if (game.bannerFlash > 0f && game.bannerText.isNotEmpty()) {
-            val alpha = (min(1f, game.bannerFlash / 0.45f) * 255).toInt()
-            pixText(
-                canvas, game.bannerText, w / 2f, h * 0.16f, 30f * s,
-                (alpha shl 24) or (game.bannerColor and 0x00FFFFFF), sdx, sdy
-            )
-        }
+            // 顶部中央：组词进度（与头盔提示同高）
+            if (game.state == Game.State.RUNNING && game.targetWord.isNotEmpty()) {
+                textPaint.textAlign = Paint.Align.CENTER
+                val wordY = buffStartY
+                val word = game.targetWord
+                val slotGap = 34f * s
+                val totalW = (word.length - 1) * slotGap
+                var lx = w / 2f - totalW / 2f
+                for (i in word.indices) {
+                    val filled = game.wordSlotFilled(i)
+                    val col = if (filled) 0xFFE0A0FF.toInt() else 0x99FFFFFF.toInt()
+                    pixText(canvas, word[i].toString(), lx, wordY, 30f * s, col, sdx, sdy)
+                    lx += slotGap
+                }
+                if (game.wordsCompleted > 0) {
+                    pixText(
+                        canvas, "×${game.wordsCompleted}",
+                        w / 2f + totalW / 2f + 36f * s, wordY, 22f * s,
+                        0xFFC77DFF.toInt(), sdx, sdy
+                    )
+                }
+            }
 
-        if (game.state == Game.State.RUNNING && game.recordFlash > 0f) {
-            val t = 2.6f - game.recordFlash
-            val pop = 1f + 0.3f * (1f - min(1f, t * 5f))
-            val alpha = (min(1f, game.recordFlash / 0.5f) * 255).toInt()
-            pixText(
-                canvas, "新纪录！", w / 2f, h * 0.225f, 48f * s * pop,
-                (alpha shl 24) or 0x00FFD426, sdx, sdy
-            )
+            // 顶部中央：当前宇宙（组词上方一行）
+            if (game.state == Game.State.RUNNING && game.universe != Game.UNI_MEADOW) {
+                textPaint.textAlign = Paint.Align.CENTER
+                pixText(
+                    canvas, "· ${Game.UNIVERSE_NAMES[game.universe]} ·", w / 2f,
+                    buffStartY - 40f * s, 26f * s,
+                    UNI_HUD[game.universe % UNI_HUD.size], sdx, sdy
+                )
+            }
+
+            // 局内任务（竖屏时抬高避开手势条）
+            if (game.state == Game.State.RUNNING) {
+                textPaint.textAlign = Paint.Align.LEFT
+                var qy = h - (if (portrait) 84f else 36f) * s
+                for (i in game.quests.indices.reversed()) {
+                    val q = game.quests[i]
+                    val color = if (q.done) 0xFF7DEBA0.toInt() else 0xDDFFFFFF.toInt()
+                    val mark = if (q.done) "√" else "·"
+                    pixText(
+                        canvas, "$mark ${q.label} ${q.progress}/${q.target}",
+                        36f * s, qy, 24f * s, color, sdx, sdy
+                    )
+                    qy -= 32f * s
+                }
+            }
+
+            // 飘分：收拢到右上角计分区下方，不遮挡赛道视线走廊
+            if (game.state == Game.State.RUNNING && game.floatFlash > 0f && game.lastFloat.isNotEmpty()) {
+                val alpha = (min(1f, game.floatFlash / 0.35f) * 255).toInt()
+                val rise = (0.9f - game.floatFlash) * 18f * s
+                textPaint.textAlign = Paint.Align.RIGHT
+                pixText(
+                    canvas, game.lastFloat, w - 36f * s, top + 182f * s - rise, 26f * s,
+                    (alpha shl 24) or (game.lastFloatColor and 0x00FFFFFF), sdx, sdy
+                )
+            }
+            textPaint.textAlign = Paint.Align.CENTER
+
+            // 连击 / 横幅 / 新纪录：统一通知带高度
+            if (game.state == Game.State.RUNNING && game.comboFlash > 0f) {
+                val t = 1.4f - game.comboFlash
+                val pop = 1f + 0.25f * (1f - min(1f, t * 5f))
+                val alpha = (min(1f, game.comboFlash / 0.4f) * 255).toInt()
+                pixText(
+                    canvas, "连击 x${game.comboMult}！", w / 2f, h * RUN_BANNER_Y, 40f * s * pop,
+                    (alpha shl 24) or 0x00FFC21F, sdx, sdy
+                )
+            }
+
+            if (game.bannerFlash > 0f && game.bannerText.isNotEmpty()) {
+                val alpha = (min(1f, game.bannerFlash / 0.45f) * 255).toInt()
+                pixText(
+                    canvas, game.bannerText, w / 2f, h * RUN_BANNER_Y, 30f * s,
+                    (alpha shl 24) or (game.bannerColor and 0x00FFFFFF), sdx, sdy
+                )
+            }
+
+            if (game.state == Game.State.RUNNING && game.recordFlash > 0f) {
+                val t = 2.6f - game.recordFlash
+                val pop = 1f + 0.3f * (1f - min(1f, t * 5f))
+                val alpha = (min(1f, game.recordFlash / 0.5f) * 255).toInt()
+                pixText(
+                    canvas, "新纪录！", w / 2f, h * RUN_BANNER_Y, 48f * s * pop,
+                    (alpha shl 24) or 0x00FFD426, sdx, sdy
+                )
+            }
         }
 
         when (game.state) {
@@ -479,18 +520,19 @@ class HudView(context: Context, private val game: Game) : View(context) {
             val fm = textPaint.fontMetrics
             val halfW = textPaint.measureText(toast) / 2f + 22f * s
             val cx = (w / 2f).roundToInt().toFloat()
-            // 出现时轻微上浮，落点在按钮区上方，避免与面板文字直接重叠
-            val baseY = (h * 0.78f + (1f - appear) * 12f * s).roundToInt().toFloat()
-            val top = baseY + fm.ascent - 12f * s
-            val bottom = baseY + fm.descent + 12f * s
+            // 跑酷与连击同高；菜单面板仍落在按钮区上方
+            val bandY = if (game.state == Game.State.RUNNING) h * RUN_BANNER_Y else h * 0.78f
+            val baseY = (bandY + (1f - appear) * 12f * s).roundToInt().toFloat()
+            val toastTop = baseY + fm.ascent - 12f * s
+            val toastBottom = baseY + fm.descent + 12f * s
             // 深色底板 + 描边，遮住下层文字保证可读
             btnPaint.style = Paint.Style.FILL
             btnPaint.color = withAlpha(0xFF1C2634.toInt(), (fade * 235).toInt())
-            canvas.drawRect(cx - halfW, top, cx + halfW, bottom, btnPaint)
+            canvas.drawRect(cx - halfW, toastTop, cx + halfW, toastBottom, btnPaint)
             btnPaint.style = Paint.Style.STROKE
             btnPaint.strokeWidth = 1f
             btnPaint.color = withAlpha(0xFFFFD426.toInt(), (fade * 255).toInt())
-            canvas.drawRect(cx - halfW, top, cx + halfW, bottom, btnPaint)
+            canvas.drawRect(cx - halfW, toastTop, cx + halfW, toastBottom, btnPaint)
             btnPaint.style = Paint.Style.FILL
             pixText(
                 canvas, toast, cx, baseY, size,
@@ -508,8 +550,11 @@ class HudView(context: Context, private val game: Game) : View(context) {
             pixText(canvas, "本局金币 ${game.coins}  ·  钱包 +${game.runWalletEarn}", w / 2f, h * 0.46f, 28f * s, 0xFFFFD54A.toInt(), sdx, sdy)
             val qd = game.quests.count { it.done }
             pixText(canvas, "任务 $qd/3  ·  最高连击 ${game.bestComboRun}", w / 2f, h * 0.53f, 26f * s, 0xFF7DEBA0.toInt(), sdx, sdy)
+            if (game.wordsCompleted > 0) {
+                pixText(canvas, "组词 ×${game.wordsCompleted}", w / 2f, h * 0.59f, 26f * s, 0xFFC77DFF.toInt(), sdx, sdy)
+            }
             if (game.deadTime > 0.6f) {
-                pixText(canvas, "点击屏幕再来一次", w / 2f, h * 0.94f, 28f * s, Color.WHITE, sdx, sdy)
+                pixText(canvas, "点击屏幕再来一次", w / 2f, h * 0.82f, 28f * s, Color.WHITE, sdx, sdy)
             }
         } else {
             val worldTitle = "${game.characterName}的世界"
@@ -519,24 +564,27 @@ class HudView(context: Context, private val game: Game) : View(context) {
             pixText(canvas, "点击屏幕开始", w / 2f, h * 0.46f, 32f * s, withAlpha(Color.WHITE, blink), sdx, sdy)
         }
 
-        // 商店 / 小屋：竖屏接近半宽，触控更舒服
+        // 底栏一行：帮助 / 商店 / 小屋 / 成就
         val portrait = h > w
-        val bw = if (portrait) w * 0.42f else 168f * s
-        val bh = if (portrait) 92f * s else 56f * s
-        val gap = if (portrait) 20f * s else 20f * s
-        val y = if (portrait) h * 0.68f else h * 0.73f
-        btnShop.set(w / 2f - bw - gap / 2f, y, w / 2f - gap / 2f, y + bh)
-        btnHome.set(w / 2f + gap / 2f, y, w / 2f + bw + gap / 2f, y + bh)
+        val rowH = if (portrait) 72f * s else 52f * s
+        val margin = if (portrait) 16f * s else 28f * s
+        val gap = if (portrait) 10f * s else 12f * s
+        val rowBottom = h - (if (portrait) 48f else 28f) * s
+        val rowTop = rowBottom - rowH
+        val helpW = rowH
+        val achieveW = if (portrait) min(120f * s, w * 0.22f) else 96f * s
+        val midW = (w - 2f * margin - helpW - achieveW - 3f * gap) / 2f
+        var x = margin
+        btnHelp.set(x, rowTop, x + helpW, rowBottom)
+        x += helpW + gap
+        btnShop.set(x, rowTop, x + midW, rowBottom)
+        x += midW + gap
+        btnHome.set(x, rowTop, x + midW, rowBottom)
+        x += midW + gap
+        btnAchieve.set(x, rowTop, x + achieveW, rowBottom)
+        drawBtn(canvas, btnHelp, "?", s)
         drawBtn(canvas, btnShop, "商店", s)
         drawBtn(canvas, btnHome, "小屋", s)
-
-        // 底部两角：帮助 / 成就
-        val iconSize = if (portrait) 100f * s else 52f * s
-        val iconY = h - (if (portrait) 64f else 36f) * s
-        btnHelp.set(28f * s, iconY - iconSize, 28f * s + iconSize, iconY)
-        drawBtn(canvas, btnHelp, "?", s)
-        val achieveW = if (portrait) 176f * s else 96f * s
-        btnAchieve.set(w - 28f * s - achieveW, iconY - iconSize, w - 28f * s, iconY)
         drawBtn(canvas, btnAchieve, "成就", s)
 
         if (showHelp) drawHelpOverlay(canvas, w, h, s, sdx, sdy)
@@ -563,6 +611,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
             "上滑或点击 跳跃",
             "下滑 铲滑",
             "传送门 穿越平行宇宙",
+            "紫色字母币 拼成目标词获奖",
             "金币 购买装扮与小屋",
             "小屋能量 提供开局奖励"
         )
@@ -576,22 +625,26 @@ class HudView(context: Context, private val game: Game) : View(context) {
 
     // ---------- 小屋 ----------
     private fun drawHome(canvas: Canvas, w: Float, h: Float, s: Float, sdx: Float, sdy: Float) {
-        val homeTitle = "${game.characterName}的小屋"
-        val homeTitleSize = fittedTextSize(homeTitle, 48f * s, w * 0.72f, 24f * s)
-        pixText(canvas, homeTitle, w / 2f, h * 0.075f, homeTitleSize, Color.WHITE, sdx, sdy)
-
         // 浏览预览：房屋 / 屋顶标签页直接预览浏览项
         val house = if (game.homeTab == Game.HOME_TAB_HOUSE) game.homeBrowseHouse else game.houseStyle
         val roof = if (game.homeTab == Game.HOME_TAB_ROOF) game.homeBrowseRoof else game.roofStyle
         val ghostDeco = if (game.homeTab == Game.HOME_TAB_DECO) game.homeBrowseDeco else -1
         drawHomeScene(canvas, w, h, s, house, roof, ghostDeco)
 
+        // 标题与商店同字号、同纵坐标（返回按钮下方）
+        val backBottom = hudTop + 90f * s
+        pixText(canvas, "${game.characterName}的小屋", w / 2f, backBottom + PANEL_TITLE_DY * s, PANEL_TITLE_SIZE * s, Color.WHITE, sdx, sdy)
+
+        val energy = "小屋能量 Lv${game.homeLevel()} · ${game.homeLevelDesc()}"
+        val energySize = fittedTextSize(energy, 26f * s, w * 0.88f, 18f * s)
+        pixText(canvas, energy, w / 2f, backBottom + PANEL_SUB_DY * s, energySize, 0xFF7DEBA0.toInt(), sdx, sdy)
+
         // 标签页（竖屏按屏宽均分，避免缩放后仍显小）
         val portrait = h > w
         val tabGap = if (portrait) 10f * s else 12f * s
         val tabW = if (portrait) min(140f * s, (w * 0.90f - 2f * tabGap) / 3f) else 120f * s
         val tabH = if (portrait) 56f * s else 44f * s
-        val tabY = h * 0.575f
+        val tabY = h * 0.58f
         for (i in 0..2) {
             val cx = w / 2f + (i - 1) * (tabW + tabGap)
             btnHomeTabs[i].set(cx - tabW / 2f, tabY, cx + tabW / 2f, tabY + tabH)
@@ -610,7 +663,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         }
 
         // 浏览行
-        val by = h * 0.68f
+        val by = h * 0.675f
         val arrowHalf = if (portrait) 40f * s else 30f * s
         val arrowH = if (portrait) 32f * s else 24f * s
         btnHomeL.set(w * 0.18f - arrowHalf, by - arrowH, w * 0.18f + arrowHalf, by + arrowH)
@@ -652,22 +705,19 @@ class HudView(context: Context, private val game: Game) : View(context) {
             }
         }
         val info = if (status.isEmpty()) "$name  价格 $price" else "$name  $status"
-        pixText(canvas, info, w / 2f, by + 8f * s, 26f * s, Color.WHITE, sdx, sdy)
+        val infoSize = fittedTextSize(info, 26f * s, w * 0.52f, 18f * s)
+        pixText(canvas, info, w / 2f, by + 8f * s, infoSize, Color.WHITE, sdx, sdy)
 
+        val buyH = if (portrait) 60f * s else 48f * s
         btnHomeBuy.set(
             w / 2f - (if (portrait) min(160f * s, w * 0.36f) else 120f * s),
-            h * 0.735f,
+            h * 0.75f,
             w / 2f + (if (portrait) min(160f * s, w * 0.36f) else 120f * s),
-            h * 0.735f + (if (portrait) 60f * s else 48f * s)
+            h * 0.75f + buyH
         )
         drawBtn(canvas, btnHomeBuy, action, s)
 
-        pixText(
-            canvas, "小屋能量 Lv${game.homeLevel()} · ${game.homeLevelDesc()}",
-            w / 2f, h * 0.855f, 24f * s, 0xFF7DEBA0.toInt(), sdx, sdy
-        )
-
-        val bottomY = h * 0.92f
+        val bottomY = h * 0.88f
         val bottomW = if (portrait) min(220f * s, w * 0.50f) else 180f * s
         val bottomH = if (portrait) 32f * s else 26f * s
         btnRename.set(
@@ -684,9 +734,10 @@ class HudView(context: Context, private val game: Game) : View(context) {
     /** Canvas 像素画小屋场景；ghostDeco 为浏览中未购买装饰的半透明预览 */
     private fun drawHomeScene(canvas: Canvas, w: Float, h: Float, s: Float, house: Int, roof: Int, ghostDeco: Int) {
         val cx = w / 2f
-        val top = h * 0.105f
-        val gy = h * 0.42f            // 地面线
-        val bottom = h * 0.545f
+        // 顶部留给返回按钮下方的标题/能量
+        val top = h * 0.22f
+        val gy = h * 0.46f            // 地面线
+        val bottom = h * 0.555f
         val half = min(w * 0.49f, 400f * s)
         fun rc(l: Float, t: Float, r: Float, b: Float, color: Int) {
             btnPaint.style = Paint.Style.FILL
@@ -1302,8 +1353,10 @@ class HudView(context: Context, private val game: Game) : View(context) {
     }
 
     private fun drawShop(canvas: Canvas, w: Float, h: Float, s: Float, sdx: Float, sdy: Float) {
-        pixText(canvas, "外观商店", w / 2f, h * 0.115f, 48f * s, Color.WHITE, sdx, sdy)
-        pixText(canvas, "钱包 ${game.wallet}", w / 2f, h * 0.18f, 26f * s, 0xFFFFC21F.toInt(), sdx, sdy)
+        // 标题与小屋同字号、同纵坐标（返回按钮下方）
+        val backBottom = hudTop + 90f * s
+        pixText(canvas, "外观商店", w / 2f, backBottom + PANEL_TITLE_DY * s, PANEL_TITLE_SIZE * s, Color.WHITE, sdx, sdy)
+        pixText(canvas, "钱包 ${game.wallet}", w / 2f, backBottom + PANEL_SUB_DY * s, 26f * s, 0xFFFFC21F.toInt(), sdx, sdy)
 
         // 试穿预览：浏览项实时穿在大号像素猫身上
         val tab = game.shopTab
@@ -1550,6 +1603,33 @@ class HudView(context: Context, private val game: Game) : View(context) {
             steps--
         }
         return (steps * FONT_PX).toFloat()
+    }
+
+    private fun drawLetterBillboards(
+        canvas: Canvas, w: Float, h: Float, s: Float, sdx: Float, sdy: Float
+    ) {
+        if (game.state != Game.State.RUNNING) return
+        val count = game.letterHudCount
+        if (count <= 0) return
+        textPaint.textAlign = Paint.Align.CENTER
+        synchronized(game) {
+            val n = game.letterHudCount.coerceAtMost(Game.LETTER_HUD_MAX)
+            for (i in 0 until n) {
+                val ch = game.letterHudCh[i]
+                if (ch == '\u0000') continue
+                val x = game.letterHudX[i] * w
+                val y = game.letterHudY[i] * h
+                val scale = game.letterHudScale[i]
+                val size = (34f * s * scale).coerceIn(18f * s, 48f * s)
+                val label = ch.toString()
+                // 深色描边，保证紫金币/背景上都可读
+                pixText(canvas, label, x - 2f * s, y, size, 0xEE1A1028.toInt(), 0f, 0f)
+                pixText(canvas, label, x + 2f * s, y, size, 0xEE1A1028.toInt(), 0f, 0f)
+                pixText(canvas, label, x, y - 2f * s, size, 0xEE1A1028.toInt(), 0f, 0f)
+                pixText(canvas, label, x, y + 2f * s, size, 0xEE1A1028.toInt(), 0f, 0f)
+                pixText(canvas, label, x, y, size, 0xFFFFF0A0.toInt(), sdx, sdy)
+            }
+        }
     }
 
     private fun pixText(
