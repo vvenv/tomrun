@@ -82,8 +82,6 @@ class HudView(context: Context, private val game: Game) : View(context) {
     /** 藏品大图：-1 表示未打开 */
     private var museumDetailId = -1
     private val museumTileHits = Array(MUSEUM_PER_PAGE) { RectF() }
-    private val btnMuseumPrev = RectF()
-    private val btnMuseumNext = RectF()
     private val btnHomeTabs = Array(7) { RectF() }
     private val btnHomeL = RectF()
     private val btnHomeR = RectF()
@@ -359,7 +357,13 @@ class HudView(context: Context, private val game: Game) : View(context) {
                     consumed = true
                 }
                 if (!consumed && event.actionMasked == MotionEvent.ACTION_UP) {
-                    if (!yardLongPressTriggered) handleTap(event.x, event.y)
+                    val dx = event.x - downX
+                    val dy = event.y - downY
+                    if (tryCatalogPageSwipe(dx, dy, swipeMin)) {
+                        consumed = true
+                    } else if (!yardLongPressTriggered) {
+                        handleTap(event.x, event.y)
+                    }
                 }
                 yardFingerDown = false
             }
@@ -428,10 +432,6 @@ class HudView(context: Context, private val game: Game) : View(context) {
                             btnCatalogClose.contains(x, y) -> {
                                 homeSubView = HOME_SUB_SCENE
                             }
-                            btnMuseumPrev.contains(x, y) -> museumPage =
-                                (museumPage + museumPages() - 1) % museumPages()
-                            btnMuseumNext.contains(x, y) -> museumPage =
-                                (museumPage + 1) % museumPages()
                             else -> {
                                 val page = museumPage.coerceIn(0, museumPages() - 1)
                                 val start = page * MUSEUM_PER_PAGE
@@ -452,13 +452,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
                         return
                     }
                     HOME_SUB_HONOR -> {
-                        when {
-                            btnCatalogClose.contains(x, y) -> homeSubView = HOME_SUB_SCENE
-                            btnMuseumPrev.contains(x, y) -> honorPage =
-                                (honorPage + honorPages() - 1) % honorPages()
-                            btnMuseumNext.contains(x, y) -> honorPage =
-                                (honorPage + 1) % honorPages()
-                        }
+                        if (btnCatalogClose.contains(x, y)) homeSubView = HOME_SUB_SCENE
                         return
                     }
                 }
@@ -2760,6 +2754,30 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private fun museumPages(): Int =
         (Game.RELIC_COUNT + MUSEUM_PER_PAGE - 1) / MUSEUM_PER_PAGE
 
+    /** 藏品 / 荣誉图鉴：左滑下一页，右滑上一页 */
+    private fun tryCatalogPageSwipe(dx: Float, dy: Float, minDist: Float): Boolean {
+        if (game.menuPanel != Game.PANEL_HOME) return false
+        if (abs(dx) < minDist || abs(dx) <= abs(dy)) return false
+        when (homeSubView) {
+            HOME_SUB_COLLECTION -> {
+                if (museumDetailId >= 0) return false
+                val pages = museumPages()
+                if (pages <= 1) return false
+                museumPage = if (dx < 0f) (museumPage + 1) % pages
+                else (museumPage + pages - 1) % pages
+                return true
+            }
+            HOME_SUB_HONOR -> {
+                val pages = honorPages()
+                if (pages <= 1) return false
+                honorPage = if (dx < 0f) (honorPage + 1) % pages
+                else (honorPage + pages - 1) % pages
+                return true
+            }
+            else -> return false
+        }
+    }
+
     /** 小屋「藏品 / 荣誉」共用全屏框：顶栏标题、中部内容、底栏分页彼此隔离 */
     private data class OverlayFrame(
         val left: Float,
@@ -2814,37 +2832,22 @@ class HudView(context: Context, private val game: Game) : View(context) {
         return OverlayFrame(left, top, right, bottom, right - left, contentTop, contentBottom)
     }
 
-    /** 底栏：分页按钮与页码同一行居中 */
+    /** 底栏：页码居中，多页时提示左右滑动 */
     private fun drawCatalogFooter(
         canvas: Canvas, frame: OverlayFrame, s: Float,
         page: Int, pages: Int, sdx: Float, sdy: Float,
-        closeHint: String = "点 X 或返回退出"
+        closeHint: String? = null
     ) {
         val cx = (frame.left + frame.right) * 0.5f
-        val btnW = 64f * s
-        val btnH = 40f * s
         val pagerCy = frame.bottom - 52f * s
-        val pagerTop = pagerCy - btnH * 0.5f
-        val pagerBottom = pagerCy + btnH * 0.5f
-        val gap = 56f * s
-        val pageLabel = "${page + 1}/$pages"
-        val pageSteps = ((22f * s) / FONT_PX).roundToInt().coerceAtLeast(1)
-        textPaint.textSize = (pageSteps * FONT_PX).toFloat()
-        val pageW = max(textPaint.measureText(pageLabel), 48f * s)
-        val halfSpan = pageW * 0.5f + gap + btnW
-
-        if (pages > 1) {
-            btnMuseumPrev.set(cx - halfSpan, pagerTop, cx - halfSpan + btnW, pagerBottom)
-            btnMuseumNext.set(cx + halfSpan - btnW, pagerTop, cx + halfSpan, pagerBottom)
-            drawLightBtn(canvas, btnMuseumPrev, "<", s)
-            drawLightBtn(canvas, btnMuseumNext, ">", s)
+        val hint = closeHint ?: if (pages > 1) {
+            "左右滑动翻页 · 点 X 或返回退出"
         } else {
-            btnMuseumPrev.setEmpty()
-            btnMuseumNext.setEmpty()
+            "点 X 或返回退出"
         }
         textPaint.textAlign = Paint.Align.CENTER
-        lightText(canvas, pageLabel, cx, pagerCy + 8f * s, 22f * s, LIGHT_TEXT)
-        lightText(canvas, closeHint, cx, frame.bottom - 18f * s, 16f * s, LIGHT_HINT)
+        lightText(canvas, "${page + 1}/$pages", cx, pagerCy + 8f * s, 22f * s, LIGHT_TEXT)
+        lightText(canvas, hint, cx, frame.bottom - 18f * s, 16f * s, LIGHT_HINT)
     }
 
     private fun drawOverlayRowBg(
@@ -3034,11 +3037,13 @@ class HudView(context: Context, private val game: Game) : View(context) {
             }
         }
 
-        drawCatalogFooter(
-            canvas, frame, s, page, pages, sdx, sdy,
-            closeHint = if (previewAll) "测试全览 · 点图标查看 · X 退出"
-            else "点图标查看 · X 或返回退出"
-        )
+        val footerHint = when {
+            pages <= 1 && previewAll -> "点图标查看 · X 退出"
+            pages <= 1 -> "点图标查看 · X 或返回退出"
+            previewAll -> "左右滑动翻页 · 点图标查看 · X 退出"
+            else -> "左右滑动翻页 · 点图标查看 · X 或返回退出"
+        }
+        drawCatalogFooter(canvas, frame, s, page, pages, sdx, sdy, closeHint = footerHint)
 
         if (museumDetailId in 0 until Game.RELIC_COUNT &&
             (game.relicCollected(museumDetailId) || previewAll)
@@ -3185,9 +3190,25 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 val scale = game.relicHudScale[i]
                 val size = (24f * s * scale).coerceIn(14f * s, 34f * s)
                 val iconHalf = (18f * s * scale).coerceIn(12f * s, 26f * s)
-                RelicIcons.draw(canvas, btnPaint, id, x, y - size - iconHalf - 4f * s, iconHalf, true)
+                val iconCy = y - size - iconHalf - 4f * s
+                val rarity = Game.RELIC_RARITY[id]
+                val accent = game.relicBannerColor(rarity)
+                // 浅色底牌 + 稀有度描边：与绿色障碍/路面拉开对比，上方叠 RelicIcons 小图
+                val pad = iconHalf + 3f * s
+                btnPaint.style = Paint.Style.FILL
+                btnPaint.color = 0xEEF8F4E8.toInt()
+                canvas.drawRect(x - pad, iconCy - pad, x + pad, iconCy + pad, btnPaint)
+                btnPaint.style = Paint.Style.STROKE
+                btnPaint.strokeWidth = (2.5f * s).coerceAtLeast(2f)
+                btnPaint.color = accent
+                canvas.drawRect(x - pad, iconCy - pad, x + pad, iconCy + pad, btnPaint)
+                btnPaint.style = Paint.Style.FILL
+                RelicIcons.draw(
+                    canvas, btnPaint, id, x, iconCy, iconHalf,
+                    collected = true, lightSurface = true, withChrome = false
+                )
                 val label = Game.RELIC_NAMES[id]
-                val color = game.relicBannerColor(Game.RELIC_RARITY[id])
+                val color = accent
                 // 深色描边，保证各背景上都可读
                 pixText(canvas, label, x - 2f * s, y, size, 0xEE1A1028.toInt(), 0f, 0f)
                 pixText(canvas, label, x + 2f * s, y, size, 0xEE1A1028.toInt(), 0f, 0f)

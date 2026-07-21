@@ -170,7 +170,7 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         private val GOLD_GLOW = floatArrayOf(1.0f, 0.88f, 0.25f, 0.85f)
         // 文物：按稀有度上色（青铜 / 青玉 / 鎏金），底座与光核共用
         private val RELIC_BODY = arrayOf(
-            floatArrayOf(0.38f, 0.55f, 0.44f, 1f),
+            floatArrayOf(0.62f, 0.42f, 0.22f, 1f), // 普通：铜褐，避免与绿色障碍/草地混淆
             floatArrayOf(0.30f, 0.75f, 0.85f, 1f),
             floatArrayOf(1.0f, 0.78f, 0.20f, 1f)
         )
@@ -1093,7 +1093,9 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
                             val bob = sin(e.spin * 0.05f) * 0.10f
                             pushModel(x, e.y + bob, e.z)
                             Matrix.rotateM(model, 0, e.spin, 0f, 1f, 0f)
-                            emitGlowHalo(0f, 0f, 0f, 1.15f, 1.15f, 0.55f, GOLD_GLOW)
+                            // 贴近地面的金币缩小光晕，减少对矮障碍的遮挡
+                            val halo = if (e.y < 1.35f) 0.82f else 1.15f
+                            emitGlowHalo(0f, 0f, 0f, halo, halo, 0.55f, GOLD_GLOW)
                             emitPart(0f, 0f, 0f, 0.82f, 0.82f, 0.14f, GOLD_RIM)
                             emitPart(0f, 0f, 0f, 0.72f, 0.72f, 0.26f, GOLD)
                             emitPart(0f, 0f, 0.04f, 0.42f, 0.42f, 0.28f, GOLD_CORE)
@@ -1161,7 +1163,37 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
                     Game.OBST_RAMP -> drawRamp(x, e.z)
                 }
             }
+            // 警示条叠在拾取物之上，保证矮障碍远距可读
+            drawObstacleDangerOverlays()
         }
+    }
+
+    /** 二次绘制障碍警示面（不写深度），避免被金币光晕挡住 */
+    private fun drawObstacleDangerOverlays() {
+        mMode = 2
+        GLES20.glDepthMask(false)
+        for (e in game.entities) {
+            if (e.z > 45f || e.z < -70f) continue
+            when (e.kind) {
+                Game.OBST_LOW -> {
+                    pushModel(e.x, 0f, e.z)
+                    drawLowDangerFace()
+                    popModel()
+                }
+                Game.OBST_BAR -> {
+                    pushModel(e.x, 0f, e.z)
+                    drawBarDangerFace()
+                    popModel()
+                }
+                Game.OBST_BLOCK -> {
+                    pushModel(e.x, 0f, e.z)
+                    drawBlockDangerFace()
+                    popModel()
+                }
+            }
+        }
+        GLES20.glDepthMask(true)
+        mMode = 0
     }
 
     private fun drawRamp(x: Float, z: Float) {
@@ -1223,46 +1255,52 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         pushModel(x, 0f, z)
         when (game.universe) {
             Game.UNI_WATER -> {
-                drawPart(0f, 0.34f, 0f, 1.9f, 0.68f, 0.62f, CORAL_ORANGE)
-                drawPart(-0.5f, 0.62f, 0f, 0.42f, 0.5f, 0.42f, CORAL_PINK)
-                drawPart(0.52f, 0.55f, 0f, 0.4f, 0.4f, 0.4f, CORAL_PINK)
-                drawPart(0f, 0.5f, 0f, 0.3f, 0.72f, 0.3f, SEAWEED)
-                dangerFace(0.34f, 1.7f)
+                drawPart(0f, 0.38f, 0f, 1.9f, 0.76f, 0.62f, CORAL_ORANGE)
+                drawPart(-0.5f, 0.68f, 0f, 0.42f, 0.5f, 0.42f, CORAL_PINK)
+                drawPart(0.52f, 0.60f, 0f, 0.4f, 0.4f, 0.4f, CORAL_PINK)
+                drawPart(0f, 0.55f, 0f, 0.3f, 0.72f, 0.3f, SEAWEED)
             }
             Game.UNI_SKY -> {
-                drawPart(0f, 0.36f, 0f, 1.9f, 0.5f, 0.72f, ISLAND_DIRT)
-                drawPart(0f, 0.16f, 0f, 1.5f, 0.4f, 0.6f, ISLAND_DIRT_DK)
-                drawPart(0f, 0.64f, 0f, 1.94f, 0.16f, 0.76f, GRASS)
-                dangerFace(0.36f, 1.7f)
+                drawPart(0f, 0.40f, 0f, 1.9f, 0.56f, 0.72f, ISLAND_DIRT)
+                drawPart(0f, 0.18f, 0f, 1.5f, 0.44f, 0.6f, ISLAND_DIRT_DK)
+                drawPart(0f, 0.70f, 0f, 1.94f, 0.18f, 0.76f, GRASS)
             }
             Game.UNI_LAVA -> {
-                drawPart(0f, 0.4f, 0f, 1.9f, 0.72f, 0.7f, OBSIDIAN)
-                drawPart(-0.55f, 0.58f, 0f, 0.4f, 0.44f, 0.4f, OBSIDIAN)
-                glowPart(0f, 0.42f, 0.06f, 1.7f, 0.14f, 0.72f, LAVA_GLOW)
-                glowPart(0f, 0.42f, 0.06f, 0.5f, 0.2f, 0.74f, LAVA_CORE)
-                dangerFace(0.22f, 1.75f, 0.12f, 0.14f)
+                drawPart(0f, 0.44f, 0f, 1.9f, 0.80f, 0.7f, OBSIDIAN)
+                drawPart(-0.55f, 0.64f, 0f, 0.4f, 0.44f, 0.4f, OBSIDIAN)
+                glowPart(0f, 0.46f, 0.06f, 1.7f, 0.14f, 0.72f, LAVA_GLOW)
+                glowPart(0f, 0.46f, 0.06f, 0.5f, 0.2f, 0.74f, LAVA_CORE)
             }
             Game.UNI_CANDY -> {
-                drawPart(0f, 0.34f, 0f, 1.88f, 0.66f, 0.56f, CANDY_STICK)
-                drawPart(0f, 0.7f, 0f, 1.94f, 0.16f, 0.62f, CANDY_RED)
-                for (i in -1..1) drawPart(i * 0.62f, 0.34f, 0.02f, 0.16f, 0.66f, 0.6f, CANDY_RED)
-                dangerFace(0.34f, 1.7f)
+                drawPart(0f, 0.38f, 0f, 1.88f, 0.72f, 0.56f, CANDY_STICK)
+                drawPart(0f, 0.76f, 0f, 1.94f, 0.18f, 0.62f, CANDY_RED)
+                for (i in -1..1) drawPart(i * 0.62f, 0.38f, 0.02f, 0.16f, 0.66f, 0.6f, CANDY_RED)
             }
             Game.UNI_SPACE -> {
-                drawPart(0f, 0.4f, 0f, 1.9f, 0.7f, 0.7f, ASTEROID)
-                drawPart(-0.5f, 0.6f, 0f, 0.4f, 0.4f, 0.4f, ASTEROID_DK)
-                glowPart(0f, 0.42f, 0.08f, 1.75f, 0.22f, 0.74f, CRYSTAL_CYAN)
-                glowPart(0f, 0.22f, 0.10f, 1.6f, 0.12f, 0.72f, CRYSTAL_PURPLE)
-                dangerFace(0.55f, 1.7f, 0.12f, 0.14f)
+                drawPart(0f, 0.44f, 0f, 1.9f, 0.78f, 0.7f, ASTEROID)
+                drawPart(-0.5f, 0.66f, 0f, 0.4f, 0.4f, 0.4f, ASTEROID_DK)
+                glowPart(0f, 0.46f, 0.08f, 1.75f, 0.22f, 0.74f, CRYSTAL_CYAN)
+                glowPart(0f, 0.24f, 0.10f, 1.6f, 0.12f, 0.72f, CRYSTAL_PURPLE)
             }
             else -> { // 草原：塑料水马（白身红顶红竖纹 + 混凝土底座）
                 drawPart(0f, 0.06f, 0f, 1.9f, 0.12f, 0.62f, CONCRETE)
-                drawPart(0f, 0.36f, 0f, 1.86f, 0.6f, 0.5f, BARRIER_WHITE)
-                drawPart(0f, 0.72f, 0f, 1.94f, 0.18f, 0.58f, BARRIER_RED)
-                for (i in -1..1) drawPart(i * 0.62f, 0.36f, 0.02f, 0.12f, 0.6f, 0.54f, BARRIER_RED)
+                drawPart(0f, 0.40f, 0f, 1.86f, 0.68f, 0.5f, BARRIER_WHITE)
+                drawPart(0f, 0.78f, 0f, 1.94f, 0.20f, 0.58f, BARRIER_RED)
+                for (i in -1..1) drawPart(i * 0.62f, 0.40f, 0.02f, 0.12f, 0.68f, 0.54f, BARRIER_RED)
             }
         }
         popModel()
+    }
+
+    private fun drawLowDangerFace() {
+        when (game.universe) {
+            Game.UNI_WATER -> dangerFace(0.38f, 1.7f)
+            Game.UNI_SKY -> dangerFace(0.40f, 1.7f)
+            Game.UNI_LAVA -> dangerFace(0.26f, 1.75f, 0.12f, 0.14f)
+            Game.UNI_CANDY -> dangerFace(0.38f, 1.7f)
+            Game.UNI_SPACE -> dangerFace(0.60f, 1.7f, 0.12f, 0.14f)
+            else -> dangerFace(0.58f, 1.7f, 0.14f, 0.16f)
+        }
     }
 
     /** 悬空障碍（需下滑钻过）：草原=道闸横杆，其余宇宙主题化 */
@@ -1274,7 +1312,6 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
                 drawPart(0.95f, 1.0f, 0f, 0.3f, 2.0f, 0.3f, CORAL_ORANGE)
                 drawPart(0f, 1.85f, 0f, 2.1f, 0.5f, 0.42f, CORAL_PINK)
                 for (i in -2..2) drawPart(i * 0.4f, 1.42f, 0f, 0.14f, 0.5f, 0.14f, SEAWEED)
-                dangerFace(1.85f, 2.0f, 0.12f, 0.14f)
             }
             Game.UNI_SKY -> {
                 drawPart(-0.95f, 1.0f, 0f, 0.26f, 2.0f, 0.26f, ISLAND_DIRT)
@@ -1282,7 +1319,6 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
                 for (i in RAINBOW_SOLID.indices) {
                     drawPart(-0.8f + i * 0.4f, 1.8f, 0f, 0.42f, 0.36f, 0.4f, RAINBOW_SOLID[i])
                 }
-                dangerFace(1.55f, 2.0f, 0.12f, 0.14f)
             }
             Game.UNI_LAVA -> {
                 drawPart(-0.95f, 1.0f, 0f, 0.3f, 2.0f, 0.3f, OBSIDIAN)
@@ -1290,7 +1326,6 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
                 drawPart(0f, 1.82f, 0f, 2.1f, 0.55f, 0.4f, OBSIDIAN)
                 glowPart(0f, 1.56f, 0.06f, 1.9f, 0.14f, 0.42f, LAVA_GLOW)
                 glowPart(0f, 1.56f, 0.06f, 1.6f, 0.18f, 0.44f, LAVA_CORE)
-                dangerFace(1.95f, 2.0f, 0.12f, 0.14f)
             }
             Game.UNI_CANDY -> {
                 drawPart(-0.95f, 1.0f, 0f, 0.28f, 2.0f, 0.28f, CANDY_STICK)
@@ -1298,7 +1333,6 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
                 for (i in -2..2) {
                     drawPart(i * 0.42f, 1.8f, 0f, 0.44f, 0.4f, 0.4f, if (i % 2 == 0) CANDY_RED else CANDY_STICK)
                 }
-                dangerFace(1.55f, 2.0f, 0.12f, 0.14f)
             }
             Game.UNI_SPACE -> {
                 drawPart(-0.95f, 1.0f, 0f, 0.28f, 2.0f, 0.28f, ASTEROID_DK)
@@ -1306,7 +1340,6 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
                 drawPart(0f, 1.82f, 0f, 2.1f, 0.28f, 0.36f, ASTEROID)
                 glowPart(0f, 1.64f, 0.04f, 2.05f, 0.20f, 0.38f, CRYSTAL_CYAN)
                 glowPart(0f, 2.02f, 0.04f, 2.05f, 0.16f, 0.38f, CRYSTAL_PURPLE)
-                dangerFace(1.82f, 2.0f, 0.14f, 0.16f)
             }
             else -> { // 草原：停车道闸（黄机箱 + 红白横杆）
                 drawPart(-1.0f, 0.72f, 0f, 0.36f, 1.44f, 0.36f, GATE_BOX)
@@ -1321,6 +1354,17 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         popModel()
     }
 
+    private fun drawBarDangerFace() {
+        when (game.universe) {
+            Game.UNI_WATER -> dangerFace(1.85f, 2.0f, 0.12f, 0.14f)
+            Game.UNI_SKY -> dangerFace(1.55f, 2.0f, 0.12f, 0.14f)
+            Game.UNI_LAVA -> dangerFace(1.95f, 2.0f, 0.12f, 0.14f)
+            Game.UNI_CANDY -> dangerFace(1.55f, 2.0f, 0.12f, 0.14f)
+            Game.UNI_SPACE -> dangerFace(1.82f, 2.0f, 0.14f, 0.16f)
+            else -> dangerFace(1.62f, 2.0f, 0.12f, 0.14f)
+        }
+    }
+
     /** 实心障碍（需变道/冲刺撞碎）：草原=摞起的施工路障桶，其余宇宙主题化 */
     private fun drawObstBlock(x: Float, z: Float) {
         pushModel(x, 0f, z)
@@ -1330,26 +1374,22 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
                 drawPart(0f, 1.1f, 0.03f, 1.6f, 1.8f, 1.15f, CORAL_PINK)
                 drawPart(-0.4f, 2.2f, 0f, 0.4f, 0.6f, 0.4f, SEAWEED)
                 drawPart(0.4f, 2.15f, 0f, 0.3f, 0.5f, 0.3f, SEAWEED)
-                dangerFace(1.05f, 1.7f, 0.16f, 0.16f)
             }
             Game.UNI_SKY -> {
                 drawPart(0f, 1.0f, 0f, 1.85f, 2.0f, 1.15f, ISLAND_DIRT)
                 drawPart(0f, 0.45f, 0f, 1.6f, 0.9f, 1.1f, ISLAND_DIRT_DK)
                 drawPart(0f, 2.06f, 0f, 1.95f, 0.2f, 1.25f, GRASS)
-                dangerFace(1.0f, 1.7f, 0.16f, 0.16f)
             }
             Game.UNI_LAVA -> {
                 drawPart(0f, 1.05f, 0f, 1.85f, 2.1f, 1.15f, OBSIDIAN)
                 glowPart(-0.4f, 1.05f, 0.08f, 0.22f, 1.9f, 1.18f, LAVA_GLOW)
                 glowPart(0.4f, 1.05f, 0.08f, 0.22f, 1.9f, 1.18f, LAVA_GLOW)
                 glowPart(0f, 2.1f, 0.04f, 1.6f, 0.24f, 1.2f, LAVA_CORE)
-                dangerFace(1.05f, 1.7f, 0.18f, 0.18f)
             }
             Game.UNI_CANDY -> {
                 drawPart(0f, 1.05f, 0f, 1.85f, 2.1f, 1.15f, GUMDROP[0])
                 drawPart(0f, 1.1f, 0.03f, 1.5f, 1.7f, 1.15f, CANDY_STICK)
                 drawPart(0f, 2.18f, 0f, 1.7f, 0.3f, 1.2f, CANDY_RED)
-                dangerFace(1.05f, 1.7f, 0.16f, 0.16f)
             }
             Game.UNI_SPACE -> {
                 drawPart(0f, 1.05f, 0f, 1.85f, 2.1f, 1.15f, ASTEROID)
@@ -1357,8 +1397,6 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
                 glowPart(0f, 1.05f, 0.10f, 0.28f, 1.95f, 1.18f, CRYSTAL_CYAN)
                 glowPart(-0.55f, 1.05f, 0.10f, 0.18f, 1.7f, 1.18f, CRYSTAL_PURPLE)
                 glowPart(0.55f, 1.05f, 0.10f, 0.18f, 1.7f, 1.18f, CRYSTAL_PURPLE)
-                dangerFace(1.55f, 1.7f, 0.18f, 0.18f)
-                dangerFace(0.55f, 1.7f, 0.14f, 0.18f)
             }
             else -> { // 草原：摞起的施工路障桶（橙身白反光环）
                 for (bx in floatArrayOf(-0.6f, 0f, 0.6f)) {
@@ -1373,6 +1411,20 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
             }
         }
         popModel()
+    }
+
+    private fun drawBlockDangerFace() {
+        when (game.universe) {
+            Game.UNI_WATER -> dangerFace(1.05f, 1.7f, 0.16f, 0.16f)
+            Game.UNI_SKY -> dangerFace(1.0f, 1.7f, 0.16f, 0.16f)
+            Game.UNI_LAVA -> dangerFace(1.05f, 1.7f, 0.18f, 0.18f)
+            Game.UNI_CANDY -> dangerFace(1.05f, 1.7f, 0.16f, 0.16f)
+            Game.UNI_SPACE -> {
+                dangerFace(1.55f, 1.7f, 0.18f, 0.18f)
+                dangerFace(0.55f, 1.7f, 0.14f, 0.18f)
+            }
+            else -> dangerFace(1.05f, 1.7f, 0.16f, 0.16f)
+        }
     }
 
     private fun drawZipline(zip: Game.Zip) {

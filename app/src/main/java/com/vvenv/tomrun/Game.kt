@@ -1530,9 +1530,14 @@ class Game {
         return rowSpan + clearance
     }
 
+    /**
+     * 矮障碍跳跃金币弧：仅障碍上方/后方排弧，前方不放低金币以免挡住矮障碍。
+     * 玩家在障碍 z≈-2 起跳；拾取窗 abs(z)<1.2、半径 1.15，Y 随跳跃升高（末枚仍在空中）。
+     */
     private fun coinArc(lane: Int, zBase: Float) {
-        val ys = floatArrayOf(1.0f, 1.8f, 2.3f, 1.8f, 1.0f)
-        for (i in ys.indices) entities.add(makeCoin(lane, zBase + 3.2f - 1.6f * i, ys[i]))
+        val dz = floatArrayOf(0.0f, -1.0f, -2.0f, -3.0f, -4.0f)
+        val ys = floatArrayOf(1.8f, 2.1f, 2.3f, 2.45f, 2.5f)
+        for (i in dz.indices) entities.add(makeCoin(lane, zBase + dz[i], ys[i]))
     }
 
     private fun makeCoin(lane: Int, z: Float, y: Float): Entity {
