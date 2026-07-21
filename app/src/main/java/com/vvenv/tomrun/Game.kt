@@ -40,11 +40,14 @@ class Game {
         const val RIDE_Y_MAX = 3.6f
         const val RIDE_STEP = 0.9f
 
-        // 速度：慢起步，约 70 秒接近上限
-        const val SPEED_START = 12f
-        const val SPEED_MAX = 28f
-        const val SPEED_RAMP = 0.22f     // 每秒加速
-        const val BOOST_MULT = 1.25f
+        // 速度：慢起步，约 110 秒接近上限（整体节奏偏慢，便于看清藏品/妖怪）
+        const val SPEED_START = 10f
+        const val SPEED_MAX = 21f
+        const val SPEED_RAMP = 0.18f
+        const val SPEED_RAMP_EASE_SECS = 110f
+        const val BOOST_MULT = 1.22f
+        /** 拾取/击倒等奖励瞬间：短暂减速让玩家读清反馈 */
+        const val PACE_SLOW_MULT = 0.68f
 
         // 连击阈值：x2/x3/x4/x5
         const val COMBO_WINDOW = 1.6f
@@ -68,7 +71,46 @@ class Game {
         const val Q_SMASH = 5
         const val Q_PORTAL = 6
         const val Q_RELIC = 7
+        const val Q_BATTLE = 8
 
+        // 随机妖怪追击（跑酷中追上击倒）
+        const val CHASE_FIRST = 380f
+        const val CHASE_CATCH_Z = -1.2f
+        const val CHASE_RELIC_CHANCE = 0.25f
+        /** 各宇宙妖怪：名称 + 描述（每宇宙 2 种） */
+        val YOKAI_NAMES = arrayOf(
+            arrayOf("疾风妖狼", "草妖"),
+            arrayOf("深海妖鱿", "晶壳妖蟹"),
+            arrayOf("雷鸟妖", "云鲸妖"),
+            arrayOf("熔岩妖兽", "火羽妖"),
+            arrayOf("糖妖", "巧妖龙"),
+            arrayOf("星外妖", "猎光妖")
+        )
+        val YOKAI_DESC = arrayOf(
+            arrayOf("在草原狂奔的狼形妖怪", "躲在草里的调皮小妖"),
+            arrayOf("触手乱舞的深海妖", "硬壳飞逃的蟹妖"),
+            arrayOf("电光翅膀的猛禽妖", "在云里游动的巨妖"),
+            arrayOf("浑身岩浆的兽妖", "浴火逃窜的鸟妖"),
+            arrayOf("圆滚滚弹跳的糖妖", "甜气逼人的龙妖"),
+            arrayOf("来自星空的异形妖", "追光而行的猎妖")
+        )
+        val YOKAI_COLORS = arrayOf(
+            intArrayOf(0xFF8B6914.toInt(), 0xFF4DE8A0.toInt()),
+            intArrayOf(0xFF3A5FCD.toInt(), 0xFF66CCFF.toInt()),
+            intArrayOf(0xFFFFD426.toInt(), 0xFFB0C4FF.toInt()),
+            intArrayOf(0xFFFF5722.toInt(), 0xFFFF7043.toInt()),
+            intArrayOf(0xFFFF69B4.toInt(), 0xFF6D4C2A.toInt()),
+            intArrayOf(0xFF9C27B0.toInt(), 0xFF00E5FF.toInt())
+        )
+        /** 各宇宙妖怪的「母语」呼喊（跑逃时随机冒出） */
+        val YOKAI_SHOUTS = arrayOf(
+            arrayOf("嗷呜·咻咻!", "呜咔——嗷?", "嘎嗷·呼呼!"),
+            arrayOf("噗噜~咕叽!", "哗啦·啵啵!", "咕叽咕叽·唰!"),
+            arrayOf("噼咔·雷嗷!", "滋滋~云呜!", "嘎嘎·冲呀!"),
+            arrayOf("轰隆·烫烫!", "咕嘟咕嘟·嗷!", "呼呼·逃咯!"),
+            arrayOf("蹦蹦·糖哒!", "咕噜~甜嗷!", "啪嗒啪嗒·咿!"),
+            arrayOf("哔啵·星呜!", "嗡——咔嚓?", "咻咻·猎光!")
+        )
         // 文物收集：跑道上稀有刷出，收进博物馆图鉴（寓教于乐）
         const val RELIC_COMMON = 0
         const val RELIC_RARE = 1
@@ -246,6 +288,9 @@ class Game {
         const val EV_BUY = 14
         const val EV_PET = 15
         const val EV_STARGAZE = 16
+        const val EV_BATTLE = 17
+        const val EV_BATTLE_WIN = 18
+        const val EV_BATTLE_HIT = 19
 
         const val W_SUNNY = 0
         const val W_RAIN = 1
@@ -275,7 +320,7 @@ class Game {
         val exitZ get() = entryZ - length
     }
 
-    class FloatText(val text: String, val color: Int, var life: Float = 1.1f, var y: Float = 0f)
+    class FloatText(val text: String, val color: Int, var life: Float = 2.0f, var y: Float = 0f)
 
     class Particle(
         var x: Float, var y: Float, var z: Float,
@@ -294,12 +339,16 @@ class Game {
         @Volatile var done = false
     }
 
-    class Banner(val text: String, val color: Int, var life: Float = 2.4f)
+    /** 跑酷提示统一走这里排队分行，避免连击 / 横幅 / 纪录叠字 */
+    val notices = Notices()
 
     @Volatile var state = State.READY
     @Volatile var score = 0
     @Volatile var coins = 0          // 本局拾取（计分用）
     @Volatile var highScore = 0
+    @Volatile var highDistance = 0
+    @Volatile var runNewDistRecord = false
+    @Volatile var runNewScoreRecord = false
     @Volatile var deadTime = 0f
     @Volatile var immortalMode = false
         private set
@@ -318,7 +367,6 @@ class Game {
 
     @Volatile var combo = 0
     @Volatile var comboMult = 1
-    @Volatile var comboFlash = 0f
     @Volatile var comboNextAt = 5   // 距离下一级所需连击数
     private var comboTimer = 0f
     private var comboScore = 0
@@ -347,10 +395,6 @@ class Game {
     // 成就：每类 0~3 级
     val achieveLevels = IntArray(ACHIEVE_CATS)
     @Volatile var achieveCount = 0   // 已完成级数总和 / ACHIEVE_MAX
-    private val bannerQueue = ArrayList<Banner>()
-    @Volatile var bannerText = ""
-    @Volatile var bannerColor = 0xFFFFD426.toInt()
-    @Volatile var bannerFlash = 0f
 
     // 外观
     @Volatile var catColor = 0
@@ -364,6 +408,30 @@ class Game {
 
     // 暂停（仅 RUNNING 中有效）
     @Volatile var paused = false
+
+    // 妖怪追击（跑酷不中断：换道/冲刺追上前方妖怪）
+    @Volatile var chaseActive = false
+    @Volatile var yokaiName = ""
+    @Volatile var yokaiDesc = ""
+    @Volatile var yokaiColor = 0xFFFF5722.toInt()
+    @Volatile var yokaiKind = 0
+    @Volatile var yokaiZ = 0f
+    @Volatile var yokaiLane = 1
+    @Volatile var yokaiSpawnZ = -55f
+    @Volatile var yokaiRunPhase = 0f
+    @Volatile var yokaiShout = ""
+    @Volatile var yokaiShoutFlash = 0f
+    @Volatile var yokaiHudX = 0.5f
+    @Volatile var yokaiHudY = 0.35f
+    @Volatile var yokaiHudVisible = false
+    @Volatile var chaseTimeLeft = 0f
+    @Volatile var chaseTimeMax = 15f
+    @Volatile var chaseRelicDrop = -1
+    private var nextChaseAt = 0f
+    private var runChases = 0
+    private var yokaiLaneTimer = 0f
+    private var yokaiShoutTimer = 0f
+    private var paceSlowUntil = 0f
 
     // 平行宇宙
     @Volatile var universe = UNI_MEADOW
@@ -420,7 +488,6 @@ class Game {
     @Volatile var floatFlash = 0f
 
     @Volatile var onEvent: ((Int) -> Unit)? = null
-    @Volatile var recordFlash = 0f
     private var recordDone = false
     private var settled = false
 
@@ -470,6 +537,7 @@ class Game {
     fun attachPrefs(p: SharedPreferences) {
         prefs = p
         highScore = p.getInt("high3d", 0)
+        highDistance = p.getInt("highDist", 0)
         totalCoins = p.getInt("totalCoins", 0)
         totalDistance = p.getInt("totalDist", 0)
         totalQuests = p.getInt("totalQuests", 0)
@@ -1091,7 +1159,7 @@ class Game {
         ziplines.clear()
         floatTexts.clear()
         particles.clear()
-        bannerQueue.clear()
+        notices.clear()
         quests.clear()
         lane = 1; catX = 0f; catY = 0f; velY = 0f
         groundY = 0f; rideTargetY = RIDE_Y
@@ -1101,8 +1169,9 @@ class Game {
         deadTime = 0f
         magnetTime = 0f; doubleTime = 0f; boostTime = 0f; helmetLayers = 0
         riding = null; scoreBoost = 0f; invulnTime = 0f
-        recordFlash = 0f; recordDone = false; settled = false
-        combo = 0; comboMult = 1; comboTimer = 0f; comboFlash = 0f; comboScore = 0
+        recordDone = false; settled = false
+        runNewDistRecord = false; runNewScoreRecord = false
+        combo = 0; comboMult = 1; comboTimer = 0f; comboScore = 0
         comboNextAt = COMBO_THRESH[0]
         bestComboRun = 0; missionBonus = 0
         runJumps = 0; runSlides = 0; runSmashes = 0
@@ -1111,7 +1180,6 @@ class Game {
         relicHudCount = 0
         // 首件文物约 180 米后出现，之后每 280~520 米一件
         nextRelicAt = 180f + Random.nextFloat() * 120f
-        bannerFlash = 0f; bannerText = ""
         shake = 0f; hapticPulse = 0; floatFlash = 0f; lastFloat = ""
         wavesSincePower = 0
         menuPanel = PANEL_MAIN
@@ -1124,13 +1192,20 @@ class Game {
         portalFlash = 0f
         portalGap = PORTAL_FIRST + Random.nextFloat() * 120f
         runPortals = 0
+        chaseActive = false
+        yokaiShout = ""
+        yokaiShoutFlash = 0f
+        yokaiHudVisible = false
+        paceSlowUntil = 0f
+        nextChaseAt = CHASE_FIRST + Random.nextFloat() * 180f
+        runChases = 0
         rollQuests()
         // 小屋能量：开局按等级赠送 buff
         val hl = homeLevel()
         if (hl >= 1) magnetTime = 5f
         if (hl >= 2) helmetLayers = 1
         if (hl >= 3) doubleTime = 5f
-        if (hl >= 1) enqueueBanner("家能量 Lv$hl！${homeLevelDesc(hl)}", 0xFF7DEBA0.toInt(), 2.0f)
+        if (hl >= 1) enqueueBanner(homeLevelDesc(hl), 0xFF7DEBA0.toInt(), 2.0f)
         if (!museumComplete()) {
             enqueueBanner("留意路上的文物，收进藏品（$relicsFound/$RELIC_COUNT）", 0xFFC77DFF.toInt(), 1.8f)
         }
@@ -1143,20 +1218,24 @@ class Game {
         gapRemaining = nextGap()
     }
 
-    /** 反应时间间距：前期 ~1.7s，后期 ~0.95s */
+    /** 反应时间间距：前期 ~2.1s，后期 ~1.05s；前 500m 略放宽 */
     private fun nextGap(): Float {
         val t = (distance / 2500f).coerceIn(0f, 1f)
-        val react = 1.7f - t * 0.75f
-        val jitter = 0.85f + Random.nextFloat() * 0.3f
-        return (baseSpeed * react * jitter).coerceIn(14f, 48f)
+        val earlyEase = if (distance < 500f) 1f + 0.15f * (1f - distance / 500f) else 1f
+        val react = (2.1f - t * 0.85f) * earlyEase
+        val jitter = 0.88f + Random.nextFloat() * 0.28f
+        return (baseSpeed * react * jitter).coerceIn(18f, 58f)
+    }
+
+    private fun triggerPaceSlow(secs: Float) {
+        paceSlowUntil = paceSlowUntil.coerceAtLeast(secs)
     }
 
     // ---------- 主更新 ----------
     @Synchronized fun update(dt: Float) {
-        if (paused) return
         tickDayNight(dt)
         tickFeedback(dt)
-        tickBanners(dt)
+        notices.tick(dt)
         if (shake > 0f) shake = (shake - dt * 5f).coerceAtLeast(0f)
         if (portalFlash > 0f) portalFlash -= dt
         if (universeBlend < 1f) universeBlend = min(1f, universeBlend + dt / 1.5f)
@@ -1164,20 +1243,23 @@ class Game {
             deadTime += dt
             return
         }
+        if (paused) return
         tickWeather(dt)
         runPhase += dt * speed * 0.9f
         if (state != State.RUNNING) return
 
         runTime += dt
         baseSpeed = min(SPEED_START + SPEED_RAMP * runTime, SPEED_MAX)
-        // 前期略缓加速曲线（ease-out 近似）
-        if (runTime < 70f) {
-            val u = runTime / 70f
+        // 前期缓加速（ease-out）：90s 内渐近上限，30s 时约 65% 而非 82%
+        if (runTime < SPEED_RAMP_EASE_SECS) {
+            val u = runTime / SPEED_RAMP_EASE_SECS
             val eased = 1f - (1f - u) * (1f - u)
             baseSpeed = SPEED_START + (SPEED_MAX - SPEED_START) * eased
         }
         speed = if (boosting) baseSpeed * BOOST_MULT else baseSpeed
-        val dz = speed * dt
+        paceSlowUntil = (paceSlowUntil - dt).coerceAtLeast(0f)
+        val paceMult = if (paceSlowUntil > 0f) PACE_SLOW_MULT else 1f
+        val dz = speed * dt * paceMult
         distance += dz
 
         if (magnetTime > 0f) magnetTime = (magnetTime - dt).coerceAtLeast(0f)
@@ -1192,7 +1274,6 @@ class Game {
             comboTimer -= dt
             if (comboTimer <= 0f) resetCombo()
         }
-        if (comboFlash > 0f) comboFlash -= dt
         if (floatFlash > 0f) floatFlash -= dt
 
         val targetX = LANE_X[lane]
@@ -1250,6 +1331,11 @@ class Game {
                     e.z += (0f - e.z) * min(1f, dt * 4f)
                 }
             }
+            // 已过身的金币直接清掉，避免在相机前堆成巨大光晕
+            if (e.kind == COIN && !e.taken && e.z > 2.2f) {
+                it.remove()
+                continue
+            }
             if (e.z > 8f || e.taken) it.remove()
         }
 
@@ -1268,7 +1354,7 @@ class Game {
         gapRemaining -= dz
         while (gapRemaining <= 0f) {
             // 卡顿过冲时 gapRemaining 为负，会把波次生成得更近；钳制最小距离避免"眼前刷怪"
-            val minDist = (speed * 3.2f).coerceIn(72f, 180f)
+            val minDist = (speed * 3.9f).coerceIn(90f, 210f)
             val z = (SPAWN_Z - gapRemaining).coerceAtMost(-minDist)
             spawnWave(z, early = false)
             gapRemaining += nextGap()
@@ -1292,15 +1378,23 @@ class Game {
             }
         }
 
+        // 妖怪追击 / 随机触发
+        if (chaseActive) tickChase(dt, dz)
+        else if (!portalActive && distance >= nextChaseAt) startChase()
+
         checkCollision()
         syncQuestProgress()
         // 计分：里程 + 加倍里程 + 金币基础分 + 连击额外 + 任务分
         score = (distance + scoreBoost).toInt() + coins * 10 + comboScore + missionBonus
 
-        if (recordFlash > 0f) recordFlash -= dt
-        if (!recordDone && highScore > 0 && score > highScore) {
+        val beatScore = highScore > 0 && score > highScore
+        val beatDist = highDistance > 0 && distance.toInt() > highDistance
+        if (!recordDone && (beatScore || beatDist)) {
             recordDone = true
-            recordFlash = 2.6f
+            notices.push(
+                "新纪录！", 0xFFFFD426.toInt(), 2.6f,
+                Notices.Style.RECORD, Notices.P_RECORD, Notices.KEY_RECORD
+            )
             emit(EV_RECORD, HAPTIC_MED)
         }
     }
@@ -1320,32 +1414,8 @@ class Game {
         }
     }
 
-    private fun tickBanners(dt: Float) {
-        if (bannerFlash > 0f) {
-            bannerFlash -= dt
-            if (bannerFlash <= 0f && bannerQueue.isNotEmpty()) {
-                val b = bannerQueue.removeAt(0)
-                bannerText = b.text
-                bannerColor = b.color
-                bannerFlash = b.life
-            }
-        } else if (bannerQueue.isNotEmpty()) {
-            val b = bannerQueue.removeAt(0)
-            bannerText = b.text
-            bannerColor = b.color
-            bannerFlash = b.life
-        }
-    }
-
-    private fun enqueueBanner(text: String, color: Int, life: Float = 2.4f) {
-        if (bannerFlash <= 0f && bannerQueue.isEmpty()) {
-            bannerText = text
-            bannerColor = color
-            bannerFlash = life
-        } else {
-            bannerQueue.add(Banner(text, color, life))
-            if (bannerQueue.size > 6) bannerQueue.removeAt(0)
-        }
+    private fun enqueueBanner(text: String, color: Int, life: Float = 3.2f) {
+        notices.push(text, color, life, Notices.Style.BANNER, Notices.P_BANNER)
     }
 
     private fun tickWeather(dt: Float) {
@@ -1414,6 +1484,161 @@ class Game {
         tryUnlockAchievements(persist = false)
     }
 
+    // ---------- 妖怪追击 ----------
+    /** 追击进度 0~1，越接近 1 越快要追上 */
+    fun chaseProgress(): Float {
+        if (!chaseActive) return 0f
+        val start = yokaiSpawnZ
+        val end = CHASE_CATCH_Z
+        if (start <= end) return 0f
+        return ((start - yokaiZ) / (start - end)).coerceIn(0f, 1f)
+    }
+
+    /** 是否与妖怪在同一道（击倒必要条件） */
+    fun chaseSameLane(): Boolean =
+        chaseActive && lane == yokaiLane && abs(catX - LANE_X[yokaiLane]) < 0.65f
+
+    private fun startChase() {
+        val uni = universe.coerceIn(0, UNIVERSE_COUNT - 1)
+        val kind = Random.nextInt(YOKAI_NAMES[uni].size)
+        yokaiKind = kind
+        yokaiName = YOKAI_NAMES[uni][kind]
+        yokaiDesc = YOKAI_DESC[uni][kind]
+        yokaiColor = YOKAI_COLORS[uni][kind]
+        yokaiLane = Random.nextInt(3)
+        yokaiSpawnZ = -78f - Random.nextFloat() * 22f
+        yokaiZ = yokaiSpawnZ
+        yokaiRunPhase = 0f
+        chaseTimeMax = 26f + Random.nextFloat() * 8f
+        chaseTimeLeft = chaseTimeMax
+        yokaiLaneTimer = 3.2f + Random.nextFloat() * 2.0f
+        yokaiShoutTimer = 0.6f
+        yokaiShout = ""
+        yokaiShoutFlash = 0f
+        chaseRelicDrop = -1
+        chaseActive = true
+        nextChaseAt = distance + 400f + Random.nextFloat() * 320f
+        clearObstaclesAhead((speed * 2.5f).coerceAtLeast(55f))
+        invulnTime = invulnTime.coerceAtLeast(1.2f)
+        triggerPaceSlow(2.4f)
+        enqueueBanner(
+            "妖怪出没！${UNIVERSE_NAMES[uni]} · $yokaiName — 换到同一道追上！",
+            yokaiColor, 3.8f
+        )
+        pushFloat("追击!", yokaiColor)
+        emit(EV_BATTLE, HAPTIC_HEAVY)
+    }
+
+    private fun tickChase(dt: Float, dz: Float) {
+        chaseTimeLeft -= dt
+        yokaiRunPhase += dt * speed * 0.92f
+        yokaiShoutFlash = (yokaiShoutFlash - dt).coerceAtLeast(0f)
+        yokaiShoutTimer -= dt
+        if (yokaiShoutTimer <= 0f) {
+            val uni = universe.coerceIn(0, UNIVERSE_COUNT - 1)
+            val pool = YOKAI_SHOUTS[uni]
+            yokaiShout = pool[Random.nextInt(pool.size)]
+            yokaiShoutFlash = 3.4f
+            yokaiShoutTimer = 3.8f + Random.nextFloat() * 2.8f
+        }
+        yokaiLaneTimer -= dt
+        if (yokaiLaneTimer <= 0f) {
+            var next = Random.nextInt(3)
+            if (next == yokaiLane) next = (next + 1) % 3
+            yokaiLane = next
+            yokaiLaneTimer = 3.0f + Random.nextFloat() * 2.5f
+        }
+        var yokaiDz = dz * 0.80f
+        if (lane == yokaiLane) yokaiDz -= dz * 0.32f
+        else yokaiDz += dz * 0.08f
+        if (boosting) yokaiDz -= dz * 0.22f
+        yokaiZ += yokaiDz
+
+        if (yokaiZ >= CHASE_CATCH_Z) {
+            val sameLane = lane == yokaiLane && abs(catX - LANE_X[yokaiLane]) < 0.65f
+            finishChase(won = sameLane, missedLane = !sameLane)
+        } else if (chaseTimeLeft <= 0f || yokaiZ < yokaiSpawnZ - 70f) {
+            finishChase(won = false)
+        }
+    }
+
+    private fun finishChase(won: Boolean, missedLane: Boolean = false) {
+        if (!chaseActive) return
+        chaseActive = false
+        yokaiShoutFlash = 0f
+        yokaiHudVisible = false
+        runChases++
+        if (won) {
+            triggerPaceSlow(2.8f)
+            val tier = ((distance - CHASE_FIRST) / 500f).coerceIn(0f, 3f).toInt()
+            val scoreBonus = 140 + tier * 45 + (chaseTimeLeft * 8f).toInt()
+            val walletBonus = 22 + tier * 8 + (chaseTimeLeft * 2f).toInt()
+            val lavaExtra = if (universe == UNI_LAVA) scoreBonus / 2 else 0
+            val candyExtra = if (universe == UNI_CANDY) walletBonus / 2 else 0
+            missionBonus += scoreBonus + lavaExtra
+            grantWallet(walletBonus + candyExtra)
+            if (Random.nextFloat() < CHASE_RELIC_CHANCE) {
+                chaseRelicDrop = pickRelicForSpawn()
+                awardRelic(chaseRelicDrop)
+            }
+            bumpQuest(Q_BATTLE, 1)
+            enqueueBanner(
+                "击倒 $yokaiName！+$scoreBonus 分 · 钱包+${walletBonus + candyExtra}",
+                0xFF7DEBA0.toInt(), 3.8f
+            )
+            pushFloat("击倒!", 0xFF7DEBA0.toInt())
+            shake = 0.32f
+            spawnBurst(LANE_X[yokaiLane], 1.8f, 0f, floatArrayOf(0.35f, 0.92f, 0.55f, 1f), 14)
+            emit(EV_BATTLE_WIN, HAPTIC_HEAVY)
+            clearObstaclesAhead((speed * 2.0f).coerceAtLeast(48f))
+            invulnTime = invulnTime.coerceAtLeast(1.5f)
+        } else {
+            val msg = if (missedLane) "不同道！$yokaiName 溜走了" else "$yokaiName 逃走了…"
+            enqueueBanner(msg, if (missedLane) 0xFFFFD426.toInt() else 0xFFAAAAAA.toInt(), 2.4f)
+            pushFloat(if (missedLane) "须同道!" else "逃走了", if (missedLane) 0xFFFFD426.toInt() else 0xFFAAAAAA.toInt())
+        }
+        score = (distance + scoreBoost).toInt() + coins * 10 + comboScore + missionBonus
+    }
+
+    /** 追击胜利掉落藏品（逻辑同跑道拾取，无实体） */
+    private fun awardRelic(id: Int) {
+        if (id !in 0 until RELIC_COUNT) return
+        runRelics++
+        totalRelicPickups++
+        val rarity = RELIC_RARITY[id]
+        val scoreBonus = RELIC_SCORE[rarity]
+        missionBonus += scoreBonus
+        grantWallet(RELIC_WALLET[rarity])
+        val color = relicBannerColor(rarity)
+        enqueueBanner(
+            "战利品·${RELIC_RARITY_NAMES[rarity]}文物：${RELIC_NAMES[id]}（${RELIC_ERAS[id]}）+$scoreBonus",
+            color, 3.6f
+        )
+        enqueueBanner("小知识：${RELIC_FACTS[id]}", 0xFFAAD5FF.toInt(), 4.5f)
+        pushFloat(RELIC_NAMES[id], color)
+        spawnBurst(catX, 2.2f, -2f, floatArrayOf(0.78f, 0.45f, 1f, 1f), 8)
+        if (!relicCollected(id)) {
+            relicMask = relicMask or (1 shl id)
+            relicsFound = Integer.bitCount(relicMask)
+            enqueueBanner("文物图鉴 +1（$relicsFound/$RELIC_COUNT）", 0xFFFFD426.toInt(), 2.2f)
+            if (!museumRewarded && museumComplete()) {
+                museumRewarded = true
+                grantWallet(MUSEUM_REWARD)
+                enqueueBanner(
+                    "藏品全收集！大奖 +$MUSEUM_REWARD 金币！",
+                    0xFFFFD426.toInt(), 3.6f
+                )
+                pushFloat("+$MUSEUM_REWARD 金币！", 0xFFFFD426.toInt())
+                spawnBurst(catX, 2.0f, 0f, floatArrayOf(1f, 0.84f, 0.10f, 1f), 14)
+                emit(EV_ACHIEVE, HAPTIC_HEAVY)
+                persistAll()
+            } else {
+                emit(EV_ACHIEVE, HAPTIC_MED)
+            }
+        }
+        tryUnlockAchievements(persist = false)
+    }
+
     // ---------- 生成 ----------
     /** 安全缓冲：清掉前方一段距离内的障碍物，给玩家留足反应时间 */
     private fun clearObstaclesAhead(dist: Float) {
@@ -1448,7 +1673,10 @@ class Game {
         val freeLanes = mutableListOf(0, 1, 2)
         val barOpen = distance > 180f && !early
         val rampOpen = distance > 450f && !early
-        val dense = distance > 900f
+        val dense = distance > 1200f
+        val relaxed = distance < 500f && !early
+        val blockCut = if (relaxed) 0.48f else 0.55f
+        val lowCut = if (relaxed) 0.72f else 0.82f
 
         val r = Random.nextFloat()
         when {
@@ -1458,14 +1686,14 @@ class Game {
                 entities.add(Entity(OBST_BAR, l, zBase))
                 coinRow(l, zBase)
             }
-            r < 0.55f -> {
+            r < blockCut -> {
                 // 最多堵 2 道，始终留一条可走
                 val n = 1 + Random.nextInt(2)
                 freeLanes.shuffle()
                 for (i in 0 until n) entities.add(Entity(OBST_BLOCK, freeLanes[i], zBase))
                 coinRow(freeLanes.last(), zBase)
             }
-            r < 0.82f -> {
+            r < lowCut -> {
                 val n = 1 + Random.nextInt(2)
                 freeLanes.shuffle()
                 for (i in 0 until n) entities.add(Entity(OBST_LOW, freeLanes[i], zBase))
@@ -1475,8 +1703,8 @@ class Game {
                 // 两列金币：同道可密排；分道则按变道时间拉开 Z，避免来不及换道
                 val laneA = Random.nextInt(3)
                 val laneB = Random.nextInt(3)
-                coinRow(laneA, zBase)
-                coinRow(laneB, zBase - coinLaneGap(laneA, laneB))
+                coinRow(laneA, zBase, 5)
+                coinRow(laneB, zBase - coinLaneGap(laneA, laneB, 5), 5)
             }
         }
 
@@ -1515,13 +1743,13 @@ class Game {
         return 0f
     }
 
-    private fun coinRow(lane: Int, zBase: Float) {
-        for (i in 0 until 5) entities.add(makeCoin(lane, zBase - 1.6f * i, 1.0f))
+    private fun coinRow(lane: Int, zBase: Float, count: Int = 4) {
+        for (i in 0 until count) entities.add(makeCoin(lane, zBase - 1.6f * i, 1.0f))
     }
 
     /** 两列金币起点间距：同道紧凑；分道按当前速度留足变道时间 */
-    private fun coinLaneGap(laneA: Int, laneB: Int): Float {
-        val rowSpan = 1.6f * 4f // 5 枚金币首尾跨度
+    private fun coinLaneGap(laneA: Int, laneB: Int, count: Int = 4): Float {
+        val rowSpan = 1.6f * (count - 1).coerceAtLeast(1).toFloat()
         val laneDelta = abs(laneA - laneB)
         if (laneDelta == 0) return rowSpan + 1.6f // 同道：约 8f，与旧行为一致
         // 变道插值约 τ=1/12s，邻道 ~0.35s、跨两道 ~0.55s，再加少许反应余量
@@ -1583,12 +1811,13 @@ class Game {
         missionBonus += scoreBonus
         grantWallet(RELIC_WALLET[rarity])
         val color = relicBannerColor(rarity)
+        triggerPaceSlow(2.4f)
         enqueueBanner(
             "发现${RELIC_RARITY_NAMES[rarity]}文物：${RELIC_NAMES[id]}（${RELIC_ERAS[id]}）+$scoreBonus",
-            color, 2.4f
+            color, 3.6f
         )
         // 寓教于乐：跟一条小知识横幅
-        enqueueBanner("小知识：${RELIC_FACTS[id]}", 0xFFAAD5FF.toInt(), 3.2f)
+        enqueueBanner("小知识：${RELIC_FACTS[id]}", 0xFFAAD5FF.toInt(), 4.5f)
         pushFloat(RELIC_NAMES[id], color)
         spawnBurst(e.x, e.y, e.z, floatArrayOf(0.78f, 0.45f, 1f, 1f), 6)
         if (!relicCollected(id)) {
@@ -1625,10 +1854,12 @@ class Game {
             if (e.taken) continue
             when (e.kind) {
                 COIN -> {
-                    val radius = if (magnetTime > 0f || e.magneted) 1.6f else 1.15f
+                    val magnetPull = magnetTime > 0f || e.magneted
+                    val radius = if (magnetPull) 1.8f else 1.15f
+                    val zSlop = if (magnetPull) 5.5f else 1.2f
                     val dx = e.x - catX
                     val dy = e.y - catCenterY
-                    if (abs(e.z) < 1.2f && dx * dx + dy * dy < radius * radius) {
+                    if (abs(e.z) < zSlop && dx * dx + dy * dy < radius * radius) {
                         e.taken = true
                         collectCoin(e)
                     }
@@ -1697,7 +1928,10 @@ class Game {
         spawnBurst(e.x, e.y, e.z, floatArrayOf(1f, 0.84f, 0.10f, 1f), 5)
 
         if (comboMult > prevMult) {
-            comboFlash = 1.4f
+            notices.push(
+                "连击 x$comboMult！", 0xFFFFC21F.toInt(), 1.4f,
+                Notices.Style.COMBO, Notices.P_COMBO, Notices.KEY_COMBO
+            )
             emit(EV_COMBO, HAPTIC_MED)
         } else {
             emit(EV_COIN, HAPTIC_LIGHT)
@@ -1767,7 +2001,7 @@ class Game {
         quests.clear()
         val tier = playerTier()
         val pool = mutableListOf(
-            Q_COINS, Q_DIST, Q_COMBO, Q_JUMP, Q_SLIDE, Q_SMASH, Q_PORTAL, Q_RELIC
+            Q_COINS, Q_DIST, Q_COMBO, Q_JUMP, Q_SLIDE, Q_SMASH, Q_PORTAL, Q_RELIC, Q_BATTLE
         )
         pool.shuffle()
         for (i in 0 until 3) {
@@ -1788,6 +2022,7 @@ class Game {
             Q_SLIDE -> Quest(type, scale(5, 10, 16), scoreR(120, 180, 260), walletR(12, 20, 35), "铲滑次数")
             Q_PORTAL -> Quest(type, scale(1, 2, 3), scoreR(150, 240, 360), walletR(15, 28, 45), "穿越传送门")
             Q_RELIC -> Quest(type, scale(1, 2, 3), scoreR(180, 280, 400), walletR(18, 30, 50), "发现文物")
+            Q_BATTLE -> Quest(type, scale(1, 2, 4), scoreR(200, 320, 480), walletR(20, 35, 55), "击倒妖怪")
             else -> Quest(type, scale(3, 6, 12), scoreR(160, 240, 360), walletR(16, 28, 45), "撞碎障碍")
         }
     }
@@ -1813,6 +2048,7 @@ class Game {
                 Q_SMASH -> runSmashes
                 Q_PORTAL -> runPortals
                 Q_RELIC -> runRelics
+                Q_BATTLE -> runChases
                 else -> 0
             }
             q.progress = cur.coerceAtMost(q.target)
@@ -1871,7 +2107,7 @@ class Game {
         if (floatTexts.size > 8) floatTexts.removeAt(0)
         lastFloat = text
         lastFloatColor = color
-        floatFlash = 0.9f
+        floatFlash = 1.7f
     }
 
     private fun spawnBurst(x: Float, y: Float, z: Float, color: FloatArray, n: Int) {
@@ -1925,6 +2161,7 @@ class Game {
         val p = prefs ?: return
         val ed = p.edit()
             .putInt("high3d", highScore)
+            .putInt("highDist", highDistance)
             .putInt("totalCoins", totalCoins)
             .putInt("totalDist", totalDistance)
             .putInt("totalQuests", totalQuests)
@@ -1965,7 +2202,10 @@ class Game {
         totalCoins += sessionPickupCoins
         totalDistance += distance.toInt()
         if (bestComboRun > bestComboEver) bestComboEver = bestComboRun
-        if (score > highScore) highScore = score
+        runNewDistRecord = distance.toInt() > highDistance
+        runNewScoreRecord = score > highScore
+        if (runNewDistRecord) highDistance = distance.toInt()
+        if (runNewScoreRecord) highScore = score
         settled = true
         tryUnlockAchievements(persist = false)
         persistAll()

@@ -481,6 +481,7 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         )
         Matrix.multiplyMM(vp, 0, proj, 0, view, 0)
         publishRelicLabels()
+        publishYokaiHud()
 
         drawSky()
         drawTrack()
@@ -488,6 +489,7 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         drawStreetLamps()
         drawEntities()
         drawPortal()
+        drawYokai()
         drawParticles()
         drawCat(dt)
         drawSpeedLines(dt)
@@ -509,7 +511,7 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
             for (e in game.entities) {
                 if (n >= Game.RELIC_HUD_MAX) break
                 if (!e.isRelic || e.taken) continue
-                if (e.z > 3f || e.z < -70f) continue
+                if (e.z > 3f || e.z < -100f) continue
                 if (!projectWorld(e.x, e.y + 0.95f, e.z, projectTmp)) continue
                 game.relicHudX[n] = projectTmp[0]
                 game.relicHudY[n] = projectTmp[1]
@@ -518,6 +520,22 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
                 n++
             }
             game.relicHudCount = n
+        }
+    }
+
+    /** 妖怪头顶屏幕坐标，供 HUD 画呼喊气泡 */
+    private fun publishYokaiHud() {
+        game.yokaiHudVisible = false
+        if (!game.chaseActive) return
+        val z = game.yokaiZ
+        if (z < -220f || z > 4f) return
+        val lane = game.yokaiLane.coerceIn(0, 2)
+        val x = Game.LANE_X[lane]
+        val bob = abs(sin(game.yokaiRunPhase)) * 0.09f
+        if (projectWorld(x, 2.55f + bob, z, projectTmp)) {
+            game.yokaiHudX = projectTmp[0]
+            game.yokaiHudY = projectTmp[1]
+            game.yokaiHudVisible = true
         }
     }
 
@@ -1038,6 +1056,121 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         mMode = 0
     }
 
+    /** 追击妖怪：在前方赛道上奔跑逃窜，光晕+大体型+夸张动作 */
+    private fun drawYokai() {
+        if (!game.chaseActive) return
+        val z = game.yokaiZ
+        if (z < -220f || z > 4f) return
+        val lane = game.yokaiLane.coerceIn(0, 2)
+        val x = Game.LANE_X[lane]
+        val c = argbCol(game.yokaiColor)
+        val cd = floatArrayOf(c[0] * 0.68f, c[1] * 0.68f, c[2] * 0.68f, 1f)
+        val hi = floatArrayOf(
+            min(1f, c[0] + 0.38f), min(1f, c[1] + 0.38f), min(1f, c[2] + 0.42f), 1f
+        )
+        val phase = game.yokaiRunPhase
+        val bob = abs(sin(phase)) * 0.14f
+        val sway = sin(phase * 0.55f) * 0.12f
+        val distBoost = ((-z).coerceIn(12f, 90f) / 45f).coerceIn(1f, 1.22f)
+        val scale = 1.42f * distBoost
+        val pulse = 0.50f + 0.18f * sin(scenePhase * 5.5f)
+
+        drawShadow(x, z, 1.15f * distBoost)
+        // 脚下警示环 + 光晕（远处也醒目）
+        mMode = 2
+        val ringCol = floatArrayOf(hi[0], hi[1], hi[2], pulse * 0.55f)
+        drawBox(x, 0.06f, z, 2.6f * distBoost, 0.08f, 2.6f * distBoost, ringCol)
+        pushModel(x, bob, z)
+        emitGlowHalo(0f, 1.05f + bob, 0f, 2.2f, 2.2f, 0.85f, floatArrayOf(hi[0], hi[1], hi[2], pulse * 0.42f))
+        popModel()
+        mMode = 0
+
+        pushModel(x + sway, bob, z)
+        Matrix.rotateM(model, 0, 180f, 0f, 1f, 0f)
+        Matrix.rotateM(model, 0, sin(phase * 0.45f) * 7f, 0f, 0f, 1f)
+        Matrix.scaleM(model, 0, scale, scale, scale)
+        if (game.yokaiKind % 2 == 0) drawYokaiQuadruped(c, cd, hi, phase)
+        else drawYokaiHopper(c, cd, hi, phase)
+        // 脚后尘土 + 速度线
+        mMode = 2
+        val dustA = (0.35f + abs(sin(phase * 0.55f)) * 0.25f).coerceIn(0.18f, 0.58f)
+        drawBox(0f, 0.10f, 0.78f, 0.52f, 0.08f, 0.34f, floatArrayOf(c[0], c[1], c[2], dustA))
+        drawBox(0f, 0.08f, 1.05f, 0.38f, 0.06f, 0.26f, floatArrayOf(c[0], c[1], c[2], dustA * 0.75f))
+        drawBox(sway * 0.5f, 0.55f, 1.18f, 0.12f, 0.12f, 0.55f, floatArrayOf(hi[0], hi[1], hi[2], 0.65f))
+        drawBox(-sway * 0.5f, 0.70f, 1.28f, 0.10f, 0.10f, 0.45f, floatArrayOf(hi[0], hi[1], hi[2], 0.50f))
+        // 头顶感叹号
+        val markPulse = 1f + 0.12f * sin(scenePhase * 7f)
+        drawBox(0f, 2.05f + bob * 2f, 0f, 0.22f * markPulse, 0.52f * markPulse, 0.22f * markPulse,
+            floatArrayOf(1f, 0.92f, 0.15f, 0.95f))
+        drawBox(0f, 1.62f + bob * 2f, 0f, 0.30f * markPulse, 0.30f * markPulse, 0.30f * markPulse,
+            floatArrayOf(1f, 0.92f, 0.15f, 0.95f))
+        mMode = 0
+        popModel()
+    }
+
+    /** 四足妖（狼/兽型）：与猫类似的奔跑摆腿 */
+    private fun drawYokaiQuadruped(c: FloatArray, cd: FloatArray, hi: FloatArray, phase: Float) {
+        val wag = sin(phase * 0.85f) * 0.20f
+        drawPart(wag, 1.0f, 0.85f, 0.30f, 0.30f, 0.38f, cd)
+        drawPart(wag * 1.5f, 1.32f, 1.0f, 0.28f, 0.36f, 0.28f, c)
+        drawPart(wag * 2.1f, 1.58f, 1.08f, 0.26f, 0.32f, 0.26f, hi)
+        for (i in 0 until 4) {
+            val front = i < 2
+            val left = i % 2 == 0
+            val lx = if (left) -0.50f else 0.50f
+            val lz = if (front) 0.54f else -0.54f
+            val legPhase = phase + if (i == 0 || i == 3) 0f else Math.PI.toFloat()
+            val swing = sin(legPhase) * 54f
+            pushModel(lx, 0.62f, lz)
+            Matrix.rotateM(model, 0, swing, 1f, 0f, 0f)
+            drawPart(0f, -0.32f, 0f, 0.38f, 0.62f, 0.38f, if (left) c else cd)
+            drawPart(0f, -0.64f, 0.02f, 0.40f, 0.16f, 0.42f, floatArrayOf(0.12f, 0.10f, 0.10f, 1f))
+            popModel()
+        }
+        drawPart(0f, 0.84f, 0f, 1.45f, 0.96f, 1.92f, c)
+        drawPart(0f, 0.90f, 0f, 1.15f, 0.22f, 1.55f, hi)
+        drawPart(0f, 0.58f, 0f, 1.02f, 0.48f, 1.38f, cd)
+        drawPart(0f, 1.14f, 0.78f, 1.02f, 0.86f, 0.92f, c)
+        drawPart(-0.34f, 1.50f, 0.72f, 0.24f, 0.42f, 0.18f, cd)
+        drawPart(0.34f, 1.50f, 0.72f, 0.24f, 0.42f, 0.18f, cd)
+        drawPart(-0.24f, 1.18f, 1.12f, 0.16f, 0.16f, 0.10f, floatArrayOf(1f, 0.95f, 0.2f, 1f))
+        drawPart(0.24f, 1.18f, 1.12f, 0.16f, 0.16f, 0.10f, floatArrayOf(1f, 0.95f, 0.2f, 1f))
+        drawPart(0f, 1.22f, 1.18f, 0.14f, 0.10f, 0.12f, floatArrayOf(1f, 0.3f, 0.25f, 1f))
+        val jaw = sin(phase * 2.4f) * 7f
+        pushModel(0f, 1.02f, 1.08f)
+        Matrix.rotateM(model, 0, jaw, 1f, 0f, 0f)
+        drawPart(0f, -0.10f, 0.08f, 0.46f, 0.18f, 0.28f, cd)
+        popModel()
+    }
+
+    /** 双足/飞行妖：蹦跳 + 振翅 */
+    private fun drawYokaiHopper(c: FloatArray, cd: FloatArray, hi: FloatArray, phase: Float) {
+        val hop = abs(sin(phase * 1.25f)) * 0.28f
+        val wing = sin(scenePhase * 9f + phase * 0.5f) * 0.52f
+        drawPart(-1.22f + wing, 1.48f + hop, 0f, 0.36f, 0.92f, 0.68f, cd)
+        drawPart(1.22f - wing, 1.48f + hop, 0f, 0.36f, 0.92f, 0.68f, cd)
+        drawPart(-1.22f + wing, 1.48f + hop, 0.12f, 0.22f, 0.55f, 0.12f, hi)
+        drawPart(1.22f - wing, 1.48f + hop, 0.12f, 0.22f, 0.55f, 0.12f, hi)
+        for (i in 0 until 2) {
+            val side = if (i == 0) -1f else 1f
+            val swing = sin(phase * 1.25f + i * Math.PI.toFloat()) * 48f
+            pushModel(side * 0.40f, 0.52f + hop * 0.5f, 0.10f)
+            Matrix.rotateM(model, 0, swing, 1f, 0f, 0f)
+            drawPart(0f, -0.28f, 0f, 0.34f, 0.58f, 0.34f, cd)
+            popModel()
+        }
+        drawPart(0f, 1.14f + hop, 0f, 1.28f, 1.28f, 1.12f, c)
+        drawPart(0f, 1.22f + hop, 0f, 0.72f, 0.18f, 1.0f, hi)
+        drawPart(0f, 1.26f + hop, 0.42f, 0.68f, 0.44f, 0.56f, cd)
+        drawPart(-0.28f, 1.34f + hop, 0.58f, 0.20f, 0.20f, 0.12f, floatArrayOf(1f, 0.35f, 0.35f, 1f))
+        drawPart(0.28f, 1.34f + hop, 0.58f, 0.20f, 0.20f, 0.12f, floatArrayOf(1f, 0.35f, 0.35f, 1f))
+        val beak = sin(phase * 2.8f) * 8f
+        pushModel(0f, 1.10f + hop, 0.78f)
+        Matrix.rotateM(model, 0, beak, 0f, 0f, 1f)
+        drawPart(0f, 0f, 0.22f, 0.18f, 0.14f, 0.36f, cd)
+        popModel()
+    }
+
     /** 夜间路灯：保持跑道可读性（仅草原世界） */
     private fun drawStreetLamps() {
         if (nightAmt < 0.2f || meadowW < 0.5f) return
@@ -1071,6 +1204,7 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
                 val x = e.x
                 when (e.kind) {
                     Game.COIN -> {
+                        if (e.z > 2.5f) continue
                         e.spin += if (e.isRelic) 1.4f else 3f
                         if (e.z < 1.5f && e.y < 2f) drawShadow(x, e.z, 0.5f)
                         if (e.isRelic) {
@@ -1142,10 +1276,32 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
                         if (e.z < 1.5f) drawShadow(x, e.z, 0.5f)
                         pushModel(x, e.y + sin(e.spin * 0.05f) * 0.12f, e.z)
                         Matrix.rotateM(model, 0, e.spin, 0f, 1f, 0f)
-                        // 闪电箭：青色外框 + 亮核
-                        drawPart(0f, 0.15f, 0f, 0.35f, 0.7f, 0.2f, BOOST_CYAN)
-                        drawPart(0.15f, -0.1f, 0f, 0.45f, 0.25f, 0.2f, BOOST_CYAN)
-                        drawPart(0f, 0.15f, 0.02f, 0.18f, 0.45f, 0.18f, BOOST_CORE)
+                        // 闪电 ⚡：三段 Z 轴旋转折线 + 亮核
+                        emitGlowHalo(0f, 0f, 0f, 0.88f, 0.88f, 0.42f, BOOST_TRAIL)
+                        pushModel(-0.03f, 0.26f, 0f)
+                        Matrix.rotateM(model, 0, -26f, 0f, 0f, 1f)
+                        drawPart(0f, 0f, 0f, 0.26f, 0.42f, 0.2f, BOOST_CYAN)
+                        popModel()
+                        pushModel(0.06f, -0.01f, 0f)
+                        Matrix.rotateM(model, 0, 118f, 0f, 0f, 1f)
+                        drawPart(0f, 0f, 0f, 0.26f, 0.30f, 0.2f, BOOST_CYAN)
+                        popModel()
+                        pushModel(-0.02f, -0.26f, 0f)
+                        Matrix.rotateM(model, 0, -28f, 0f, 0f, 1f)
+                        drawPart(0f, 0f, 0f, 0.26f, 0.40f, 0.2f, BOOST_CYAN)
+                        popModel()
+                        pushModel(-0.03f, 0.26f, 0.02f)
+                        Matrix.rotateM(model, 0, -26f, 0f, 0f, 1f)
+                        drawPart(0f, 0f, 0f, 0.13f, 0.34f, 0.18f, BOOST_CORE)
+                        popModel()
+                        pushModel(0.06f, -0.01f, 0.02f)
+                        Matrix.rotateM(model, 0, 118f, 0f, 0f, 1f)
+                        drawPart(0f, 0f, 0f, 0.13f, 0.24f, 0.18f, BOOST_CORE)
+                        popModel()
+                        pushModel(-0.02f, -0.26f, 0.02f)
+                        Matrix.rotateM(model, 0, -28f, 0f, 0f, 1f)
+                        drawPart(0f, 0f, 0f, 0.13f, 0.32f, 0.18f, BOOST_CORE)
+                        popModel()
                         popModel()
                     }
                     Game.OBST_LOW -> {
@@ -1495,12 +1651,12 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
      */
     private fun drawCosmeticTrail(g: Game, dt: Float) {
         val style = g.trailStyle
-        val boost = g.boosting
-        if (style == 0 && !boost) {
+        if (style == 0) {
             trailCount = 0
             trailEmit = 0f
             return
         }
+        val boost = g.boosting
 
         val dz = g.speed * dt
         // 已有采样点随世界后移 + 老化
@@ -1510,9 +1666,10 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         }
         // 淘汰过老/出屏的点（保持队列前段有效即可，简单压缩）
         var w = 0
-        val maxAge = if (boost) 0.62f else 0.48f
+        val maxAge = if (boost) 0.42f else 0.30f
+        val maxZ = if (boost) 3.8f else 2.8f
         for (i in 0 until trailCount) {
-            if (trailAge[i] < maxAge && trailZ[i] < 8f) {
+            if (trailAge[i] < maxAge && trailZ[i] < maxZ) {
                 trailX[w] = trailX[i]; trailY[w] = trailY[i]
                 trailZ[w] = trailZ[i]; trailAge[w] = trailAge[i]
                 trailSeed[w] = trailSeed[i]
@@ -1522,23 +1679,26 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         trailCount = w
 
         // 按间隔记录双脚中心；离地时光迹随跳跃形成弧线
-        trailEmit -= dt
-        val emitGap = if (boost) 0.035f else 0.055f
-        if (trailEmit <= 0f && trailCount < trailX.size) {
-            trailEmit = emitGap
-            val i = trailCount++
-            trailX[i] = g.catX
-            trailY[i] = g.catY + 0.05f
-            trailZ[i] = 0.20f
-            trailAge[i] = 0f
-            trailSeed[i] = prand.nextFloat() * 6.28f
+        if (!g.paused && g.state == Game.State.RUNNING) {
+            trailEmit -= dt
+            val emitGap = if (boost) 0.040f else 0.065f
+            if (trailEmit <= 0f && trailCount < trailX.size) {
+                trailEmit = emitGap
+                val i = trailCount++
+                trailX[i] = g.catX
+                trailY[i] = g.catY + 0.08f
+                trailZ[i] = 0.18f
+                trailAge[i] = 0f
+                trailSeed[i] = prand.nextFloat() * 6.28f
+            }
         }
 
-        mMode = 2
+        // 自发光、不吃雾：避免在夜路面上混成灰褐「脚印块」
+        mMode = 3
         GLES20.glDepthMask(false)
         for (i in 0 until trailCount) {
             val t = (trailAge[i] / maxAge).coerceIn(0f, 1f)   // 0 新 → 1 将消失
-            val fade = (1f - t) * (1f - t)
+            val fade = (1f - t) * (1f - t) * (1f - t)
             val base = when (style) {
                 1 -> TRAIL_CYAN
                 2 -> TRAIL_GOLD
@@ -1546,26 +1706,30 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
                 else -> BOOST_TRAIL
             }
             val boostK = if (boost) 1.25f else 1f
-            val a = (0.58f * fade * boostK).coerceIn(0.03f, 0.72f)
-            val col = floatArrayOf(base[0], base[1], base[2], a)
-            val width = 0.22f * (1f - t * 0.35f) * boostK
-            val length = 0.42f * boostK
+            val a = 0.62f * fade * boostK
+            if (a < 0.04f) continue
+            val col = floatArrayOf(base[0], base[1], base[2], a.coerceAtMost(0.72f))
+            val width = 0.18f * (1f - t * 0.45f) * boostK
+            val length = 0.34f * (1f - t * 0.25f) * boostK
             val footGap = 0.31f * CAT_SCALE
-            val rise = t * 0.08f
-            drawBox(trailX[i] - footGap, trailY[i] + rise, trailZ[i], width, 0.055f, length, col)
-            drawBox(trailX[i] + footGap, trailY[i] + rise, trailZ[i], width, 0.055f, length, col)
+            val rise = t * 0.06f
+            drawBox(trailX[i] - footGap, trailY[i] + rise, trailZ[i], width, 0.045f, length, col)
+            drawBox(trailX[i] + footGap, trailY[i] + rise, trailZ[i], width, 0.045f, length, col)
 
             // 金色和彩虹附带稀疏星屑
             if (style >= 2 && i % 3 == 0) {
                 val tw = 0.4f + 0.6f * abs(sin(trailSeed[i] * 5f + trailAge[i] * 18f))
-                val sp = floatArrayOf(1f, 1f, 0.92f, (a * tw).coerceAtMost(0.8f))
-                val ss = 0.10f * boostK
-                drawBox(
-                    trailX[i] + sin(trailSeed[i]) * 0.48f,
-                    trailY[i] + 0.18f + t * 0.30f,
-                    trailZ[i],
-                    ss, ss, ss, sp
-                )
+                val spA = (a * tw).coerceAtMost(0.75f)
+                if (spA >= 0.04f) {
+                    val sp = floatArrayOf(1f, 1f, 0.92f, spA)
+                    val ss = 0.08f * boostK * (1f - t * 0.5f)
+                    drawBox(
+                        trailX[i] + sin(trailSeed[i]) * 0.48f,
+                        trailY[i] + 0.18f + t * 0.30f,
+                        trailZ[i],
+                        ss, ss, ss, sp
+                    )
+                }
             }
         }
         GLES20.glDepthMask(true)
@@ -1771,6 +1935,13 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
     }
 
     // ---------- 工具 ----------
+    private fun argbCol(c: Int, a: Float = 1f): FloatArray {
+        val r = ((c shr 16) and 0xFF) / 255f
+        val g = ((c shr 8) and 0xFF) / 255f
+        val b = (c and 0xFF) / 255f
+        return floatArrayOf(r, g, b, a)
+    }
+
     private inline fun scroll(gap: Float, scrollDist: Float, draw: (m: Int, z: Float) -> Unit) {
         var m = floor((8f - scrollDist) / gap).toInt()
         while (true) {

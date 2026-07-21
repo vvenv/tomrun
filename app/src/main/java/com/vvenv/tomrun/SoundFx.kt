@@ -123,6 +123,28 @@ class SoundFx(context: Context) {
                 tone(660f, 990f, 0.12f, 0.28f, decay = 2f)
             )
         )
+        // 战斗遭遇：低沉鼓点 + 上扬
+        load(
+            context, Game.EV_BATTLE, "battle",
+            concat(
+                tone(110f, 110f, 0.12f, 0.55f, square = true),
+                tone(180f, 420f, 0.20f, 0.50f)
+            )
+        )
+        // 战斗胜利
+        load(
+            context, Game.EV_BATTLE_WIN, "battle_win",
+            concat(
+                tone(523f, 523f, 0.07f, 0.5f),
+                tone(784f, 784f, 0.07f, 0.5f),
+                tone(1046f, 1318f, 0.24f, 0.55f, decay = 1.3f)
+            )
+        )
+        // 攻击命中
+        load(
+            context, Game.EV_BATTLE_HIT, "battle_hit",
+            concat(noise(0.05f, 0.45f), tone(320f, 180f, 0.08f, 0.40f, square = true))
+        )
     }
 
     fun play(event: Int) {
