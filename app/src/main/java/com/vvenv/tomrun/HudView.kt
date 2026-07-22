@@ -898,10 +898,10 @@ class HudView(context: Context, private val game: Game) : View(context) {
     /** 追击面板顶：让开里程/连击（右上）与 buff 列表（左上）本帧实际画到的最低点 */
     private fun chasePanelTop(s: Float): Float = max(hudTop + 168f * s, topInfoBottom + 40f * s)
 
-    /** 追击面板高度；[shouting] 传 true 取「带喊话行」的上限，供通知带兜底让位用 */
-    private fun chasePanelHeight(s: Float, shouting: Boolean): Float {
+    /** 追击面板高度：标题 + 进度条/标签 + 计时条/标签，四行固定间距 */
+    private fun chasePanelHeight(s: Float): Float {
         val titleY = 24f * s
-        val progTop0 = titleY + 16f * s + (if (shouting) 32f * s else 0f)
+        val progTop0 = titleY + 16f * s
         val progH = 14f * s
         val labelGap = 16f * s
         val rowGap = 14f * s
@@ -919,8 +919,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private fun noticeBandTop(h: Float, s: Float): Float {
         val base = h * RUN_BANNER_Y
         if (!game.chaseActive || game.state != Game.State.RUNNING) return base
-        // 取带喊话行的上限高度，避免喊话开始/结束时通知带跳动
-        val panelBottom = chasePanelTop(s) + chasePanelHeight(s, shouting = true)
+        val panelBottom = chasePanelTop(s) + chasePanelHeight(s)
         return max(base, panelBottom + 52f * s)
     }
 
@@ -1922,7 +1921,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
     }
 
     /**
-     * 远景荣誉墙：砖墙上钉着 10 枚奖牌，按铜/银/金上色，未解锁的是灰底空位——
+     * 远景荣誉墙：砖墙上钉着奖牌，按铜/银/金上色，未解锁的是灰底空位——
      * 不点开也能一眼看出还差几项。点击整面墙进入荣誉图鉴。
      */
     private fun drawHonorWall(canvas: Canvas, hx: Float, base: Float, u: Float, s: Float) {
@@ -1954,10 +1953,14 @@ class HudView(context: Context, private val game: Game) : View(context) {
         rc(hx - 76f * u, base - 106f * u, hx + 76f * u, wallT, 0xFF8B7A66.toInt())
         rc(hx - 76f * u, base - 106f * u, hx + 76f * u, base - 103f * u, 0xFFC4B399.toInt())
 
-        // 10 枚奖牌：5 列 2 行，对应 10 个荣誉类别；未解锁是灰色空位
+        // 奖牌网格：≤10 枚用 5×2，更多时用 6 列并居中各行
+        val medalCols = if (Game.ACHIEVE_CATS <= 10) 5 else 6
         for (c in 0 until Game.ACHIEVE_CATS) {
-            val px = hx + (c % 5 - 2) * 27f * u
-            val my = base - (if (c < 5) 68f else 32f) * u
+            val row = c / medalCols
+            val col = c % medalCols
+            val itemsInRow = min(medalCols, Game.ACHIEVE_CATS - row * medalCols)
+            val px = hx + (col - (itemsInRow - 1) * 0.5f) * 27f * u
+            val my = base - (68f - row * 36f) * u
             val lv = game.achieveLevels[c]
             val r = 11f * u
             drawMedalRibbon(canvas, px, my - r, r, lv)
@@ -3074,8 +3077,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val panelLeft = cx - panelW / 2f
         // 顶部让开里程/连击（右上）与 buff 列表（左上）本帧实际画到的最低点，避免叠字
         val panelTop = chasePanelTop(s)
-        val shouting = game.yokaiShoutFlash > 0f && game.yokaiShout.isNotEmpty()
-        val panelH = chasePanelHeight(s, shouting)
+        val panelH = chasePanelHeight(s)
 
         val titleY = 24f * s
         val progTop0 = titleY + 16f * s
@@ -3083,8 +3085,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val labelGap = 16f * s
         val rowGap = 14f * s
         val timerH = 8f * s
-        val shoutExtra = if (shouting) 32f * s else 0f
-        val progTop = panelTop + progTop0 + shoutExtra
+        val progTop = panelTop + progTop0
         val progLabelY = progTop + progH + labelGap
         val timerTop = progLabelY + rowGap
         val timerLabelY = timerTop + timerH + labelGap
@@ -3101,33 +3102,6 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val title = "追击 · ${game.yokaiName}"
         val titleSize = fittedTextSize(title, 24f * s, panelW - 24f * s, 16f * s)
         pixText(canvas, title, cx, panelTop + titleY, titleSize, game.yokaiColor, sdx, sdy)
-
-        if (shouting) {
-            val fade = min(1f, game.yokaiShoutFlash / 0.55f)
-            val alpha = (fade * 255).toInt()
-            val shout = "「${game.yokaiShout}」"
-            val shoutSize = fittedTextSize(shout, 28f * s, panelW - 28f * s, 18f * s)
-            val shoutY = panelTop + titleY + 28f * s
-            val padX = 12f * s
-            val padY = 6f * s
-            textPaint.textSize = shoutSize
-            val textW = textPaint.measureText(shout)
-            val boxLeft = (cx - textW / 2f - padX).coerceAtLeast(panelLeft + 4f * s)
-            val boxRight = (cx + textW / 2f + padX).coerceAtMost(panelLeft + panelW - 4f * s)
-            val boxTop = shoutY - shoutSize * 0.72f - padY
-            val boxBottom = shoutY + shoutSize * 0.28f + padY
-            btnPaint.color = (alpha shl 24) or 0x00F8F4E8
-            canvas.drawRect(boxLeft, boxTop, boxRight, boxBottom, btnPaint)
-            btnPaint.style = Paint.Style.STROKE
-            btnPaint.strokeWidth = (2.5f * s).coerceAtLeast(2f)
-            btnPaint.color = (alpha shl 24) or (game.yokaiColor and 0x00FFFFFF)
-            canvas.drawRect(boxLeft, boxTop, boxRight, boxBottom, btnPaint)
-            btnPaint.style = Paint.Style.FILL
-            outlinedPixText(
-                canvas, shout, cx, shoutY, shoutSize,
-                (alpha shl 24) or 0x00FFFFFF, 0xEE1A1028.toInt(), sdx, sdy
-            )
-        }
 
         val barLeft = panelLeft + 16f * s
         val barW = panelW - 32f * s
@@ -3743,24 +3717,11 @@ class HudView(context: Context, private val game: Game) : View(context) {
         return (steps * FONT_PX).toFloat()
     }
 
-    private fun outlinedPixText(
-        canvas: Canvas, text: String, x: Float, y: Float, size: Float,
-        fillColor: Int, outlineColor: Int, sdx: Float, sdy: Float
-    ) {
-        val stroke = (2f * size / 28f).coerceIn(1.5f, 4f)
-        pixText(canvas, text, x - stroke, y, size, outlineColor, 0f, 0f)
-        pixText(canvas, text, x + stroke, y, size, outlineColor, 0f, 0f)
-        pixText(canvas, text, x, y - stroke, size, outlineColor, 0f, 0f)
-        pixText(canvas, text, x, y + stroke, size, outlineColor, 0f, 0f)
-        pixText(canvas, text, x, y, size, fillColor, sdx, sdy)
-    }
-
     private fun drawRelicBillboards(
         canvas: Canvas, w: Float, h: Float, s: Float, sdx: Float, sdy: Float
     ) {
         if (game.state != Game.State.RUNNING) return
         if (game.relicHudCount <= 0) return
-        textPaint.textAlign = Paint.Align.CENTER
         synchronized(game) {
             val n = game.relicHudCount.coerceAtMost(Game.RELIC_HUD_MAX)
             for (i in 0 until n) {
@@ -3769,13 +3730,11 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 val x = game.relicHudX[i] * w
                 val y = game.relicHudY[i] * h
                 val scale = game.relicHudScale[i]
-                // 名牌挡路：远处只留 3D 模型本身发光提示，靠近了才淡入认名字
+                // 不用文字认牌，只留像素图标；远处淡出，靠近再淡入
                 val fade = ((scale - RELIC_LABEL_FADE_LO) /
                     (RELIC_LABEL_FADE_HI - RELIC_LABEL_FADE_LO)).coerceIn(0f, 1f)
                 if (fade <= 0.02f) continue
-                val size = (24f * s * scale).coerceIn(14f * s, 34f * s)
                 val iconHalf = (18f * s * scale).coerceIn(12f * s, 26f * s)
-                val iconCy = y - size - iconHalf - 4f * s
                 val rarity = Game.RELIC_RARITY[id]
                 val accent = game.relicBannerColor(rarity)
                 val a255 = (fade * 255).toInt()
@@ -3783,25 +3742,16 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 val pad = iconHalf + 3f * s
                 btnPaint.style = Paint.Style.FILL
                 btnPaint.color = withAlpha(0xF8F4E8.toInt(), (fade * 0xEE).toInt())
-                canvas.drawRect(x - pad, iconCy - pad, x + pad, iconCy + pad, btnPaint)
+                canvas.drawRect(x - pad, y - pad, x + pad, y + pad, btnPaint)
                 btnPaint.style = Paint.Style.STROKE
                 btnPaint.strokeWidth = (2.5f * s).coerceAtLeast(2f)
                 btnPaint.color = withAlpha(accent, a255)
-                canvas.drawRect(x - pad, iconCy - pad, x + pad, iconCy + pad, btnPaint)
+                canvas.drawRect(x - pad, y - pad, x + pad, y + pad, btnPaint)
                 btnPaint.style = Paint.Style.FILL
                 RelicIcons.draw(
-                    canvas, btnPaint, id, x, iconCy, iconHalf,
+                    canvas, btnPaint, id, x, y, iconHalf,
                     collected = true, lightSurface = true, withChrome = false, alpha = a255
                 )
-                val label = Game.RELIC_NAMES[id]
-                val color = withAlpha(accent, a255)
-                val outline = withAlpha(0x1A1028, (fade * 0xEE).toInt())
-                // 深色描边，保证各背景上都可读
-                pixText(canvas, label, x - 2f * s, y, size, outline, 0f, 0f)
-                pixText(canvas, label, x + 2f * s, y, size, outline, 0f, 0f)
-                pixText(canvas, label, x, y - 2f * s, size, outline, 0f, 0f)
-                pixText(canvas, label, x, y + 2f * s, size, outline, 0f, 0f)
-                pixText(canvas, label, x, y, size, color, sdx, sdy)
             }
         }
     }

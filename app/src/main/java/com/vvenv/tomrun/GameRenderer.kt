@@ -183,6 +183,24 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         )
         private val RELIC_BASE = floatArrayOf(0.45f, 0.34f, 0.22f, 1f)
         private val RELIC_GLOW = floatArrayOf(1.0f, 0.95f, 0.70f, 1f)
+        // 文物外形：32 件文物真实器型差异很大，按大类给不同剪影，而不是一律套鼎的模子
+        private const val RELIC_SHAPE_VESSEL = 0  // 鼎/爵/尊/壶：三足圆腹
+        private const val RELIC_SHAPE_TABLET = 1  // 甲骨/竹简/字画：立起的扁平板
+        private const val RELIC_SHAPE_DISC = 2    // 钱币/瓦当/铜镜：立着的扁圆片
+        private const val RELIC_SHAPE_BLADE = 3   // 青铜剑：出鞘竖立的剑身
+        private const val RELIC_SHAPE_STATUE = 4  // 俑/马/面具：小型立像
+        private const val RELIC_SHAPE_BELL = 5    // 编钟：悬挂的钟体
+        private const val RELIC_SHAPE_JADE = 6    // 玉琮/玉龙/玉衣：温润的玉料柱体
+        private val RELIC_SHAPE = intArrayOf(
+            RELIC_SHAPE_VESSEL, RELIC_SHAPE_TABLET, RELIC_SHAPE_VESSEL, RELIC_SHAPE_TABLET,
+            RELIC_SHAPE_DISC, RELIC_SHAPE_DISC, RELIC_SHAPE_STATUE, RELIC_SHAPE_VESSEL,
+            RELIC_SHAPE_VESSEL, RELIC_SHAPE_BLADE, RELIC_SHAPE_BELL, RELIC_SHAPE_STATUE,
+            RELIC_SHAPE_STATUE, RELIC_SHAPE_TABLET, RELIC_SHAPE_VESSEL, RELIC_SHAPE_JADE,
+            RELIC_SHAPE_TABLET, RELIC_SHAPE_STATUE, RELIC_SHAPE_JADE, RELIC_SHAPE_DISC,
+            RELIC_SHAPE_TABLET, RELIC_SHAPE_DISC, RELIC_SHAPE_STATUE, RELIC_SHAPE_TABLET,
+            RELIC_SHAPE_STATUE, RELIC_SHAPE_VESSEL, RELIC_SHAPE_JADE, RELIC_SHAPE_DISC,
+            RELIC_SHAPE_VESSEL, RELIC_SHAPE_STATUE, RELIC_SHAPE_STATUE, RELIC_SHAPE_STATUE
+        )
         private val CLOUD = floatArrayOf(1f, 1f, 1f, 1f)
         private val SUN = floatArrayOf(1.0f, 0.90f, 0.35f, 1f)
         private val MOON = floatArrayOf(0.92f, 0.94f, 1.0f, 1f)
@@ -398,6 +416,10 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         private val BARRIER_WHITE = floatArrayOf(0.95f, 0.95f, 0.92f, 1f) // 反光白条
         private val CONE_ORANGE = floatArrayOf(0.97f, 0.45f, 0.10f, 1f)   // 施工路障桶
         private val GATE_BOX = floatArrayOf(0.88f, 0.78f, 0.20f, 1f)      // 道闸机箱黄
+        private val SPIKE_PLATE = floatArrayOf(0.36f, 0.34f, 0.37f, 1f)   // 地刺底板：暗铁灰，远处先露出这块
+        private val SPIKE_SLOT = floatArrayOf(0.15f, 0.14f, 0.16f, 1f)    // 底板缝隙暗影
+        private val SPIKE_METAL = floatArrayOf(0.62f, 0.64f, 0.69f, 1f)   // 尖刺杆身：冷灰钢色
+        private val SPIKE_TIP = floatArrayOf(0.93f, 0.95f, 0.98f, 1f)     // 尖端高光
         private val RAINBOW_SOLID = arrayOf(                              // 天空世界彩虹横杆
             floatArrayOf(0.95f, 0.35f, 0.40f, 1f),
             floatArrayOf(0.98f, 0.72f, 0.25f, 1f),
@@ -1235,19 +1257,23 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
                         e.spin += if (e.isRelic) 1.4f else 3f
                         if (e.z < 1.5f && e.y < 2f) drawShadow(x, e.z, 0.5f)
                         if (e.isRelic) {
-                            // 文物：木底座 + 稀有度配色的小鼎 + 光核，缓慢旋转漂浮
-                            val rarity = Game.RELIC_RARITY[e.relicId.coerceIn(0, Game.RELIC_COUNT - 1)]
+                            // 文物：木底座通用，器身按真实器型分大类剪影，避免 32 件都长得像同一个鼎
+                            val id = e.relicId.coerceIn(0, Game.RELIC_COUNT - 1)
+                            val rarity = Game.RELIC_RARITY[id]
                             val body = RELIC_BODY[rarity.coerceIn(0, RELIC_BODY.size - 1)]
+                            val shape = RELIC_SHAPE[id.coerceIn(0, RELIC_SHAPE.size - 1)]
                             pushModel(x, e.y + sin(e.spin * 0.05f) * 0.10f, e.z)
                             Matrix.rotateM(model, 0, e.spin, 0f, 1f, 0f)
                             drawPart(0f, -0.42f, 0f, 0.66f, 0.12f, 0.66f, RELIC_BASE)
-                            drawPart(0f, 0.02f, 0f, 0.56f, 0.44f, 0.46f, body)
-                            drawPart(-0.20f, 0.34f, 0f, 0.10f, 0.18f, 0.10f, body)
-                            drawPart(0.20f, 0.34f, 0f, 0.10f, 0.18f, 0.10f, body)
-                            drawPart(-0.18f, -0.28f, 0.14f, 0.10f, 0.22f, 0.10f, body)
-                            drawPart(0.18f, -0.28f, 0.14f, 0.10f, 0.22f, 0.10f, body)
-                            drawPart(0f, -0.28f, -0.16f, 0.10f, 0.22f, 0.10f, body)
-                            drawPart(0f, 0.02f, 0f, 0.24f, 0.24f, 0.50f, RELIC_GLOW)
+                            when (shape) {
+                                RELIC_SHAPE_TABLET -> drawRelicTablet(body)
+                                RELIC_SHAPE_DISC -> drawRelicDisc(body)
+                                RELIC_SHAPE_BLADE -> drawRelicBlade(body)
+                                RELIC_SHAPE_STATUE -> drawRelicStatue(body)
+                                RELIC_SHAPE_BELL -> drawRelicBell(body)
+                                RELIC_SHAPE_JADE -> drawRelicJade(body)
+                                else -> drawRelicVessel(body)
+                            }
                             popModel()
                         } else {
                             // 金币：加法光晕 + 不透明亮金本体（避免半透明叠暗路变成土黄）
@@ -1344,11 +1370,70 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
                         drawObstBlock(x, e.z)
                     }
                     Game.OBST_RAMP -> drawRamp(x, e.z)
+                    Game.OBST_SPIKE -> {
+                        if (e.z < 2.5f) drawShadow(x, e.z, 1.0f)
+                        drawObstSpike(x, e.z)
+                    }
                 }
             }
             // 警示条叠在拾取物之上，保证矮障碍远距可读
             drawObstacleDangerOverlays()
         }
+    }
+
+    // ---------- 文物器型（在 pushModel 已定位/旋转好的局部坐标系里画） ----------
+
+    /** 鼎/爵/尊/壶：三足圆腹，原本的通用造型，留给真正的青铜圆腹重器 */
+    private fun drawRelicVessel(body: FloatArray) {
+        drawPart(0f, 0.02f, 0f, 0.56f, 0.44f, 0.46f, body)
+        drawPart(-0.20f, 0.34f, 0f, 0.10f, 0.18f, 0.10f, body)
+        drawPart(0.20f, 0.34f, 0f, 0.10f, 0.18f, 0.10f, body)
+        drawPart(-0.18f, -0.28f, 0.14f, 0.10f, 0.22f, 0.10f, body)
+        drawPart(0.18f, -0.28f, 0.14f, 0.10f, 0.22f, 0.10f, body)
+        drawPart(0f, -0.28f, -0.16f, 0.10f, 0.22f, 0.10f, body)
+        drawPart(0f, 0.02f, 0f, 0.24f, 0.24f, 0.50f, RELIC_GLOW)
+    }
+
+    /** 甲骨/竹简/字画：立起的扁平板，中间嵌一条发光"字迹" */
+    private fun drawRelicTablet(body: FloatArray) {
+        drawPart(0f, 0.04f, 0f, 0.54f, 0.62f, 0.10f, body)
+        drawPart(0f, 0.04f, 0.06f, 0.42f, 0.48f, 0.02f, RELIC_GLOW)
+    }
+
+    /** 钱币/瓦当/铜镜：立着的扁圆片（用薄方片近似，呼应金币的做法） */
+    private fun drawRelicDisc(body: FloatArray) {
+        drawPart(0f, 0.10f, 0f, 0.58f, 0.58f, 0.12f, body)
+        drawPart(0f, 0.10f, 0.07f, 0.30f, 0.30f, 0.03f, RELIC_GLOW)
+    }
+
+    /** 青铜剑：出鞘竖立，剑身一线高光 */
+    private fun drawRelicBlade(body: FloatArray) {
+        drawPart(0f, -0.06f, 0f, 0.22f, 0.10f, 0.10f, RELIC_BASE)
+        drawPart(0f, 0.34f, 0f, 0.10f, 0.86f, 0.06f, body)
+        drawPart(0f, 0.34f, 0.031f, 0.03f, 0.80f, 0.01f, RELIC_GLOW)
+    }
+
+    /** 俑/马/面具/铜车马：小型立像，头身腿三段 */
+    private fun drawRelicStatue(body: FloatArray) {
+        drawPart(-0.16f, -0.14f, 0f, 0.12f, 0.24f, 0.14f, body)
+        drawPart(0.16f, -0.14f, 0f, 0.12f, 0.24f, 0.14f, body)
+        drawPart(0f, 0.10f, 0f, 0.34f, 0.30f, 0.28f, body)
+        drawPart(0f, 0.34f, 0f, 0.22f, 0.20f, 0.22f, body)
+        drawPart(0f, 0.34f, 0.10f, 0.10f, 0.10f, 0.06f, RELIC_GLOW)
+    }
+
+    /** 编钟：钟架悬着钟体 */
+    private fun drawRelicBell(body: FloatArray) {
+        drawPart(0f, 0.42f, 0f, 0.08f, 0.10f, 0.08f, RELIC_BASE)
+        drawPart(0f, 0.16f, 0f, 0.46f, 0.44f, 0.34f, body)
+        drawPart(0f, 0.02f, 0f, 0.20f, 0.18f, 0.18f, RELIC_GLOW)
+    }
+
+    /** 玉琮/玉龙/玉衣：温润玉料柱体，束一圈腰带 */
+    private fun drawRelicJade(body: FloatArray) {
+        drawPart(0f, 0.06f, 0f, 0.30f, 0.52f, 0.30f, body)
+        drawPart(0f, 0.06f, 0f, 0.44f, 0.10f, 0.44f, body)
+        drawPart(0f, 0.06f, 0f, 0.14f, 0.56f, 0.14f, RELIC_GLOW)
     }
 
     /** 二次绘制障碍警示面（不写深度），避免被金币光晕挡住 */
@@ -1371,6 +1456,11 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
                 Game.OBST_BLOCK -> {
                     pushModel(e.x, 0f, e.z)
                     drawBlockDangerFace()
+                    popModel()
+                }
+                Game.OBST_SPIKE -> {
+                    pushModel(e.x, 0f, e.z)
+                    drawSpikeDangerFace()
                     popModel()
                 }
             }
@@ -1484,6 +1574,31 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
             Game.UNI_SPACE -> dangerFace(0.60f, 1.7f, 0.12f, 0.14f)
             else -> dangerFace(0.58f, 1.7f, 0.14f, 0.16f)
         }
+    }
+
+    /**
+     * 地刺：远处只是一块嵌在地里的铁板，标出「这里有刺」；
+     * 玩家接近到 [Game.SPIKE_TRIGGER_Z] 内才在很短的 z 距离里突然弹起，逼你临场反应而不是提前规划。
+     */
+    private fun drawObstSpike(x: Float, z: Float) {
+        val riseT = ((z - Game.SPIKE_TRIGGER_Z) / Game.SPIKE_RISE_SPAN).coerceIn(0f, 1f)
+        // 三次缓入缓出：起手猛、到顶稳，比匀速伸长更有「噌」地弹出的冲击感
+        val ease = riseT * riseT * (3f - 2f * riseT)
+        pushModel(x, 0f, z)
+        drawPart(0f, 0.05f, 0f, 1.9f, 0.10f, 0.66f, SPIKE_PLATE)
+        drawPart(0f, 0.10f, 0f, 1.66f, 0.03f, 0.46f, SPIKE_SLOT)
+        val tipXs = floatArrayOf(-0.7f, -0.35f, 0f, 0.35f, 0.7f)
+        for (tx in tipXs) {
+            val shaftH = 0.06f + 0.60f * ease
+            val tipH = 0.05f + 0.26f * ease
+            drawPart(tx, 0.10f + shaftH / 2f, 0f, 0.22f, shaftH, 0.22f, SPIKE_METAL)
+            drawPart(tx, 0.10f + shaftH + tipH / 2f, 0f, 0.11f, tipH, 0.11f, SPIKE_TIP)
+        }
+        popModel()
+    }
+
+    private fun drawSpikeDangerFace() {
+        dangerFace(0.30f, 1.7f, 0.12f, 0.14f)
     }
 
     /** 悬空障碍（需下滑钻过）：草原=道闸横杆，其余宇宙主题化 */
