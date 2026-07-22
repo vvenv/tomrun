@@ -283,6 +283,15 @@ class HudView(context: Context, private val game: Game) : View(context) {
         private const val LEADERBOARD_HEADER_H = 132f
         /** 纪录榜底栏比通用图鉴多了本地/全服切换、页码，偶尔还有同步状态行 */
         private const val LEADERBOARD_FOOTER_H = 150f
+        /** 纪录榜条目：默认单行更紧凑；一类里只要有一条挤不下就整类退到双行 */
+        private const val ROW_H_SINGLE = 44f
+        private const val ROW_H_DOUBLE = 52f
+        private const val ROW_NAME_W = 0.34f
+        private const val ROW_DETAIL_W = 0.14f
+        private const val ROW_VALUE_W = 0.28f
+        private const val ROW_NAME_MIN = 16f
+        private const val ROW_DETAIL_MIN = 12f
+        private const val ROW_VALUE_MIN = 16f
         private const val TILE_COMMON_BG = 0xFFE2F0E6.toInt()
         private const val TILE_RARE_BG = 0xFFDCECF4.toInt()
         private const val TILE_LEGEND_BG = 0xFFF5E8C4.toInt()
@@ -1202,7 +1211,6 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val subSize = fittedTextSize(subtitle, 20f * s, (right - left) * 0.88f, 14f * s)
         lightText(canvas, subtitle, titleCx, top + 112f * s, subSize, LIGHT_SUB)
 
-        val rowH = 52f * s
         val rowGap = 8f * s
         val listTop = headerBottom + 8f * s
         val listBottom = footerTop - 8f * s
@@ -1211,6 +1219,11 @@ class HudView(context: Context, private val game: Game) : View(context) {
         } else {
             game.leaderboardEntries(tab)
         }
+        // 单行是默认样式；只要这一类里有任何一条在单行最小字号下也放不下，
+        // 整个类别统一退到双行，避免同一榜里有的行单行、有的行双行
+        val rowW = (right - 16f * s) - (left + 16f * s)
+        val singleLine = entries.all { rowFitsSingleLine(it, tab, rowW, s) }
+        val rowH = if (singleLine) ROW_H_SINGLE * s else ROW_H_DOUBLE * s
         val maxRows = ((listBottom - listTop) / (rowH + rowGap)).toInt().coerceAtMost(Leaderboards.MAX_ENTRIES)
 
         if (entries.isEmpty()) {
@@ -1232,7 +1245,9 @@ class HudView(context: Context, private val game: Game) : View(context) {
             var y = listTop + max(0f, (listBottom - listTop - contentH) / 2f)
             for (i in 0 until shown) {
                 val e = entries[i]
-                drawLeaderboardRow(canvas, left + 16f * s, y, right - 16f * s, y + rowH, s, i + 1, e, tab)
+                drawLeaderboardRow(
+                    canvas, left + 16f * s, y, right - 16f * s, y + rowH, s, i + 1, e, tab, singleLine
+                )
                 y += rowH + rowGap
             }
         }
@@ -1282,9 +1297,35 @@ class HudView(context: Context, private val game: Game) : View(context) {
         lightText(canvas, "左右切换类别 · 点击外部关闭", titleCx, navY + navH + 22f * s, 18f * s, LIGHT_HINT)
     }
 
+    /**
+     * entry 的三段文字（名字/详情/数值）在各自最小字号下能否挤上单行。
+     * 单行只放得下日期这种轻量详情；完整的"距离 · 得分"留给双行兜底显示，
+     * 否则 detail 字符串天生比一行预算长得多，单行永远触发不了。
+     */
+    private fun rowFitsSingleLine(entry: Leaderboards.Entry, category: Int, rowW: Float, s: Float): Boolean {
+        val name = entry.player.ifEmpty { "?" }
+        val detail = formatLeaderboardWhen(entry.whenMs)
+        val valueText = game.formatLeaderboardValue(category, entry.value)
+        textPaint.textSize = ROW_NAME_MIN * s
+        if (textPaint.measureText(name) > rowW * ROW_NAME_W) return false
+        textPaint.textSize = ROW_DETAIL_MIN * s
+        if (textPaint.measureText(detail) > rowW * ROW_DETAIL_W) return false
+        textPaint.textSize = ROW_VALUE_MIN * s
+        if (textPaint.measureText(valueText) > rowW * ROW_VALUE_W) return false
+        return true
+    }
+
+    private fun leaderboardDetailText(entry: Leaderboards.Entry): String = buildString {
+        append(formatLeaderboardWhen(entry.whenMs))
+        if (entry.detail.isNotEmpty()) {
+            append(" · ")
+            append(entry.detail)
+        }
+    }
+
     private fun drawLeaderboardRow(
         canvas: Canvas, left: Float, top: Float, right: Float, bottom: Float,
-        s: Float, rank: Int, entry: Leaderboards.Entry, category: Int
+        s: Float, rank: Int, entry: Leaderboards.Entry, category: Int, singleLine: Boolean
     ) {
         btnPaint.style = Paint.Style.FILL
         btnPaint.color = if (rank <= 3) 0xFFFFF6DC.toInt() else LIGHT_ROW
@@ -1305,26 +1346,40 @@ class HudView(context: Context, private val game: Game) : View(context) {
         textPaint.textAlign = Paint.Align.LEFT
         lightText(canvas, "#$rank", left + 12f * s, cy + 8f * s, 22f * s, rankColor)
 
-        val nameMaxW = (right - left) * 0.34f
+        val rowW = right - left
         val name = entry.player.ifEmpty { "?" }
-        val nameSize = fittedTextSize(name, 22f * s, nameMaxW, 16f * s)
-        lightText(canvas, name, left + 52f * s, cy + 8f * s, nameSize, LIGHT_TEXT)
-
-        textPaint.textAlign = Paint.Align.RIGHT
         val valueText = game.formatLeaderboardValue(category, entry.value)
-        val valueSize = fittedTextSize(valueText, 24f * s, (right - left) * 0.28f, 16f * s)
-        lightText(canvas, valueText, right - 12f * s, cy + 8f * s, valueSize, LIGHT_RELIC_RARE)
 
-        textPaint.textAlign = Paint.Align.LEFT
-        val detail = buildString {
-            append(formatLeaderboardWhen(entry.whenMs))
-            if (entry.detail.isNotEmpty()) {
-                append(" · ")
-                append(entry.detail)
-            }
+        if (singleLine) {
+            // 单行：名字靠左，数值靠右，中间只留日期这类轻量详情；完整详情留给双行兜底
+            val detail = formatLeaderboardWhen(entry.whenMs)
+            textPaint.textAlign = Paint.Align.RIGHT
+            val valueMaxW = rowW * ROW_VALUE_W
+            val valueSize = fittedTextSize(valueText, 22f * s, valueMaxW, ROW_VALUE_MIN * s)
+            lightText(canvas, valueText, right - 12f * s, cy + 7f * s, valueSize, LIGHT_RELIC_RARE)
+
+            val detailMaxW = rowW * ROW_DETAIL_W
+            val detailSize = fittedTextSize(detail, 16f * s, detailMaxW, ROW_DETAIL_MIN * s)
+            lightText(canvas, detail, right - 12f * s - valueMaxW - 10f * s, cy + 6f * s, detailSize, LIGHT_HINT)
+
+            textPaint.textAlign = Paint.Align.LEFT
+            val nameMaxW = rowW * ROW_NAME_W
+            val nameSize = fittedTextSize(name, 22f * s, nameMaxW, ROW_NAME_MIN * s)
+            lightText(canvas, name, left + 52f * s, cy + 8f * s, nameSize, LIGHT_TEXT)
+        } else {
+            val detail = leaderboardDetailText(entry)
+            val nameMaxW = rowW * 0.34f
+            val nameSize = fittedTextSize(name, 22f * s, nameMaxW, ROW_NAME_MIN * s)
+            lightText(canvas, name, left + 52f * s, cy - 6f * s, nameSize, LIGHT_TEXT)
+
+            textPaint.textAlign = Paint.Align.RIGHT
+            val valueSize = fittedTextSize(valueText, 24f * s, rowW * 0.28f, ROW_VALUE_MIN * s)
+            lightText(canvas, valueText, right - 12f * s, cy - 6f * s, valueSize, LIGHT_RELIC_RARE)
+
+            textPaint.textAlign = Paint.Align.LEFT
+            val detailSize = fittedTextSize(detail, 16f * s, rowW - 64f * s, ROW_DETAIL_MIN * s)
+            lightText(canvas, detail, left + 52f * s, cy + 16f * s, detailSize, LIGHT_HINT)
         }
-        val detailSize = fittedTextSize(detail, 16f * s, right - left - 64f * s, 12f * s)
-        lightText(canvas, detail, left + 52f * s, cy + 28f * s, detailSize, LIGHT_HINT)
         textPaint.textAlign = Paint.Align.CENTER
     }
 
