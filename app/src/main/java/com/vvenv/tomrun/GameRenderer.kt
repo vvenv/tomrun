@@ -37,6 +37,9 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
     private val mvp = FloatArray(16)
     private val tmp = FloatArray(16)
     private val stack = ArrayList<FloatArray>()
+    /** [EyeComfort.grade] 的输出暂存，避免每次绘制分配 */
+    private val gradedCol = FloatArray(4)
+    private val gradedSky = FloatArray(4)
 
     private var lastNanos = 0L
     private var camX = 0f
@@ -152,6 +155,10 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         """
 
         private val SKY = floatArrayOf(0.42f, 0.80f, 0.95f, 1f)
+        /** 家页面背景（Canvas 小屋场景铺在其上） */
+        private val HOME_SKY = floatArrayOf(0.56f, 0.83f, 0.95f, 1f)
+        /** 文物名牌可见距离：超出就不画，避免远处名牌糊住路面 */
+        private const val RELIC_LABEL_RANGE = 45f
         private val ROAD = floatArrayOf(0.42f, 0.40f, 0.44f, 1f)
         private val ROAD_EDGE = floatArrayOf(0.78f, 0.76f, 0.70f, 1f)
         private val DASH = floatArrayOf(0.96f, 0.95f, 0.90f, 1f)
@@ -185,7 +192,8 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         private val MOUNTAIN = floatArrayOf(0.45f, 0.62f, 0.55f, 1f)
         private val SHADOW = floatArrayOf(0.04f, 0.09f, 0.04f, 0.32f)
         private val SPEED_LINE = floatArrayOf(0.95f, 0.97f, 1.0f, 0.35f)
-        private val BOOST_TRAIL = floatArrayOf(0.30f, 0.90f, 1.0f, 0.55f)
+        /** 冲刺光晕/速度线：跟随 [BOOST_CYAN] 的蓝，避免又飘回冰青 */
+        private val BOOST_TRAIL = floatArrayOf(0.25f, 0.65f, 1.0f, 0.55f)
         private val TRAIL_CYAN = floatArrayOf(0.30f, 0.90f, 1.0f, 0.55f)
         private val TRAIL_GOLD = floatArrayOf(1.0f, 0.84f, 0.20f, 0.55f)
         private val TRAIL_RAINBOW = arrayOf(
@@ -368,7 +376,14 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         private val HELMET_Y = floatArrayOf(1.0f, 0.76f, 0.12f, 1f)
         private val DOUBLE_P = floatArrayOf(0.62f, 0.30f, 0.90f, 1f)
         private val DOUBLE_CORE = floatArrayOf(1.0f, 0.84f, 0.10f, 1f)
-        private val BOOST_CYAN = floatArrayOf(0.25f, 0.90f, 1.0f, 1f)
+        /**
+         * 闪电本体：要压得比亮核暗、比青色蓝，否则读起来是「冰」不是「电」。
+         *
+         * 原本的亮青 (0.25,0.90,1.0) 过护眼分级后变成 #62C6CA——淡青、且和
+         * 亮核 #E9E5C2 明度接近，整体成了一块半透的磨砂冰。
+         * 电弧的关键是**高反差**：深而饱和的蓝身 + 烧白的芯。
+         */
+        private val BOOST_CYAN = floatArrayOf(0.12f, 0.62f, 1.0f, 1f)
         private val BOOST_CORE = floatArrayOf(1.0f, 1.0f, 0.85f, 1f)
         private val CABLE = floatArrayOf(0.25f, 0.26f, 0.30f, 1f)
         private val GANTRY = floatArrayOf(0.55f, 0.58f, 0.64f, 1f)
@@ -443,7 +458,8 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         if (game.menuPanel == Game.PANEL_HOME &&
             (game.state == Game.State.READY || game.state == Game.State.DEAD)
         ) {
-            GLES20.glClearColor(0.56f, 0.83f, 0.95f, 1f)
+            EyeComfort.grade(HOME_SKY, gradedSky)
+            GLES20.glClearColor(gradedSky[0], gradedSky[1], gradedSky[2], 1f)
             GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
             return
         }
@@ -451,7 +467,9 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         scenePhase += dt
 
         updateWeatherColors()
-        GLES20.glClearColor(skyCol[0], skyCol[1], skyCol[2], 1f)
+        // 天空与雾走同一份分级结果，否则远处雾色会和已分级的几何体对不上
+        EyeComfort.grade(skyCol, gradedSky)
+        GLES20.glClearColor(gradedSky[0], gradedSky[1], gradedSky[2], 1f)
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
         GLES20.glUseProgram(program)
         GLES20.glEnableVertexAttribArray(aPos)
@@ -464,7 +482,8 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         applyProjection(fov)
 
         camX += (game.catX * 0.55f - camX) * min(1f, dt * 6f)
-        val shakeAmt = game.shake
+        // 护眼：镜头震动是晕眩感的主要来源，幅度压到约四成，保留"撞到了"的提示但不甩镜头
+        val shakeAmt = game.shake * 0.4f
         val sx = if (shakeAmt > 0f) sin(now * 0.00000005) * shakeAmt * 0.18f else 0.0
         val sy = if (shakeAmt > 0f) cos(now * 0.00000007) * shakeAmt * 0.12f else 0.0
         // 竖屏：抬高俯视，地平线上移、猫压到约下 1/4，赛道更长
@@ -500,7 +519,14 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         GLES20.glDisableVertexAttribArray(aNormal)
     }
 
-    /** 把文物金币投影到 0~1 屏幕坐标，供 HUD 叠字 */
+    /**
+     * 把文物金币投影到 0~1 屏幕坐标，供 HUD 叠字。
+     *
+     * 名牌是画在文物**上方**的，也就是画面里远处路面的位置，会挡住后面的障碍。
+     * 原来 100 个单位外就开始画（波间距才 18~58，等于隔着好几波障碍糊一块牌子），
+     * 收到 45：认出是什么文物只需要临近时看清，而「那边有个发光的东西」
+     * 由 3D 模型本身负责，不依赖名牌。
+     */
     private fun publishRelicLabels() {
         var n = 0
         synchronized(game) {
@@ -511,11 +537,13 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
             for (e in game.entities) {
                 if (n >= Game.RELIC_HUD_MAX) break
                 if (!e.isRelic || e.taken) continue
-                if (e.z > 3f || e.z < -100f) continue
+                if (e.z > 3f || e.z < -RELIC_LABEL_RANGE) continue
                 if (!projectWorld(e.x, e.y + 0.95f, e.z, projectTmp)) continue
                 game.relicHudX[n] = projectTmp[0]
                 game.relicHudY[n] = projectTmp[1]
-                game.relicHudScale[n] = (1.15f / (1f + abs(e.z) * 0.035f)).coerceIn(0.5f, 1.35f)
+                // 下限放到 0.3：让 scale 在整个可见范围内单调反映远近，
+                // HUD 据此淡出远处名牌（原来钳在 0.5，远近都一样大）
+                game.relicHudScale[n] = (1.15f / (1f + abs(e.z) * 0.035f)).coerceIn(0.3f, 1.35f)
                 game.relicHudId[n] = e.relicId
                 n++
             }
@@ -622,7 +650,7 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         }
     }
 
-    private fun setSkyFog() = setFog(skyCol[0] + 0.08f, skyCol[1] + 0.05f, skyCol[2] + 0.02f)
+    private fun setSkyFog() = setFog(gradedSky[0] + 0.08f, gradedSky[1] + 0.05f, gradedSky[2] + 0.02f)
 
     private fun drawWeather(dt: Float) {
         // 雨雪只属于草原世界
@@ -1204,7 +1232,6 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
                 val x = e.x
                 when (e.kind) {
                     Game.COIN -> {
-                        if (e.z > 2.5f) continue
                         e.spin += if (e.isRelic) 1.4f else 3f
                         if (e.z < 1.5f && e.y < 2f) drawShadow(x, e.z, 0.5f)
                         if (e.isRelic) {
@@ -1618,7 +1645,8 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         if (game.state != Game.State.RUNNING) return
         val t = ((game.speed - 16f) / 14f).coerceIn(0f, 1f)
         val boost = if (game.boosting) 1f else 0f
-        val strength = (t * 0.7f + boost * 0.5f).coerceIn(0f, 1f)
+        // 护眼：速度线是持续晃动的高频元素，整体减半，只在冲刺时才明显
+        val strength = (t * 0.35f + boost * 0.35f).coerceIn(0f, 1f)
         if (strength < 0.08f) return
         mMode = 2
         val n = (lineX.size * strength).toInt().coerceAtLeast(4)
@@ -1760,7 +1788,13 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         val cd = CAT_DK[game.catColor % CAT_DK.size]
 
         val ridingZip = g.riding != null
-        val lean = (Game.LANE_X[g.lane] - g.catX) * 9f
+        // 已到边道还往外拨：叠加一段衰减抖动，弹回正常姿态
+        val edgeWiggle = if (g.edgeBumpTime > 0f) {
+            val elapsed = Game.EDGE_BUMP_DURATION - g.edgeBumpTime
+            val decay = g.edgeBumpTime / Game.EDGE_BUMP_DURATION
+            sin(elapsed * 36f) * decay * g.edgeBumpDir * 9f
+        } else 0f
+        val lean = (Game.LANE_X[g.lane] - g.catX) * 9f + edgeWiggle
         Matrix.rotateM(model, 0, -lean, 0f, 0f, 1f)
         // 滑索握杆在缩小前绘制，保证顶端仍接到世界坐标缆绳
         if (ridingZip) {
@@ -1989,7 +2023,7 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         Matrix.multiplyMM(mvp, 0, vp, 0, modelM, 0)
         GLES20.glUniformMatrix4fv(uMvp, 1, false, mvp, 0)
         GLES20.glUniformMatrix4fv(uModel, 1, false, modelM, 0)
-        GLES20.glUniform4fv(uColor, 1, color, 0)
+        GLES20.glUniform4fv(uColor, 1, EyeComfort.grade(color, gradedCol), 0)
         GLES20.glUniform1i(uMode, mMode)
         cube.draw(aPos, aNormal)
     }

@@ -70,6 +70,9 @@ object RelicIcons {
         isFilterBitmap = false
         isAntiAlias = false
         isDither = false
+        // 器物图是离屏烘焙后整块贴出的，颜色不过 EyeSafePaint，
+        // 这里补一层同款分级，否则藏品会比周围界面明显更艳。
+        colorFilter = EyeComfort.colorFilter()
     }
     private val bakePaint = Paint().apply {
         isAntiAlias = false
@@ -97,9 +100,12 @@ object RelicIcons {
         fancy: Boolean = false,
         phase: Float = 0f,
         lightSurface: Boolean = false,
-        withChrome: Boolean = true
+        withChrome: Boolean = true,
+        /** 整体透明度；跑道名牌按远近淡入时用 */
+        alpha: Int = 255
     ) {
         paint.style = Paint.Style.FILL
+        blitPaint.alpha = alpha
         if (fancy && collected) {
             // 展柜框与闪点即时绘制（含动画）；器物走 Bitmap 缓存
             drawShowcaseFrame(canvas, paint, cx, cy, half, Game.RELIC_RARITY[id.coerceIn(0, Game.RELIC_COUNT - 1)], phase)

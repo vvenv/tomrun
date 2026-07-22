@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.FrameLayout
@@ -69,6 +70,11 @@ class MainActivity : Activity() {
         if (hud.handleBackPressed()) return
         @Suppress("DEPRECATION")
         super.onBackPressed()
+    }
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        if (hud.handleKeyDown(keyCode, event)) return true
+        return super.onKeyDown(keyCode, event)
     }
 
     private fun vibrate(level: Int) {

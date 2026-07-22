@@ -3,6 +3,7 @@ package com.vvenv.tomrun
 import android.content.SharedPreferences
 import kotlin.math.abs
 import kotlin.math.ceil
+import kotlin.math.max
 import kotlin.math.min
 import kotlin.random.Random
 
@@ -61,6 +62,17 @@ class Game {
         const val DOUBLE_CAP = 20f
         const val BOOST_CAP = 12f
         const val HELMET_MAX = 2
+        /**
+         * 磁铁吸附范围：身前多少个单位内的金币会被吸走（跨车道，不看左右距离）。
+         *
+         * 参照物：整条跑道左右总宽只有 4.4（三道间距 2.2），波间距 18~58。
+         * 范围过大会一次吸空一整波还搭上下一波，吃磁铁的几秒里走位完全不重要，
+         * 且三条道的金币同时朝屏幕中间飞，画面最闹。
+         * 14 约等于 0.7~1.4 秒路程，跨车道的爽感还在，但一次大致只覆盖一波。
+         */
+        const val MAGNET_RANGE = 14f
+        /** 边道再往外拨的抖动反馈时长 */
+        const val EDGE_BUMP_DURATION = 0.26f
 
         // 任务类型
         const val Q_COINS = 0
@@ -500,6 +512,9 @@ class Game {
     private var daySpeed = 1f / 90f
 
     var lane = 1
+    /** 已在边道时再往外拨：短暂计时驱动猫身抖一下再弹回，给个「到头了」的反馈 */
+    @Volatile var edgeBumpTime = 0f
+    @Volatile var edgeBumpDir = 0f
     var catX = 0f
     var catY = 0f
     var velY = 0f
@@ -520,6 +535,8 @@ class Game {
     private var invulnTime = 0f
     private var wavesSincePower = 0
     private var runTime = 0f
+    /** 本波金币串铺到的最深 z（最后一枚）；用于给下一波障碍留出间距 */
+    private var waveCoinMinZ = Float.POSITIVE_INFINITY
 
     val entities = ArrayList<Entity>()
     val ziplines = ArrayList<Zip>()
@@ -588,8 +605,10 @@ class Game {
         codexRewarded = p.getBoolean("codexRewarded", false)
 
         relicMask = p.getInt("relicMask", 0)
-        // 只统计当前图鉴范围内的位，避免旧存档高位脏数据
-        relicMask = relicMask and ((1 shl RELIC_COUNT) - 1)
+        // 只统计当前图鉴范围内的位，避免旧存档高位脏数据。
+        // 注意 Int 移位会把位数取模 32：RELIC_COUNT 满 32 时 (1 shl 32) - 1 == 0，
+        // 会把整份图鉴清空，所以满 32 位时直接用全 1。
+        relicMask = relicMask and if (RELIC_COUNT >= Int.SIZE_BITS) -1 else (1 shl RELIC_COUNT) - 1
         relicsFound = Integer.bitCount(relicMask)
         museumRewarded = p.getBoolean("museumRewarded", false)
         // 图鉴扩容后：未集齐新件数则允许再次领取全收集奖
@@ -1136,11 +1155,18 @@ class Game {
     }
 
     @Synchronized fun onSwipeLeft() {
-        if (state == State.RUNNING && lane > 0) { lane--; riding = null }
+        if (state != State.RUNNING) return
+        if (lane > 0) { lane--; riding = null } else bumpEdge(-1f)
     }
 
     @Synchronized fun onSwipeRight() {
-        if (state == State.RUNNING && lane < 2) { lane++; riding = null }
+        if (state != State.RUNNING) return
+        if (lane < 2) { lane++; riding = null } else bumpEdge(1f)
+    }
+
+    private fun bumpEdge(dir: Float) {
+        edgeBumpDir = dir
+        edgeBumpTime = EDGE_BUMP_DURATION
     }
 
     private fun jump() {
@@ -1213,7 +1239,8 @@ class Game {
         var z = -72f
         while (z > SPAWN_Z) {
             spawnWave(z, early = true)
-            z -= 26f + Random.nextFloat() * 14f
+            // 开局同样要给金币串留尾距，否则第一波障碍就压在金币串末尾
+            z -= max(26f + Random.nextFloat() * 14f, (z - waveCoinMinZ) + coinObstClear())
         }
         gapRemaining = nextGap()
     }
@@ -1227,6 +1254,28 @@ class Game {
         return (baseSpeed * react * jitter).coerceIn(18f, 58f)
     }
 
+    /**
+     * 金币串与障碍之间的最小前后间距。
+     *
+     * 吃金币时视线是锁在金币上的，金币串的头尾都要留出「先看清障碍再决定」的余量，
+     * 否则孩子顺着金币冲过去，障碍已经到脸上了。按当前速度折算成约 0.6 秒反应时间，
+     * 比波间距（1.25~2.1 秒）短，但足够从「盯金币」切回「看路」。
+     */
+    private fun coinObstClear(): Float = (speed * 0.6f).coerceIn(10f, 18f)
+
+    /**
+     * 波间距：除了 [nextGap] 的反应时间，还要保证下一波障碍
+     * 离**本波最后一枚金币**有 [coinObstClear] 的余量。
+     *
+     * 纯金币波的第二列会按变道时间往后拉很远（可达 26 个单位），
+     * 只按 [nextGap] 排下一波的话，障碍会正好落在第二列金币的开头。
+     */
+    private fun gapAfterWave(zBase: Float): Float {
+        val gap = nextGap()
+        if (!waveCoinMinZ.isFinite()) return gap
+        return max(gap, (zBase - waveCoinMinZ) + coinObstClear())
+    }
+
     private fun triggerPaceSlow(secs: Float) {
         paceSlowUntil = paceSlowUntil.coerceAtLeast(secs)
     }
@@ -1237,6 +1286,7 @@ class Game {
         tickFeedback(dt)
         notices.tick(dt)
         if (shake > 0f) shake = (shake - dt * 5f).coerceAtLeast(0f)
+        if (edgeBumpTime > 0f) edgeBumpTime = (edgeBumpTime - dt).coerceAtLeast(0f)
         if (portalFlash > 0f) portalFlash -= dt
         if (universeBlend < 1f) universeBlend = min(1f, universeBlend + dt / 1.5f)
         if (state == State.DEAD) {
@@ -1322,7 +1372,7 @@ class Game {
         while (it.hasNext()) {
             val e = it.next()
             e.z += dz
-            if (e.kind == COIN && !e.taken && e.z > -26f) {
+            if (e.kind == COIN && !e.taken && e.z > -MAGNET_RANGE) {
                 if (magnetTime > 0f) e.magneted = true
                 if (e.magneted) {
                     val pull = min(1f, dt * 8f)
@@ -1331,8 +1381,9 @@ class Game {
                     e.z += (0f - e.z) * min(1f, dt * 4f)
                 }
             }
-            // 已过身的金币直接清掉，避免在相机前堆成巨大光晕
-            if (e.kind == COIN && !e.taken && e.z > 2.2f) {
+            // 同道（含被磁铁吸引）但没收到的金币，过身后直接清掉，避免在相机前堆成巨大光晕；
+            // 其它道上错过的金币保留，直到像普通实体一样滚出可视范围再清
+            if (e.kind == COIN && !e.taken && e.z > 2.2f && (e.lane == lane || e.magneted)) {
                 it.remove()
                 continue
             }
@@ -1357,7 +1408,7 @@ class Game {
             val minDist = (speed * 3.9f).coerceIn(90f, 210f)
             val z = (SPAWN_Z - gapRemaining).coerceAtMost(-minDist)
             spawnWave(z, early = false)
-            gapRemaining += nextGap()
+            gapRemaining += gapAfterWave(z)
         }
         zipGap -= dz
         if (zipGap <= 0f && ziplines.isEmpty() && distance > 400f) {
@@ -1521,11 +1572,8 @@ class Game {
         clearObstaclesAhead((speed * 2.5f).coerceAtLeast(55f))
         invulnTime = invulnTime.coerceAtLeast(1.2f)
         triggerPaceSlow(2.4f)
-        enqueueBanner(
-            "妖怪出没！${UNIVERSE_NAMES[uni]} · $yokaiName — 换到同一道追上！",
-            yokaiColor, 3.8f
-        )
-        pushFloat("追击!", yokaiColor)
+        // 换道提示已经常驻在追击面板里，这里只报出场，避免信息重复
+        enqueueBanner("妖怪出没！$yokaiName 追来了！", yokaiColor, 3.0f)
         emit(EV_BATTLE, HAPTIC_HEAVY)
     }
 
@@ -1614,7 +1662,9 @@ class Game {
             "战利品·${RELIC_RARITY_NAMES[rarity]}文物：${RELIC_NAMES[id]}（${RELIC_ERAS[id]}）+$scoreBonus",
             color, 3.6f
         )
-        enqueueBanner("小知识：${RELIC_FACTS[id]}", 0xFFAAD5FF.toInt(), 4.5f)
+        // 润物细无声：不加「小知识」这类说教前缀，只像展签一样把话说出来；
+        // 拾取时已 triggerPaceSlow，停留久一点刚好够读完一句。
+        enqueueBanner(RELIC_FACTS[id], 0xFFAAD5FF.toInt(), 5.5f)
         pushFloat(RELIC_NAMES[id], color)
         spawnBurst(catX, 2.2f, -2f, floatArrayOf(0.78f, 0.45f, 1f, 1f), 8)
         if (!relicCollected(id)) {
@@ -1670,6 +1720,7 @@ class Game {
 
     private fun spawnWave(zBase: Float, early: Boolean) {
         wavesSincePower++
+        waveCoinMinZ = Float.POSITIVE_INFINITY
         val freeLanes = mutableListOf(0, 1, 2)
         val barOpen = distance > 180f && !early
         val rampOpen = distance > 450f && !early
@@ -1684,7 +1735,9 @@ class Game {
             barOpen && r < (if (dense) 0.38f else 0.32f) -> {
                 val l = Random.nextInt(3)
                 entities.add(Entity(OBST_BAR, l, zBase))
-                coinRow(l, zBase)
+                // 金币与横杆同道：串起点退到横杆之后，先铲滑过去再吃，
+                // 否则金币等于把人直接引到必须铲滑的位置上，没有反应时间
+                coinRow(l, zBase - coinObstClear())
             }
             r < blockCut -> {
                 // 最多堵 2 道，始终留一条可走
@@ -1769,6 +1822,7 @@ class Game {
     }
 
     private fun makeCoin(lane: Int, z: Float, y: Float): Entity {
+        waveCoinMinZ = min(waveCoinMinZ, z)
         val e = Entity(COIN, lane, z, y)
         if (distance >= nextRelicAt) {
             e.relicId = pickRelicForSpawn()
@@ -1817,7 +1871,9 @@ class Game {
             color, 3.6f
         )
         // 寓教于乐：跟一条小知识横幅
-        enqueueBanner("小知识：${RELIC_FACTS[id]}", 0xFFAAD5FF.toInt(), 4.5f)
+        // 润物细无声：不加「小知识」这类说教前缀，只像展签一样把话说出来；
+        // 拾取时已 triggerPaceSlow，停留久一点刚好够读完一句。
+        enqueueBanner(RELIC_FACTS[id], 0xFFAAD5FF.toInt(), 5.5f)
         pushFloat(RELIC_NAMES[id], color)
         spawnBurst(e.x, e.y, e.z, floatArrayOf(0.78f, 0.45f, 1f, 1f), 6)
         if (!relicCollected(id)) {
