@@ -57,7 +57,16 @@ class Leaderboards {
 
         private const val SEP_ENTRY = '\u001e'
         private const val SEP_FIELD = '\u001f'
+
+        /** REST 路径片段，与 server/leaderboard_server.py 一致 */
+        val CATEGORY_SLUGS = arrayOf(
+            "run_distance", "run_score", "run_coins", "run_relics", "honor_count",
+            "museum_collect", "run_combo", "run_wallet", "run_battles", "run_portals", "run_time"
+        )
     }
+
+    /** 本地入榜后回调（category, entry），供云端同步 */
+    var onEntrySubmitted: ((Int, Entry) -> Unit)? = null
 
     private val boards = Array(CATEGORY_COUNT) { ArrayList<Entry>(MAX_ENTRIES) }
 
@@ -150,9 +159,11 @@ class Leaderboards {
             if (value < worst.value) return false
             if (value == worst.value && worst.whenMs >= System.currentTimeMillis()) return false
         }
-        list.add(Entry(sanitize(player), value, System.currentTimeMillis(), sanitize(detail)))
+        val entry = Entry(sanitize(player), value, System.currentTimeMillis(), sanitize(detail))
+        list.add(entry)
         list.sortWith(compareByDescending<Entry> { it.value }.thenByDescending { it.whenMs })
         while (list.size > MAX_ENTRIES) list.removeAt(list.lastIndex)
+        onEntrySubmitted?.invoke(category, entry)
         return true
     }
 

@@ -13,9 +13,21 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
+        buildConfigField(
+            "String",
+            "LEADERBOARD_API_BASE",
+            "\"${project.findProperty("LEADERBOARD_API_BASE") ?: ""}\""
+        )
     }
 
     buildTypes {
+        debug {
+            buildConfigField(
+                "String",
+                "LEADERBOARD_API_BASE",
+                "\"${project.findProperty("LEADERBOARD_API_BASE") ?: "http://10.0.2.2:8787"}\""
+            )
+        }
         release {
             isMinifyEnabled = false
             // 用 debug 签名，方便直接 adb install 分发试玩

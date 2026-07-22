@@ -75,6 +75,8 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private val btnLbClose = RectF()
     private val btnLbPrev = RectF()
     private val btnLbNext = RectF()
+    private val btnLbScopeLocal = RectF()
+    private val btnLbScopeGlobal = RectF()
     private val btnLeaveHome = RectF()
     /** 庭院远景地标：藏品馆 / 荣誉墙，取代原先顶栏的两个按钮 */
     private val hitMuseum = RectF()
@@ -98,6 +100,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private var showHelp = false
     private var showLeaderboard = false
     private var leaderboardTab = 0
+    private var leaderboardScope = LB_SCOPE_LOCAL
     private var homeSubView = HOME_SUB_SCENE
     private var homeEditing = false
     private var museumPage = 0
@@ -274,6 +277,12 @@ class HudView(context: Context, private val game: Game) : View(context) {
         /** 全屏图鉴：顶栏 + 底栏固定占位，中间才是内容 */
         private const val OVERLAY_HEADER_H = 96f
         private const val OVERLAY_FOOTER_H = 88f
+        private const val LB_SCOPE_LOCAL = 0
+        private const val LB_SCOPE_GLOBAL = 1
+        /** 纪录榜顶栏比通用图鉴多一行大标题，需要单独更高的高度 */
+        private const val LEADERBOARD_HEADER_H = 132f
+        /** 纪录榜底栏比通用图鉴多了本地/全服切换、页码，偶尔还有同步状态行 */
+        private const val LEADERBOARD_FOOTER_H = 150f
         private const val TILE_COMMON_BG = 0xFFE2F0E6.toInt()
         private const val TILE_RARE_BG = 0xFFDCECF4.toInt()
         private const val TILE_LEGEND_BG = 0xFFF5E8C4.toInt()
@@ -441,6 +450,8 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 if (showLeaderboard) {
                     when {
                         btnLbClose.contains(x, y) -> showLeaderboard = false
+                        btnLbScopeLocal.contains(x, y) -> leaderboardScope = LB_SCOPE_LOCAL
+                        btnLbScopeGlobal.contains(x, y) -> switchLeaderboardScope(LB_SCOPE_GLOBAL)
                         btnLbPrev.contains(x, y) -> stepLeaderboardTab(-1)
                         btnLbNext.contains(x, y) -> stepLeaderboardTab(1)
                         else -> showLeaderboard = false
@@ -454,6 +465,10 @@ class HudView(context: Context, private val game: Game) : View(context) {
                     btnLeaderboard.contains(x, y) -> {
                         showLeaderboard = true
                         leaderboardTab = 0
+                        leaderboardScope = LB_SCOPE_LOCAL
+                        if (game.leaderboardRemoteEnabled()) {
+                            game.refreshLeaderboardRemote(0)
+                        }
                     }
                     btnHome.contains(x, y) -> openHomePage()
                     else -> game.onTap()
@@ -1122,6 +1137,16 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val n = game.leaderboardCategoryCount()
         if (n <= 0) return
         leaderboardTab = Math.floorMod(leaderboardTab + delta, n)
+        if (leaderboardScope == LB_SCOPE_GLOBAL && game.leaderboardRemoteEnabled()) {
+            game.refreshLeaderboardRemote(leaderboardTab)
+        }
+    }
+
+    private fun switchLeaderboardScope(scope: Int) {
+        leaderboardScope = scope
+        if (scope == LB_SCOPE_GLOBAL && game.leaderboardRemoteEnabled()) {
+            game.refreshLeaderboardRemote(leaderboardTab)
+        }
     }
 
     /** 主菜单中央「纪录榜」：像素奖杯 */
@@ -1150,8 +1175,11 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val top = safeT + 12f * s
         val right = w - safeR - 12f * s
         val bottom = h - safeB - 12f * s
-        val headerBottom = top + OVERLAY_HEADER_H * s
-        val footerTop = bottom - OVERLAY_FOOTER_H * s
+        // 比其它图鉴多一行"本地纪录榜"总标题，header 要比通用的 OVERLAY_HEADER_H 更高，
+        // 否则副标题会被下面的列表行盖住
+        val headerBottom = top + LEADERBOARD_HEADER_H * s
+        // 底栏比通用图鉴多了本地/全服切换 + 页码，偶尔还要放同步状态，同样需要单独的高度
+        val footerTop = bottom - LEADERBOARD_FOOTER_H * s
 
         btnPaint.style = Paint.Style.FILL
         btnPaint.color = LIGHT_PANEL
@@ -1167,7 +1195,8 @@ class HudView(context: Context, private val game: Game) : View(context) {
         drawLightBtn(canvas, btnLbClose, "X", s)
 
         val titleCx = (left + right) * 0.5f
-        lightText(canvas, "本地纪录榜", titleCx, top + 38f * s, 36f * s, LIGHT_TITLE)
+        val boardTitle = if (leaderboardScope == LB_SCOPE_GLOBAL) "全服纪录榜" else "本地纪录榜"
+        lightText(canvas, boardTitle, titleCx, top + 38f * s, 36f * s, LIGHT_TITLE)
         val catSize = fittedTextSize(title, 28f * s, (right - left) * 0.82f, 18f * s)
         lightText(canvas, title, titleCx, top + 78f * s, catSize, LIGHT_RELIC_LEGEND)
         val subSize = fittedTextSize(subtitle, 20f * s, (right - left) * 0.88f, 14f * s)
@@ -1177,17 +1206,31 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val rowGap = 8f * s
         val listTop = headerBottom + 8f * s
         val listBottom = footerTop - 8f * s
-        val entries = game.leaderboardEntries(tab)
+        val entries = if (leaderboardScope == LB_SCOPE_GLOBAL) {
+            game.leaderboardRemoteEntries(tab)
+        } else {
+            game.leaderboardEntries(tab)
+        }
         val maxRows = ((listBottom - listTop) / (rowH + rowGap)).toInt().coerceAtMost(Leaderboards.MAX_ENTRIES)
 
         if (entries.isEmpty()) {
+            val emptyHint = when {
+                leaderboardScope == LB_SCOPE_GLOBAL && !game.leaderboardRemoteEnabled() ->
+                    "未配置全服榜服务器"
+                leaderboardScope == LB_SCOPE_GLOBAL ->
+                    "正在拉取或暂无全服纪录…"
+                else -> "还没有纪录，跑一局试试！"
+            }
             lightText(
-                canvas, "还没有纪录，跑一局试试！",
+                canvas, emptyHint,
                 titleCx, (listTop + listBottom) * 0.5f, 24f * s, LIGHT_MUTED
             )
         } else {
-            var y = listTop
-            for (i in 0 until min(maxRows, entries.size)) {
+            val shown = min(maxRows, entries.size)
+            // 条目不够占满整块列表区时居中显示，避免一堆纪录挤在顶上、下面大片空白
+            val contentH = shown * rowH + (shown - 1) * rowGap
+            var y = listTop + max(0f, (listBottom - listTop - contentH) / 2f)
+            for (i in 0 until shown) {
                 val e = entries[i]
                 drawLeaderboardRow(canvas, left + 16f * s, y, right - 16f * s, y + rowH, s, i + 1, e, tab)
                 y += rowH + rowGap
@@ -1196,14 +1239,47 @@ class HudView(context: Context, private val game: Game) : View(context) {
 
         val navW = 56f * s
         val navH = 44f * s
-        val navY = bottom - 14f * s - navH
+        val scopeW = 72f * s
+        val scopeGap = 8f * s
+        val scopeTotalW = scopeW * 2f + scopeGap
+
+        // 底栏内容从 footerTop 往下顺序排布，行数会变（有没有同步状态行）也不会互相叠字
+        var fy = footerTop + 12f * s
+        if (leaderboardScope == LB_SCOPE_GLOBAL && game.leaderboardRemoteEnabled()) {
+            val syncLine = game.leaderboardSyncStatus()
+            if (syncLine.isNotEmpty()) {
+                lightText(canvas, syncLine, titleCx, fy + 14f * s, 18f * s, LIGHT_HINT)
+                fy += 30f * s
+            }
+        }
+        val pageLabel = "${tab + 1}/${game.leaderboardCategoryCount()}"
+        lightText(canvas, pageLabel, titleCx, fy + 16f * s, 20f * s, LIGHT_HINT)
+        fy += 34f * s
+
+        val navY = fy
+        btnLbScopeLocal.set(
+            titleCx - scopeTotalW / 2f, navY,
+            titleCx - scopeTotalW / 2f + scopeW, navY + navH
+        )
+        btnLbScopeGlobal.set(
+            btnLbScopeLocal.right + scopeGap, navY,
+            btnLbScopeLocal.right + scopeGap + scopeW, navY + navH
+        )
+        drawLightBtn(
+            canvas, btnLbScopeLocal, "本地", s,
+            selected = leaderboardScope == LB_SCOPE_LOCAL
+        )
+        drawLightBtn(
+            canvas, btnLbScopeGlobal, "全服", s,
+            selected = leaderboardScope == LB_SCOPE_GLOBAL,
+            enabled = game.leaderboardRemoteEnabled()
+        )
         btnLbPrev.set(left + 16f * s, navY, left + 16f * s + navW, navY + navH)
         btnLbNext.set(right - 16f * s - navW, navY, right - 16f * s, navY + navH)
         drawLightBtn(canvas, btnLbPrev, "<", s)
         drawLightBtn(canvas, btnLbNext, ">", s)
-        val pageLabel = "${tab + 1}/${game.leaderboardCategoryCount()}"
-        lightText(canvas, pageLabel, titleCx, navY + navH * 0.68f, 20f * s, LIGHT_HINT)
-        lightText(canvas, "左右切换类别 · 点击外部关闭", titleCx, bottom - 22f * s, 18f * s, LIGHT_HINT)
+
+        lightText(canvas, "左右切换类别 · 点击外部关闭", titleCx, navY + navH + 22f * s, 18f * s, LIGHT_HINT)
     }
 
     private fun drawLeaderboardRow(
@@ -3550,18 +3626,30 @@ class HudView(context: Context, private val game: Game) : View(context) {
         }
     }
 
-    private fun drawLightBtn(canvas: Canvas, r: RectF, label: String, s: Float) {
+    private fun drawLightBtn(
+        canvas: Canvas, r: RectF, label: String, s: Float,
+        selected: Boolean = false, enabled: Boolean = true
+    ) {
         btnPaint.style = Paint.Style.FILL
-        btnPaint.color = LIGHT_BTN
+        btnPaint.color = when {
+            !enabled -> 0xFFE8E2D6.toInt()
+            selected -> 0xFFFFF6DC.toInt()
+            else -> LIGHT_BTN
+        }
         canvas.drawRect(r, btnPaint)
         btnPaint.style = Paint.Style.STROKE
-        btnPaint.strokeWidth = 1.5f * s
-        btnPaint.color = LIGHT_BTN_EDGE
+        btnPaint.strokeWidth = if (selected) 2.5f * s else 1.5f * s
+        btnPaint.color = if (selected) LIGHT_PANEL_EDGE else LIGHT_BTN_EDGE
         canvas.drawRect(r, btnPaint)
         btnPaint.style = Paint.Style.FILL
         textPaint.textAlign = Paint.Align.CENTER
         val labelSize = min(32f * s, r.height() * 0.45f).coerceAtLeast(24f * s)
-        lightText(canvas, label, r.centerX(), r.centerY() + labelSize * 0.32f, labelSize, LIGHT_TEXT)
+        val ink = when {
+            !enabled -> LIGHT_LOCKED
+            selected -> LIGHT_TITLE
+            else -> LIGHT_TEXT
+        }
+        lightText(canvas, label, r.centerX(), r.centerY() + labelSize * 0.32f, labelSize, ink)
     }
 
     /** 亮色底上的稀有度字色，避免霓虹色 + 阴影发糊 */

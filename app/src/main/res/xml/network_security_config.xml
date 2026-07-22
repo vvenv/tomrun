@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- debug 默认连 10.0.2.2:8787；真机调试可在 gradle.properties 指定局域网 IP -->
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

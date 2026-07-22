@@ -58,6 +58,7 @@ class MainActivity : Activity() {
             renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
         }
         hud = HudView(this, game)
+        game.setLeaderboardSyncListener { hud.postInvalidate() }
         val root = FrameLayout(this)
         root.addView(glView)
         root.addView(hud)
@@ -110,6 +111,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        game.flushLeaderboardSync()
         glView.onResume()
     }
 

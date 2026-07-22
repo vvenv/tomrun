@@ -98,3 +98,10 @@ Desktop.ini
 
 # Relic asset working copies (sources); ship only drawable-nodpi
 tools/relic_assets/
+
+# Leaderboard server local DB
+leaderboard.db
+server/*.db
+
+# Deploy credentials (never commit)
+.env.deploy

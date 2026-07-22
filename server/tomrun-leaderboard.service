@@ -1,0 +1,13 @@
+[Unit]
+Description=Tomrun leaderboard API
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/tomrun
+ExecStart=/usr/bin/python3 /opt/tomrun/leaderboard_server.py --host 127.0.0.1 --port 8787 --db /opt/tomrun/leaderboard.db
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

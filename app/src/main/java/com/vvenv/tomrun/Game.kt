@@ -549,10 +549,22 @@ class Game {
     private var prefs: SharedPreferences? = null
     private var sessionPickupCoins = 0  // 本局拾取计入累计统计
     val leaderboards = Leaderboards()
+    private lateinit var leaderboardSync: LeaderboardSync
+    private var deviceId = ""
 
     fun attachPrefs(p: SharedPreferences) {
         prefs = p
+        if (!::leaderboardSync.isInitialized) {
+            leaderboardSync = LeaderboardSync(p)
+        }
         leaderboards.load(p)
+        deviceId = p.getString("deviceId", null)
+            ?: java.util.UUID.randomUUID().toString().also { id ->
+                p.edit().putString("deviceId", id).apply()
+            }
+        leaderboardSync.attachDeviceId(deviceId)
+        leaderboardSync.loadRemoteCache()
+        leaderboards.onEntrySubmitted = { cat, entry -> leaderboardSync.onLocalEntry(cat, entry) }
         highScore = p.getInt("high3d", 0)
         highDistance = p.getInt("highDist", 0)
         totalCoins = p.getInt("totalCoins", 0)
@@ -639,6 +651,27 @@ class Game {
             leaderboards.save(p)
             p.edit().putBoolean("lbSeeded", true).apply()
         }
+        leaderboardSync.flushPendingAsync()
+    }
+
+    fun setLeaderboardSyncListener(cb: (() -> Unit)?) {
+        if (::leaderboardSync.isInitialized) leaderboardSync.setListener(cb)
+    }
+
+    fun leaderboardRemoteEnabled(): Boolean = LeaderboardApi.isEnabled()
+
+    fun leaderboardRemoteEntries(category: Int): List<Leaderboards.Entry> =
+        if (::leaderboardSync.isInitialized) leaderboardSync.remoteEntries(category) else emptyList()
+
+    fun leaderboardSyncStatus(): String =
+        if (::leaderboardSync.isInitialized) leaderboardSync.statusLine() else ""
+
+    fun refreshLeaderboardRemote(category: Int) {
+        if (::leaderboardSync.isInitialized) leaderboardSync.refreshCategory(category)
+    }
+
+    fun flushLeaderboardSync() {
+        if (::leaderboardSync.isInitialized) leaderboardSync.flushPendingAsync()
     }
 
     fun leaderboardCategoryCount() = Leaderboards.CATEGORY_COUNT

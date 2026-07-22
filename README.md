@@ -179,13 +179,58 @@
 
 ## 本地纪录榜（第一阶段）
 
-- 主菜单底栏中央**奖杯**打开「本地纪录榜」：纯设备内存储，无需联网
+- 主菜单底栏中央**奖杯**打开纪录榜：纯设备内存储 + 可选全服同步
 - 每类保留前 10 名；同一设备上可改角色名区分家人
 - **11 个类别**：
   - 跑酷局内：距离、得分、金币、文物、连击、钱包、猎妖、穿越、时长
   - 累计里程碑：藏品图鉴件数、荣誉级数
 - 每局结束自动尝试入榜；结算页会提示「入榜 xxx」
 - 旧存档首次启动会从历史最高分/最远距离补种一条纪录
+
+### 全服榜 API
+
+客户端通过 `LeaderboardApi` / `LeaderboardSync` 调用 REST 接口（无第三方库）：
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/v1/leaderboard/{slug}?limit=10` | 拉取全服前 N 名 |
+| POST | `/api/v1/leaderboard/{slug}` | 上报一条纪录 |
+
+`{slug}` 与 `Leaderboards.CATEGORY_SLUGS` 一致，如 `run_distance`、`run_score`…
+
+POST JSON 字段：`player`, `value`, `whenMs`, `detail`, `deviceId`, `gameVersion`
+
+**启动参考服务端**（Python 3，stdlib only）：
+
+```bash
+python3 server/leaderboard_server.py
+# 默认 http://0.0.0.0:8787 ，数据写入 leaderboard.db
+```
+
+**配置客户端**：
+
+| 构建 | 默认 API 地址 |
+|------|---------------|
+| debug | `http://10.0.2.2:8787`（模拟器访问本机） |
+| release | 空（仅本地榜） |
+
+真机调试时在 `gradle.properties` 写局域网 IP，例如：
+
+```properties
+LEADERBOARD_API_BASE=http://192.168.1.8:8787
+```
+
+当前生产 API：**https://run.edao.plus**（见 `gradle.properties`）。
+
+DNS：`run.edao.plus` A 记录 → `43.172.73.67`（DNSPod / edao.plus）。
+
+**部署服务端**（凭证放 `.env.deploy`，勿提交）：
+
+```bash
+cp server/deploy.env.example .env.deploy   # 填入 DEPLOY_SSH_PASSWORD
+set -a && source .env.deploy && set +a
+./server/deploy.sh
+```
 
 ## 构建与运行
 
@@ -200,6 +245,9 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 - [Game.kt](app/src/main/java/com/vvenv/tomrun/Game.kt) — 数值节奏、任务、成就、钱包商店、物理与生成
 - [Leaderboards.kt](app/src/main/java/com/vvenv/tomrun/Leaderboards.kt) — 本地纪录榜存储与入榜逻辑
+- [LeaderboardApi.kt](app/src/main/java/com/vvenv/tomrun/LeaderboardApi.kt) — 全服榜 REST 客户端
+- [LeaderboardSync.kt](app/src/main/java/com/vvenv/tomrun/LeaderboardSync.kt) — 上传 / 拉取 / 离线队列
+- [server/leaderboard_server.py](server/leaderboard_server.py) — 参考 API 服务端
 - [GameRenderer.kt](app/src/main/java/com/vvenv/tomrun/GameRenderer.kt) — OpenGL 体素渲染与双脚光迹
 - [HudView.kt](app/src/main/java/com/vvenv/tomrun/HudView.kt) — HUD、商店/成就面板、手势
 - [EyeComfort.kt](app/src/main/java/com/vvenv/tomrun/EyeComfort.kt) — 全局护眼调色（唯一色彩分级公式）
