@@ -177,6 +177,16 @@
 > 整个看着像块「冻住的冰」。改成深蓝身 (0.12,0.62,1.0) + 烧白芯，靠**高反差**读出电弧。
 > 以后加自发光道具，记得让本体压得比芯暗、比芯饱和。
 
+## 本地纪录榜（第一阶段）
+
+- 主菜单底栏中央**奖杯**打开「本地纪录榜」：纯设备内存储，无需联网
+- 每类保留前 10 名；同一设备上可改角色名区分家人
+- **11 个类别**：
+  - 跑酷局内：距离、得分、金币、文物、连击、钱包、猎妖、穿越、时长
+  - 累计里程碑：藏品图鉴件数、荣誉级数
+- 每局结束自动尝试入榜；结算页会提示「入榜 xxx」
+- 旧存档首次启动会从历史最高分/最远距离补种一条纪录
+
 ## 构建与运行
 
 ```bash
@@ -189,6 +199,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 ## 代码结构
 
 - [Game.kt](app/src/main/java/com/vvenv/tomrun/Game.kt) — 数值节奏、任务、成就、钱包商店、物理与生成
+- [Leaderboards.kt](app/src/main/java/com/vvenv/tomrun/Leaderboards.kt) — 本地纪录榜存储与入榜逻辑
 - [GameRenderer.kt](app/src/main/java/com/vvenv/tomrun/GameRenderer.kt) — OpenGL 体素渲染与双脚光迹
 - [HudView.kt](app/src/main/java/com/vvenv/tomrun/HudView.kt) — HUD、商店/成就面板、手势
 - [EyeComfort.kt](app/src/main/java/com/vvenv/tomrun/EyeComfort.kt) — 全局护眼调色（唯一色彩分级公式）

@@ -71,6 +71,10 @@ class HudView(context: Context, private val game: Game) : View(context) {
     // 离屏按钮区域
     private val btnHome = RectF()
     private val btnHelp = RectF()
+    private val btnLeaderboard = RectF()
+    private val btnLbClose = RectF()
+    private val btnLbPrev = RectF()
+    private val btnLbNext = RectF()
     private val btnLeaveHome = RectF()
     /** 庭院远景地标：藏品馆 / 荣誉墙，取代原先顶栏的两个按钮 */
     private val hitMuseum = RectF()
@@ -92,6 +96,8 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private val hitCosmeticHat = RectF()
     private val hitSky = RectF()
     private var showHelp = false
+    private var showLeaderboard = false
+    private var leaderboardTab = 0
     private var homeSubView = HOME_SUB_SCENE
     private var homeEditing = false
     private var museumPage = 0
@@ -396,7 +402,10 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 if (!consumed && event.actionMasked == MotionEvent.ACTION_UP) {
                     val dx = event.x - downX
                     val dy = event.y - downY
-                    if (tryCatalogPageSwipe(dx, dy, swipeMin)) {
+                    if (showLeaderboard && abs(dx) > swipeMin && abs(dx) > abs(dy) * 1.2f) {
+                        stepLeaderboardTab(if (dx < 0f) 1 else -1)
+                        consumed = true
+                    } else if (tryCatalogPageSwipe(dx, dy, swipeMin)) {
                         consumed = true
                     } else if (!yardLongPressTriggered) {
                         handleTap(event.x, event.y)
@@ -429,10 +438,23 @@ class HudView(context: Context, private val game: Game) : View(context) {
 
         when (game.menuPanel) {
             Game.PANEL_MAIN -> {
+                if (showLeaderboard) {
+                    when {
+                        btnLbClose.contains(x, y) -> showLeaderboard = false
+                        btnLbPrev.contains(x, y) -> stepLeaderboardTab(-1)
+                        btnLbNext.contains(x, y) -> stepLeaderboardTab(1)
+                        else -> showLeaderboard = false
+                    }
+                    return
+                }
                 if (showHelp) { showHelp = false; return }
                 if (handleSecretTitleTap(x, y)) return
                 when {
                     btnHelp.contains(x, y) -> showHelp = true
+                    btnLeaderboard.contains(x, y) -> {
+                        showLeaderboard = true
+                        leaderboardTab = 0
+                    }
                     btnHome.contains(x, y) -> openHomePage()
                     else -> game.onTap()
                 }
@@ -862,7 +884,8 @@ class HudView(context: Context, private val game: Game) : View(context) {
         }
 
         if (toastLife > 0f && toast.isNotEmpty() &&
-            homeSubView != HOME_SUB_COLLECTION && homeSubView != HOME_SUB_HONOR
+            homeSubView != HOME_SUB_COLLECTION && homeSubView != HOME_SUB_HONOR &&
+            !showLeaderboard
         ) {
             val fade = min(1f, toastLife / 0.4f)
             val appear = min(1f, (1.8f - toastLife) / 0.12f)
@@ -993,6 +1016,16 @@ class HudView(context: Context, private val game: Game) : View(context) {
                     w / 2f, h * 0.65f, 26f * s, 0xFFC77DFF.toInt(), sdx, sdy
                 )
             }
+            val lbHits = game.lastRunLeaderboardHits
+            if (lbHits.isNotEmpty()) {
+                val names = lbHits.map { game.leaderboardTitle(it) }.distinct().take(3).joinToString(" · ")
+                val suffix = if (lbHits.size > 3) "…" else ""
+                pixText(
+                    canvas, "入榜 $names$suffix",
+                    w / 2f, h * (if (game.runRelics > 0) 0.71f else 0.65f),
+                    24f * s, 0xFFFFD426.toInt(), sdx, sdy
+                )
+            }
             if (game.deadTime > 0.6f) {
                 pixText(canvas, "点击屏幕再来一次", w / 2f, h * 0.82f, 28f * s, Color.WHITE, sdx, sdy)
             }
@@ -1007,17 +1040,20 @@ class HudView(context: Context, private val game: Game) : View(context) {
         // 落在猫和底栏之间的空地上：等待时视线自然会扫到，又不挡任何东西
         drawRelicNote(canvas, w, h * (if (dead) 0.72f else 0.78f), s, sdx, sdy)
 
-        // 底栏：左帮助 · 右家（对称）
+        // 底栏：左帮助 · 中纪录 · 右家
         val portrait = h > w
         val rowH = if (portrait) 72f * s else 52f * s
         val margin = if (portrait) 16f * s else 28f * s
         val rowBottom = h - (if (portrait) 48f else 28f) * s
         val rowTop = rowBottom - rowH
         btnHelp.set(margin, rowTop, margin + rowH, rowBottom)
+        btnLeaderboard.set(w / 2f - rowH / 2f, rowTop, w / 2f + rowH / 2f, rowBottom)
         btnHome.set(w - margin - rowH, rowTop, w - margin, rowBottom)
         drawBtn(canvas, btnHelp, "?", s)
+        drawLeaderboardBtn(canvas, btnLeaderboard, s)
         drawHomeEntryBtn(canvas, btnHome, s)
 
+        if (showLeaderboard) drawLeaderboardOverlay(canvas, w, h, s, sdx, sdy)
         if (showHelp) drawHelpOverlay(canvas, w, h, s, sdx, sdy)
     }
 
@@ -1080,6 +1116,148 @@ class HudView(context: Context, private val game: Game) : View(context) {
             ly += 44f * s
         }
         pixText(canvas, "点击任意处关闭", w / 2f, bottom - 28f * s, 22f * s, 0xFFAAAAAA.toInt(), sdx, sdy)
+    }
+
+    private fun stepLeaderboardTab(delta: Int) {
+        val n = game.leaderboardCategoryCount()
+        if (n <= 0) return
+        leaderboardTab = Math.floorMod(leaderboardTab + delta, n)
+    }
+
+    /** 主菜单中央「纪录榜」：像素奖杯 */
+    private fun drawLeaderboardBtn(canvas: Canvas, r: RectF, s: Float) {
+        drawBtn(canvas, r, "", s)
+        val cx = r.centerX()
+        val cy = r.centerY()
+        btnPaint.style = Paint.Style.FILL
+        btnPaint.color = 0xFFFFD426.toInt()
+        canvas.drawRect(cx - 10f * s, cy - 16f * s, cx + 10f * s, cy - 8f * s, btnPaint)
+        canvas.drawRect(cx - 14f * s, cy - 8f * s, cx + 14f * s, cy - 2f * s, btnPaint)
+        btnPaint.color = 0xFFB8860B.toInt()
+        canvas.drawRect(cx - 4f * s, cy - 2f * s, cx + 4f * s, cy + 8f * s, btnPaint)
+        canvas.drawRect(cx - 12f * s, cy + 8f * s, cx + 12f * s, cy + 14f * s, btnPaint)
+        btnPaint.color = 0xFF8A6A20.toInt()
+        canvas.drawRect(cx - 8f * s, cy + 14f * s, cx + 8f * s, cy + 18f * s, btnPaint)
+    }
+
+    private fun drawLeaderboardOverlay(canvas: Canvas, w: Float, h: Float, s: Float, sdx: Float, sdy: Float) {
+        dim(canvas, w, h)
+        val tab = leaderboardTab.coerceIn(0, game.leaderboardCategoryCount() - 1)
+        val title = game.leaderboardTitle(tab)
+        val subtitle = game.leaderboardSubtitle(tab)
+
+        val left = safeL + 12f * s
+        val top = safeT + 12f * s
+        val right = w - safeR - 12f * s
+        val bottom = h - safeB - 12f * s
+        val headerBottom = top + OVERLAY_HEADER_H * s
+        val footerTop = bottom - OVERLAY_FOOTER_H * s
+
+        btnPaint.style = Paint.Style.FILL
+        btnPaint.color = LIGHT_PANEL
+        canvas.drawRect(left, top, right, bottom, btnPaint)
+        btnPaint.style = Paint.Style.STROKE
+        btnPaint.strokeWidth = 2.5f * s
+        btnPaint.color = LIGHT_PANEL_EDGE
+        canvas.drawRect(left, top, right, bottom, btnPaint)
+        btnPaint.style = Paint.Style.FILL
+
+        val closeSize = 44f * s
+        btnLbClose.set(right - 14f * s - closeSize, top + 14f * s, right - 14f * s, top + 14f * s + closeSize)
+        drawLightBtn(canvas, btnLbClose, "X", s)
+
+        val titleCx = (left + right) * 0.5f
+        lightText(canvas, "本地纪录榜", titleCx, top + 38f * s, 36f * s, LIGHT_TITLE)
+        val catSize = fittedTextSize(title, 28f * s, (right - left) * 0.82f, 18f * s)
+        lightText(canvas, title, titleCx, top + 78f * s, catSize, LIGHT_RELIC_LEGEND)
+        val subSize = fittedTextSize(subtitle, 20f * s, (right - left) * 0.88f, 14f * s)
+        lightText(canvas, subtitle, titleCx, top + 112f * s, subSize, LIGHT_SUB)
+
+        val rowH = 52f * s
+        val rowGap = 8f * s
+        val listTop = headerBottom + 8f * s
+        val listBottom = footerTop - 8f * s
+        val entries = game.leaderboardEntries(tab)
+        val maxRows = ((listBottom - listTop) / (rowH + rowGap)).toInt().coerceAtMost(Leaderboards.MAX_ENTRIES)
+
+        if (entries.isEmpty()) {
+            lightText(
+                canvas, "还没有纪录，跑一局试试！",
+                titleCx, (listTop + listBottom) * 0.5f, 24f * s, LIGHT_MUTED
+            )
+        } else {
+            var y = listTop
+            for (i in 0 until min(maxRows, entries.size)) {
+                val e = entries[i]
+                drawLeaderboardRow(canvas, left + 16f * s, y, right - 16f * s, y + rowH, s, i + 1, e, tab)
+                y += rowH + rowGap
+            }
+        }
+
+        val navW = 56f * s
+        val navH = 44f * s
+        val navY = bottom - 14f * s - navH
+        btnLbPrev.set(left + 16f * s, navY, left + 16f * s + navW, navY + navH)
+        btnLbNext.set(right - 16f * s - navW, navY, right - 16f * s, navY + navH)
+        drawLightBtn(canvas, btnLbPrev, "<", s)
+        drawLightBtn(canvas, btnLbNext, ">", s)
+        val pageLabel = "${tab + 1}/${game.leaderboardCategoryCount()}"
+        lightText(canvas, pageLabel, titleCx, navY + navH * 0.68f, 20f * s, LIGHT_HINT)
+        lightText(canvas, "左右切换类别 · 点击外部关闭", titleCx, bottom - 22f * s, 18f * s, LIGHT_HINT)
+    }
+
+    private fun drawLeaderboardRow(
+        canvas: Canvas, left: Float, top: Float, right: Float, bottom: Float,
+        s: Float, rank: Int, entry: Leaderboards.Entry, category: Int
+    ) {
+        btnPaint.style = Paint.Style.FILL
+        btnPaint.color = if (rank <= 3) 0xFFFFF6DC.toInt() else LIGHT_ROW
+        canvas.drawRect(left, top, right, bottom, btnPaint)
+        btnPaint.style = Paint.Style.STROKE
+        btnPaint.strokeWidth = 1.5f * s
+        btnPaint.color = LIGHT_ROW_EDGE
+        canvas.drawRect(left, top, right, bottom, btnPaint)
+        btnPaint.style = Paint.Style.FILL
+
+        val cy = (top + bottom) * 0.5f
+        val rankColor = when (rank) {
+            1 -> LIGHT_RELIC_LEGEND
+            2 -> LIGHT_MUTED
+            3 -> 0xFF8B6914.toInt()
+            else -> LIGHT_MUTED
+        }
+        textPaint.textAlign = Paint.Align.LEFT
+        lightText(canvas, "#$rank", left + 12f * s, cy + 8f * s, 22f * s, rankColor)
+
+        val nameMaxW = (right - left) * 0.34f
+        val name = entry.player.ifEmpty { "?" }
+        val nameSize = fittedTextSize(name, 22f * s, nameMaxW, 16f * s)
+        lightText(canvas, name, left + 52f * s, cy + 8f * s, nameSize, LIGHT_TEXT)
+
+        textPaint.textAlign = Paint.Align.RIGHT
+        val valueText = game.formatLeaderboardValue(category, entry.value)
+        val valueSize = fittedTextSize(valueText, 24f * s, (right - left) * 0.28f, 16f * s)
+        lightText(canvas, valueText, right - 12f * s, cy + 8f * s, valueSize, LIGHT_RELIC_RARE)
+
+        textPaint.textAlign = Paint.Align.LEFT
+        val detail = buildString {
+            append(formatLeaderboardWhen(entry.whenMs))
+            if (entry.detail.isNotEmpty()) {
+                append(" · ")
+                append(entry.detail)
+            }
+        }
+        val detailSize = fittedTextSize(detail, 16f * s, right - left - 64f * s, 12f * s)
+        lightText(canvas, detail, left + 52f * s, cy + 28f * s, detailSize, LIGHT_HINT)
+        textPaint.textAlign = Paint.Align.CENTER
+    }
+
+    private fun formatLeaderboardWhen(whenMs: Long): String {
+        val c = java.util.Calendar.getInstance()
+        c.timeInMillis = whenMs
+        val m = c.get(java.util.Calendar.MONTH) + 1
+        val d = c.get(java.util.Calendar.DAY_OF_MONTH)
+        return "%02d/%02d".format(m, d)
     }
 
     // ---------- 家（装扮；藏品 / 荣誉浮窗） ----------

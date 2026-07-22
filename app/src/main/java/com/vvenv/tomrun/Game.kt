@@ -359,6 +359,8 @@ class Game {
     @Volatile var highDistance = 0
     @Volatile var runNewDistRecord = false
     @Volatile var runNewScoreRecord = false
+    /** 本局结算后新入本地纪录榜的类别（[Leaderboards] 下标） */
+    @Volatile var lastRunLeaderboardHits = IntArray(0)
     @Volatile var deadTime = 0f
     @Volatile var immortalMode = false
         private set
@@ -546,9 +548,11 @@ class Game {
 
     private var prefs: SharedPreferences? = null
     private var sessionPickupCoins = 0  // 本局拾取计入累计统计
+    val leaderboards = Leaderboards()
 
     fun attachPrefs(p: SharedPreferences) {
         prefs = p
+        leaderboards.load(p)
         highScore = p.getInt("high3d", 0)
         highDistance = p.getInt("highDist", 0)
         totalCoins = p.getInt("totalCoins", 0)
@@ -630,7 +634,25 @@ class Game {
         refreshStargazeDay()
         // 新类别可能已达标（旧存档），启动时静默补发解锁与奖励
         tryUnlockAchievements(persist = true, quiet = true)
+        if (!p.getBoolean("lbSeeded", false)) {
+            leaderboards.seedFromLegacy(characterName, highDistance, highScore, relicsFound, achieveCount)
+            leaderboards.save(p)
+            p.edit().putBoolean("lbSeeded", true).apply()
+        }
     }
+
+    fun leaderboardCategoryCount() = Leaderboards.CATEGORY_COUNT
+
+    fun leaderboardTitle(category: Int): String =
+        if (category in 0 until Leaderboards.CATEGORY_COUNT) Leaderboards.TITLES[category] else ""
+
+    fun leaderboardSubtitle(category: Int): String =
+        if (category in 0 until Leaderboards.CATEGORY_COUNT) Leaderboards.SUBTITLES[category] else ""
+
+    fun leaderboardEntries(category: Int): List<Leaderboards.Entry> = leaderboards.entries(category)
+
+    fun formatLeaderboardValue(category: Int, value: Int): String =
+        leaderboards.formatValue(category, value)
 
     enum class StargazeViewResult { REVIEW, NEW_READ, BLOCKED_NEW }
 
@@ -1194,6 +1216,7 @@ class Game {
         magnetTime = 0f; doubleTime = 0f; boostTime = 0f; helmetLayers = 0
         riding = null; scoreBoost = 0f; invulnTime = 0f
         recordDone = false; settled = false
+        lastRunLeaderboardHits = IntArray(0)
         runNewDistRecord = false; runNewScoreRecord = false
         combo = 0; comboMult = 1; comboTimer = 0f; comboScore = 0
         comboNextAt = COMBO_THRESH[0]
@@ -1655,6 +1678,7 @@ class Game {
         if (!relicCollected(id)) {
             relicMask = relicMask or (1 shl id)
             relicsFound = Integer.bitCount(relicMask)
+            recordMuseumLeaderboard(RELIC_NAMES[id])
             enqueueBanner("文物图鉴 +1（$relicsFound/$RELIC_COUNT）", 0xFFFFD426.toInt(), 2.2f)
             if (!museumRewarded && museumComplete()) {
                 museumRewarded = true
@@ -1848,6 +1872,15 @@ class Game {
         else -> 0xFF7DEBA0.toInt()
     }
 
+    private fun recordMuseumLeaderboard(relicName: String) {
+        if (leaderboards.recordMilestone(
+                Leaderboards.MUSEUM_COLLECT, characterName, relicsFound, relicName
+            )
+        ) {
+            prefs?.let { leaderboards.save(it) }
+        }
+    }
+
     private fun collectRelic(e: Entity) {
         val id = e.relicId
         if (id !in 0 until RELIC_COUNT) return
@@ -1872,6 +1905,7 @@ class Game {
         if (!relicCollected(id)) {
             relicMask = relicMask or (1 shl id)
             relicsFound = Integer.bitCount(relicMask)
+            recordMuseumLeaderboard(RELIC_NAMES[id])
             enqueueBanner("文物图鉴 +1（$relicsFound/$RELIC_COUNT）", 0xFFFFD426.toInt(), 2.2f)
             if (!museumRewarded && museumComplete()) {
                 museumRewarded = true
@@ -2140,6 +2174,13 @@ class Game {
                 achieveCount = achieveLevels.sum()
                 val reward = ACHIEVE_REWARDS[lv]
                 grantWallet(reward)
+                if (leaderboards.recordMilestone(
+                        Leaderboards.HONOR_COUNT, characterName, achieveCount,
+                        "${ACHIEVE_NAMES[c]}·${ACHIEVE_TIERS[lv]}"
+                    )
+                ) {
+                    prefs?.let { leaderboards.save(it) }
+                }
                 if (!quiet) {
                     enqueueBanner(
                         "荣誉：${ACHIEVE_NAMES[c]}·${ACHIEVE_TIERS[lv]} +$reward",
@@ -2247,6 +2288,7 @@ class Game {
             .putString("characterName", characterName)
         for (i in 0 until ACHIEVE_CATS) ed.putInt("achieveLv$i", achieveLevels[i])
         ed.apply()
+        leaderboards.save(p)
     }
 
     /** 死亡时一次性结算，避免重复累加 */
@@ -2261,6 +2303,18 @@ class Game {
         if (runNewScoreRecord) highScore = score
         settled = true
         tryUnlockAchievements(persist = false)
+        lastRunLeaderboardHits = leaderboards.recordRun(
+            player = characterName,
+            distance = distance.toInt(),
+            score = score,
+            coins = sessionPickupCoins,
+            runRelics = runRelics,
+            combo = bestComboRun,
+            wallet = runWalletEarn,
+            battles = runBattleWins,
+            portals = runPortals,
+            runSeconds = runTime.toInt()
+        )
         persistAll()
     }
 
