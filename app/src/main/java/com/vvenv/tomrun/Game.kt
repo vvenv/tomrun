@@ -200,6 +200,25 @@ class Game {
         val UNI_GRAVITY = floatArrayOf(1f, 0.45f, 0.85f, 1f, 1f, 0.35f)
         val UNI_JUMP = floatArrayOf(1f, 0.82f, 1.15f, 1f, 1f, 0.80f)
         const val PORTAL_FIRST = 320f
+
+        // 世界专属随机场景（隧道/黑洞等，纯氛围效果，不影响碰撞与车道）
+        val SCENE_NAMES = arrayOf("藤蔓隧道", "暗涌隧道", "云隙隧道", "熔岩隧道", "糖霜隧道", "黑洞漩涡")
+        val SCENE_BANNER_COLORS = intArrayOf(
+            0xFF3FA34D.toInt(), 0xFF2E8FCB.toInt(), 0xFFB9C6D9.toInt(),
+            0xFFFF6A1A.toInt(), 0xFFFF6FA8.toInt(), 0xFF8A4DFF.toInt()
+        )
+        val SCENE_PARTICLE_COLORS = arrayOf(
+            floatArrayOf(0.20f, 0.70f, 0.30f, 1f),
+            floatArrayOf(0.25f, 0.55f, 0.95f, 1f),
+            floatArrayOf(0.85f, 0.90f, 1.00f, 1f),
+            floatArrayOf(1.00f, 0.55f, 0.15f, 0.9f),
+            floatArrayOf(1.00f, 0.55f, 0.75f, 1f),
+            floatArrayOf(0.60f, 0.30f, 0.90f, 1f)
+        )
+        const val SCENE_GAP_MIN = 24f
+        const val SCENE_GAP_RANGE = 20f
+        const val SCENE_DUR_MIN = 6f
+        const val SCENE_DUR_RANGE = 3f
         // 宇宙图鉴集齐一次性大奖
         const val CODEX_REWARD = 1000
 
@@ -453,6 +472,14 @@ class Game {
     @Volatile var portalFlash = 0f
     @Volatile var totalPortals = 0
     @Volatile var universesSeen = 1
+
+    // 世界专属随机场景（隧道/黑洞等）
+    @Volatile var sceneActive = false
+    @Volatile var sceneUni = UNI_MEADOW
+    @Volatile var sceneBlend = 0f
+    private var sceneTime = 0f
+    private var sceneDuration = 0f
+    private var sceneGap = SCENE_GAP_MIN + Random.nextFloat() * SCENE_GAP_RANGE
     private var seenMask = 1          // bit0 草原
     private var codexRewarded = false
     private var portalGap = PORTAL_FIRST
@@ -1272,6 +1299,9 @@ class Game {
         portalFlash = 0f
         portalGap = PORTAL_FIRST + Random.nextFloat() * 120f
         runPortals = 0
+        sceneActive = false
+        sceneBlend = 0f
+        sceneGap = SCENE_GAP_MIN + Random.nextFloat() * SCENE_GAP_RANGE
         chaseActive = false
         yokaiHudVisible = false
         paceSlowUntil = 0f
@@ -1468,6 +1498,9 @@ class Game {
             zipGap = 160f + Random.nextFloat() * 160f
         }
 
+        // 世界专属随机场景：隧道/黑洞等，纯氛围效果
+        tickScene(dt)
+
         // 传送门：随世界前移，穿过即切换平行宇宙
         if (portalActive) {
             portalZ += dz
@@ -1532,6 +1565,39 @@ class Game {
             weatherTimer = 25f + Random.nextFloat() * 20f
         }
         if (weatherBlend < 1f) weatherBlend = min(1f, weatherBlend + dt / 2.5f)
+    }
+
+    // ---------- 世界专属随机场景 ----------
+    /** 隧道/黑洞等，按当前宇宙随机触发一段纯视觉氛围场景，不改变碰撞与车道逻辑 */
+    private fun tickScene(dt: Float) {
+        if (sceneActive) {
+            sceneTime -= dt
+            sceneBlend = when {
+                sceneTime <= 0f -> 0f
+                sceneTime < 1f -> sceneTime
+                sceneDuration - sceneTime < 1f -> sceneDuration - sceneTime
+                else -> 1f
+            }.coerceIn(0f, 1f)
+            if (sceneTime <= 0f) {
+                sceneActive = false
+                sceneBlend = 0f
+                sceneGap = SCENE_GAP_MIN + Random.nextFloat() * SCENE_GAP_RANGE
+            }
+            return
+        }
+        // 传送中/刚换世界/追击中不触发，避免场景叠加太乱
+        if (portalActive || universeBlend < 1f || chaseActive) return
+        sceneGap -= dt
+        if (sceneGap <= 0f) {
+            sceneActive = true
+            sceneUni = universe
+            sceneDuration = SCENE_DUR_MIN + Random.nextFloat() * SCENE_DUR_RANGE
+            sceneTime = sceneDuration
+            sceneBlend = 0f
+            enqueueBanner("穿越${SCENE_NAMES[sceneUni]}！", SCENE_BANNER_COLORS[sceneUni], 2.2f)
+            shake = shake.coerceAtLeast(0.12f)
+            spawnBurst(catX, 1.3f, -6f, SCENE_PARTICLE_COLORS[sceneUni], 10)
+        }
     }
 
     // ---------- 平行宇宙 ----------
@@ -1748,7 +1814,12 @@ class Game {
     private fun spawnZipline() {
         val laneZ = Random.nextInt(3)
         val length = 30f + Random.nextFloat() * 50f
-        ziplines.add(Zip(laneZ, SPAWN_Z, length))
+        val zip = Zip(laneZ, SPAWN_Z, length)
+        ziplines.add(zip)
+        // 骑索时够不到地面高度，清掉区间内已排的地面金币，避免变成摆设
+        entities.removeAll {
+            it.kind == COIN && it.lane == laneZ && it.z <= zip.entryZ && it.z >= zip.exitZ
+        }
         // 高低交错，滑索上需上滑/下滑够到
         val coinYs = floatArrayOf(CABLE_H - 1.1f, CABLE_H - 2.2f, CABLE_H - 3.3f)
         var cz = SPAWN_Z - 8f
@@ -1758,6 +1829,14 @@ class Game {
             i++
             cz -= 4f
         }
+    }
+
+    /** 滑索悬挂区间内不再铺地面金币：骑索时够不到，留着就是摆设 */
+    private fun coveredByZip(lane: Int, z: Float): Boolean {
+        for (zip in ziplines) {
+            if (zip.lane == lane && z <= zip.entryZ && z >= zip.exitZ) return true
+        }
+        return false
     }
 
     private fun spawnWave(zBase: Float, early: Boolean) {
@@ -1847,7 +1926,11 @@ class Game {
     }
 
     private fun coinRow(lane: Int, zBase: Float, count: Int = 4) {
-        for (i in 0 until count) entities.add(makeCoin(lane, zBase - 1.6f * i, 1.0f))
+        for (i in 0 until count) {
+            val z = zBase - 1.6f * i
+            if (coveredByZip(lane, z)) continue
+            entities.add(makeCoin(lane, z, 1.0f))
+        }
     }
 
     /** 两列金币起点间距：同道紧凑；分道按当前速度留足变道时间 */
@@ -1868,7 +1951,11 @@ class Game {
     private fun coinArc(lane: Int, zBase: Float) {
         val dz = floatArrayOf(0.0f, -1.0f, -2.0f, -3.0f, -4.0f)
         val ys = floatArrayOf(1.8f, 2.1f, 2.3f, 2.45f, 2.5f)
-        for (i in dz.indices) entities.add(makeCoin(lane, zBase + dz[i], ys[i]))
+        for (i in dz.indices) {
+            val z = zBase + dz[i]
+            if (coveredByZip(lane, z)) continue
+            entities.add(makeCoin(lane, z, ys[i]))
+        }
     }
 
     private fun makeCoin(lane: Int, z: Float, y: Float): Entity {

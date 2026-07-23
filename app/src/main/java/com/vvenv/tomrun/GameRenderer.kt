@@ -388,6 +388,34 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         private val PLANET_B = floatArrayOf(0.95f, 0.60f, 0.35f, 1f)
         private val STARDUST = floatArrayOf(0.85f, 0.90f, 1.0f, 0.7f)
 
+        // 世界专属随机场景（隧道/黑洞），索引与 Game.UNI_* 对应
+        private val TUNNEL_SKY = arrayOf(
+            floatArrayOf(0.05f, 0.13f, 0.07f), // 草原：藤蔓隧道
+            floatArrayOf(0.03f, 0.10f, 0.17f), // 水下：暗涌隧道
+            floatArrayOf(0.55f, 0.58f, 0.63f), // 天空：云隙隧道
+            floatArrayOf(0.20f, 0.05f, 0.03f), // 熔岩：熔岩隧道
+            floatArrayOf(0.22f, 0.06f, 0.17f), // 糖果：糖霜隧道
+            floatArrayOf(0.02f, 0.01f, 0.05f)  // 星空：黑洞漩涡
+        )
+        private val TUNNEL_WALL = arrayOf(
+            floatArrayOf(0.10f, 0.32f, 0.14f, 0.85f),
+            floatArrayOf(0.06f, 0.20f, 0.34f, 0.85f),
+            floatArrayOf(0.70f, 0.74f, 0.80f, 0.55f),
+            floatArrayOf(0.30f, 0.10f, 0.06f, 0.88f),
+            floatArrayOf(0.42f, 0.14f, 0.34f, 0.85f),
+            floatArrayOf(0.05f, 0.02f, 0.10f, 0.9f)
+        )
+        private val TUNNEL_GLOW = arrayOf(
+            floatArrayOf(0.35f, 0.95f, 0.45f, 0.9f),
+            floatArrayOf(0.40f, 0.80f, 1.00f, 0.9f),
+            floatArrayOf(1.00f, 1.00f, 1.00f, 0.8f),
+            floatArrayOf(1.00f, 0.55f, 0.15f, 0.9f),
+            floatArrayOf(1.00f, 0.60f, 0.85f, 0.9f),
+            floatArrayOf(0.65f, 0.35f, 1.00f, 0.9f)
+        )
+        private val BLACK_HOLE_CORE = floatArrayOf(0.02f, 0.0f, 0.05f, 0.92f)
+        private val BLACK_HOLE_RING = floatArrayOf(0.55f, 0.25f, 0.95f, 0.85f)
+
         private val MAGNET_RED = floatArrayOf(0.90f, 0.24f, 0.24f, 1f)
         private val MAGNET_TIP = floatArrayOf(0.92f, 0.92f, 0.95f, 1f)
         private val MAGNET_BLUE = floatArrayOf(0.25f, 0.65f, 1.0f, 1f)
@@ -491,6 +519,14 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         updateWeatherColors()
         // 天空与雾走同一份分级结果，否则远处雾色会和已分级的几何体对不上
         EyeComfort.grade(skyCol, gradedSky)
+        // 世界专属场景（隧道/黑洞）期间，天空整体压暗，衬托氛围
+        val sceneBlend = game.sceneBlend
+        if (sceneBlend > 0f) {
+            val sc = TUNNEL_SKY[game.sceneUni.coerceIn(0, TUNNEL_SKY.size - 1)]
+            gradedSky[0] += (sc[0] - gradedSky[0]) * sceneBlend
+            gradedSky[1] += (sc[1] - gradedSky[1]) * sceneBlend
+            gradedSky[2] += (sc[2] - gradedSky[2]) * sceneBlend
+        }
         GLES20.glClearColor(gradedSky[0], gradedSky[1], gradedSky[2], 1f)
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
         GLES20.glUseProgram(program)
@@ -527,6 +563,7 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         drawSky()
         drawTrack()
         drawScenery()
+        drawSceneTunnel()
         drawStreetLamps()
         drawEntities()
         drawPortal()
@@ -672,7 +709,19 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         }
     }
 
-    private fun setSkyFog() = setFog(gradedSky[0] + 0.08f, gradedSky[1] + 0.05f, gradedSky[2] + 0.02f)
+    private fun setSkyFog() {
+        var r = gradedSky[0] + 0.08f
+        var g = gradedSky[1] + 0.05f
+        var b = gradedSky[2] + 0.02f
+        val sceneBlend = game.sceneBlend
+        if (sceneBlend > 0f) {
+            val sc = TUNNEL_SKY[game.sceneUni.coerceIn(0, TUNNEL_SKY.size - 1)]
+            r += (sc[0] - r) * sceneBlend
+            g += (sc[1] - g) * sceneBlend
+            b += (sc[2] - b) * sceneBlend
+        }
+        setFog(r, g, b)
+    }
 
     private fun drawWeather(dt: Float) {
         // 雨雪只属于草原世界
@@ -798,6 +847,56 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
             else -> drawSceneryMeadow()
         }
         drawClouds()
+    }
+
+    // ---------- 世界专属随机场景：隧道 / 黑洞（纯视觉氛围，随 sceneBlend 淡入淡出） ----------
+    private fun drawSceneTunnel() {
+        val blend = game.sceneBlend
+        if (blend <= 0.02f) return
+        val uni = game.sceneUni.coerceIn(0, Game.UNIVERSE_COUNT - 1)
+        if (uni == Game.UNI_SPACE) {
+            drawBlackHole(blend)
+            return
+        }
+        val wallBase = TUNNEL_WALL[uni]
+        val wall = floatArrayOf(wallBase[0], wallBase[1], wallBase[2], wallBase[3] * blend)
+        val glowBase = TUNNEL_GLOW[uni]
+        val glow = floatArrayOf(glowBase[0], glowBase[1], glowBase[2], glowBase[3] * blend)
+        mMode = 0
+        scroll(9f, game.distance) { m, z ->
+            val archY = 3.6f + 0.3f * sin(scenePhase * 1.4f + m)
+            drawBox(-6.4f, 1.6f, z, 0.6f, 3.4f, 1.1f, wall)
+            drawBox(6.4f, 1.6f, z, 0.6f, 3.4f, 1.1f, wall)
+            drawBox(0f, archY, z, 13.4f, 0.6f, 1.1f, wall)
+        }
+        mMode = 2
+        scroll(4.5f, game.distance) { m, z ->
+            val gy = 0.4f + mod(m * 17, 30) / 10f
+            val side = if (mod(m, 2) == 0) -1f else 1f
+            drawBox(side * 6.2f, gy, z, 0.22f, 0.22f, 0.22f, glow)
+        }
+        mMode = 0
+    }
+
+    private fun drawBlackHole(blend: Float) {
+        mMode = 2
+        val core = floatArrayOf(BLACK_HOLE_CORE[0], BLACK_HOLE_CORE[1], BLACK_HOLE_CORE[2], BLACK_HOLE_CORE[3] * blend)
+        val ring = floatArrayOf(BLACK_HOLE_RING[0], BLACK_HOLE_RING[1], BLACK_HOLE_RING[2], BLACK_HOLE_RING[3] * blend)
+        val cx = 0f
+        val cy = 3.4f
+        val cz = -72f
+        drawBox(cx, cy, cz, 7.5f, 7.5f, 1f, core)
+        for (i in 0 until 3) {
+            val rr = 8.5f + i * 1.8f
+            val rot = scenePhase * (0.7f - i * 0.15f)
+            for (seg in 0 until 10) {
+                val a = rot + (Math.PI.toFloat() * 2f * seg / 10f)
+                val x = cx + cos(a) * rr
+                val y = cy + sin(a) * rr * 0.32f
+                drawBox(x, y, cz, 1.1f, 0.35f, 0.35f, ring)
+            }
+        }
+        mMode = 0
     }
 
     private fun drawSceneryMeadow() {

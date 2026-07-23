@@ -5,6 +5,7 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.os.Build
@@ -174,7 +175,6 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private val btnStargazeR = RectF()
     private val btnStargazeUpgrade = RectF()
     private val btnStargazeAge = RectF()
-    private val btnStargazeDone = RectF()
     private var stargazeDoneHint = ""
     /** 刘海 / 状态栏 / 手势条等安全区（像素） */
     private var safeL = 0f
@@ -276,13 +276,16 @@ class HudView(context: Context, private val game: Game) : View(context) {
         private const val HONOR_PER_PAGE = 8
         /** 全屏图鉴：顶栏 + 底栏固定占位，中间才是内容 */
         private const val OVERLAY_HEADER_H = 96f
-        private const val OVERLAY_FOOTER_H = 88f
+        private const val OVERLAY_FOOTER_H = 96f
+        /** 图鉴类浮层收尾行：关闭按钮尺寸 + 与面板底边的留白，排行榜/藏品/荣誉共用同一条基线 */
+        private const val CLOSE_BTN_SIZE = 44f
+        private const val CLOSE_ROW_MARGIN = 14f
         private const val LB_SCOPE_LOCAL = 0
         private const val LB_SCOPE_GLOBAL = 1
         /** 纪录榜顶栏比通用图鉴多一行大标题，需要单独更高的高度 */
         private const val LEADERBOARD_HEADER_H = 132f
         /** 纪录榜底栏比通用图鉴多了本地/全服切换、页码，偶尔还有同步状态行 */
-        private const val LEADERBOARD_FOOTER_H = 150f
+        private const val LEADERBOARD_FOOTER_H = 210f   // 底部多留一行放右下角关闭按钮，方便单手操作
         /** 纪录榜条目：默认单行更紧凑；一类里只要有一条挤不下就整类退到双行 */
         private const val ROW_H_SINGLE = 44f
         private const val ROW_H_DOUBLE = 52f
@@ -500,7 +503,6 @@ class HudView(context: Context, private val game: Game) : View(context) {
                                 applyStargazeView(stargazeBody)
                             }
                         }
-                        btnStargazeDone.contains(x, y) -> closeStargazing()
                         else -> closeStargazing()
                     }
                     return
@@ -800,8 +802,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
 
             // 左上角 buff：仅跑酷中显示
             textPaint.textAlign = Paint.Align.LEFT
-            val pauseBottom = top + 30f * s + 100f * s   // 与 drawPauseButton 同尺寸
-            val buffStartY = pauseBottom + 32f * s
+            val buffStartY = top + 46f * s   // 暂停按钮已挪到右下角，左上角 buff 直接从顶部起排
             var buffY = buffStartY
             if (game.state == Game.State.RUNNING) {
                 if (game.immortalMode) {
@@ -894,7 +895,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 }
             }
             Game.State.RUNNING -> {
-                drawPauseButton(canvas, s)
+                drawPauseButton(canvas, w, h, s)
                 if (game.chaseActive) drawChaseHud(canvas, w, h, s, sdx, sdy)
                 if (game.paused) drawPauseOverlay(canvas, w, h, s, sdx, sdy)
             }
@@ -1190,26 +1191,20 @@ class HudView(context: Context, private val game: Game) : View(context) {
         // 底栏比通用图鉴多了本地/全服切换 + 页码，偶尔还要放同步状态，同样需要单独的高度
         val footerTop = bottom - LEADERBOARD_FOOTER_H * s
 
-        btnPaint.style = Paint.Style.FILL
-        btnPaint.color = LIGHT_PANEL
-        canvas.drawRect(left, top, right, bottom, btnPaint)
-        btnPaint.style = Paint.Style.STROKE
-        btnPaint.strokeWidth = 2.5f * s
-        btnPaint.color = LIGHT_PANEL_EDGE
-        canvas.drawRect(left, top, right, bottom, btnPaint)
-        btnPaint.style = Paint.Style.FILL
-
-        val closeSize = 44f * s
-        btnLbClose.set(right - 14f * s - closeSize, top + 14f * s, right - 14f * s, top + 14f * s + closeSize)
-        drawLightBtn(canvas, btnLbClose, "X", s)
+        pixelPanel(canvas, left, top, right, bottom, LIGHT_PANEL, LIGHT_PANEL_EDGE, 3f * s, 16f * s)
 
         val titleCx = (left + right) * 0.5f
+        // 顶栏用一块暖金切角 banner 把标题区和列表区分开，比整片同色更有层次
+        pixelPanel(
+            canvas, left + 10f * s, top + 6f * s, right - 10f * s, headerBottom - 4f * s,
+            0xFFF3E4B8.toInt(), LIGHT_PANEL_EDGE, 1.5f * s, 9f * s, shadow = false
+        )
         val boardTitle = if (leaderboardScope == LB_SCOPE_GLOBAL) "全服纪录榜" else "本地纪录榜"
-        lightText(canvas, boardTitle, titleCx, top + 38f * s, 36f * s, LIGHT_TITLE)
+        lightText(canvas, boardTitle, titleCx, top + 46f * s, 36f * s, LIGHT_TITLE)
         val catSize = fittedTextSize(title, 28f * s, (right - left) * 0.82f, 18f * s)
-        lightText(canvas, title, titleCx, top + 78f * s, catSize, LIGHT_RELIC_LEGEND)
+        lightText(canvas, title, titleCx, top + 84f * s, catSize, LIGHT_RELIC_LEGEND)
         val subSize = fittedTextSize(subtitle, 20f * s, (right - left) * 0.88f, 14f * s)
-        lightText(canvas, subtitle, titleCx, top + 112f * s, subSize, LIGHT_SUB)
+        lightText(canvas, subtitle, titleCx, top + 116f * s, subSize, LIGHT_SUB)
 
         val rowGap = 8f * s
         val listTop = headerBottom + 8f * s
@@ -1294,7 +1289,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         drawLightBtn(canvas, btnLbPrev, "<", s)
         drawLightBtn(canvas, btnLbNext, ">", s)
 
-        lightText(canvas, "左右切换类别 · 点击外部关闭", titleCx, navY + navH + 22f * s, 18f * s, LIGHT_HINT)
+        drawOverlayCloseRow(canvas, left, right, bottom, s, "左右切换类别 · 点击外部关闭", btnLbClose)
     }
 
     /**
@@ -1327,24 +1322,20 @@ class HudView(context: Context, private val game: Game) : View(context) {
         canvas: Canvas, left: Float, top: Float, right: Float, bottom: Float,
         s: Float, rank: Int, entry: Leaderboards.Entry, category: Int, singleLine: Boolean
     ) {
-        btnPaint.style = Paint.Style.FILL
-        btnPaint.color = if (rank <= 3) 0xFFFFF6DC.toInt() else LIGHT_ROW
-        canvas.drawRect(left, top, right, bottom, btnPaint)
-        btnPaint.style = Paint.Style.STROKE
-        btnPaint.strokeWidth = 1.5f * s
-        btnPaint.color = LIGHT_ROW_EDGE
-        canvas.drawRect(left, top, right, bottom, btnPaint)
-        btnPaint.style = Paint.Style.FILL
+        val rowFill = if (rank <= 3) 0xFFFFF6DC.toInt() else LIGHT_ROW
+        pixelPanel(canvas, left, top, right, bottom, rowFill, LIGHT_ROW_EDGE, 1.5f * s, 7f * s, shadow = rank <= 3)
 
         val cy = (top + bottom) * 0.5f
-        val rankColor = when (rank) {
-            1 -> LIGHT_RELIC_LEGEND
-            2 -> LIGHT_MUTED
-            3 -> 0xFF8B6914.toInt()
-            else -> LIGHT_MUTED
+        val badgeCx = left + 26f * s
+        if (rank <= 3) {
+            // 前三名直接用与荣誉墙同款的像素奖牌，比数字更抓眼
+            val medalR = 17f * s
+            drawMedal(canvas, badgeCx, cy, medalR, 4 - rank)
+        } else {
+            val rankColor = LIGHT_MUTED
+            textPaint.textAlign = Paint.Align.CENTER
+            lightText(canvas, "$rank", badgeCx, centeredBaselineY(cy, 22f * s), 22f * s, rankColor)
         }
-        textPaint.textAlign = Paint.Align.LEFT
-        lightText(canvas, "#$rank", left + 12f * s, cy + 8f * s, 22f * s, rankColor)
 
         val rowW = right - left
         val name = entry.player.ifEmpty { "?" }
@@ -1356,16 +1347,16 @@ class HudView(context: Context, private val game: Game) : View(context) {
             textPaint.textAlign = Paint.Align.RIGHT
             val valueMaxW = rowW * ROW_VALUE_W
             val valueSize = fittedTextSize(valueText, 22f * s, valueMaxW, ROW_VALUE_MIN * s)
-            lightText(canvas, valueText, right - 12f * s, cy + 7f * s, valueSize, LIGHT_RELIC_RARE)
+            lightText(canvas, valueText, right - 12f * s, centeredBaselineY(cy, valueSize), valueSize, LIGHT_RELIC_RARE)
 
             val detailMaxW = rowW * ROW_DETAIL_W
             val detailSize = fittedTextSize(detail, 16f * s, detailMaxW, ROW_DETAIL_MIN * s)
-            lightText(canvas, detail, right - 12f * s - valueMaxW - 10f * s, cy + 6f * s, detailSize, LIGHT_HINT)
+            lightText(canvas, detail, right - 12f * s - valueMaxW - 10f * s, centeredBaselineY(cy, detailSize), detailSize, LIGHT_HINT)
 
             textPaint.textAlign = Paint.Align.LEFT
             val nameMaxW = rowW * ROW_NAME_W
             val nameSize = fittedTextSize(name, 22f * s, nameMaxW, ROW_NAME_MIN * s)
-            lightText(canvas, name, left + 52f * s, cy + 8f * s, nameSize, LIGHT_TEXT)
+            lightText(canvas, name, left + 52f * s, centeredBaselineY(cy, nameSize), nameSize, LIGHT_TEXT)
         } else {
             val detail = leaderboardDetailText(entry)
             val nameMaxW = rowW * 0.34f
@@ -1523,7 +1514,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         drawHomeNamePlaque(canvas, plaqueL, plaqueT, plaqueR, plaqueB, s)
         drawTinyHouseIcon(canvas, plaqueL + 22f * s, plaqueCy, s * 0.85f)
         pixText(
-            canvas, title, titleCx + 6f * s, plaqueCy + titleSize * 0.32f,
+            canvas, title, titleCx + 6f * s, centeredBaselineY(plaqueCy, titleSize),
             titleSize, 0xFFFFF6E8.toInt(), sdx, sdy
         )
         y = plaqueB + afterPlaque
@@ -1546,7 +1537,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
             w / 2f + rewardChipW / 2f, rewardBottom, btnPaint
         )
         pixText(
-            canvas, rewardLine, w / 2f, rewardCy + rewardSize * 0.32f,
+            canvas, rewardLine, w / 2f, centeredBaselineY(rewardCy, rewardSize),
             rewardSize, 0xCCE8F4FF.toInt(), sdx, sdy
         )
         y = rewardBottom + afterReward
@@ -1618,7 +1609,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
 
         textPaint.textAlign = Paint.Align.LEFT
         pixText(
-            canvas, "${game.wallet}", contentL + 32f * s, cy + labelSize * 0.32f,
+            canvas, "${game.wallet}", contentL + 32f * s, centeredBaselineY(cy, labelSize),
             labelSize, 0xFFFFD75E.toInt(), sdx, sdy
         )
         textPaint.textAlign = Paint.Align.CENTER
@@ -1680,7 +1671,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val totalW = labelW + 10f * s + 3f * (pip + pipGap) + 8f * s + lvW
         var x = cx - totalW / 2f
 
-        pixText(canvas, label, x, cy + labelSize * 0.32f, labelSize, 0xFF9AD9A0.toInt(), sdx, sdy)
+        pixText(canvas, label, x, centeredBaselineY(cy, labelSize), labelSize, 0xFF9AD9A0.toInt(), sdx, sdy)
         x += labelW + 10f * s
 
         val glow = 0.7f + 0.3f * (0.5f + 0.5f * kotlin.math.sin(homePhase * 2.6f))
@@ -1710,7 +1701,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
 
         textPaint.textAlign = Paint.Align.LEFT
         pixText(
-            canvas, lvLabel, x + 8f * s, cy + 18f * s * 0.32f, 18f * s,
+            canvas, lvLabel, x + 8f * s, centeredBaselineY(cy, 18f * s), 18f * s,
             if (lv > 0) 0xFF7DEBA0.toInt() else 0xFF8899AA.toInt(), sdx, sdy
         )
         textPaint.textAlign = Paint.Align.CENTER
@@ -1781,16 +1772,16 @@ class HudView(context: Context, private val game: Game) : View(context) {
 
         textPaint.textAlign = Paint.Align.LEFT
         val labelSize = min(28f * s, r.height() * 0.38f).coerceAtLeast(22f * s)
-        pixText(canvas, "出门", r.left + 72f * s, r.centerY() + labelSize * 0.32f, labelSize, Color.WHITE, 1f, 1f)
+        pixText(canvas, "出门", r.left + 72f * s, centeredBaselineY(r.centerY(), labelSize), labelSize, Color.WHITE, 1f, 1f)
         textPaint.textAlign = Paint.Align.CENTER
     }
 
     private fun drawHomeShopStrip(canvas: Canvas, w: Float, h: Float, s: Float, sdx: Float, sdy: Float) {
         val portrait = h > w
         val stripTop = h * (if (portrait) 0.74f else 0.78f)
+        val by = h * (if (portrait) 0.80f else 0.83f)
         btnPaint.style = Paint.Style.FILL
         btnPaint.color = 0xCC1C2634.toInt()
-        canvas.drawRect(0f, stripTop, w, h * 0.86f, btnPaint)
 
         if (game.isCatHomeTab()) {
             val tabGap = 8f * s
@@ -1816,7 +1807,6 @@ class HudView(context: Context, private val game: Game) : View(context) {
             }
         }
 
-        val by = h * (if (portrait) 0.80f else 0.83f)
         val arrowHalf = if (portrait) 36f * s else 28f * s
         val arrowH = if (portrait) 28f * s else 22f * s
         btnHomeL.set(w * 0.16f - arrowHalf, by - arrowH, w * 0.16f + arrowHalf, by + arrowH)
@@ -1828,10 +1818,16 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val infoSize = fittedTextSize(info, 24f * s, w * 0.54f, 18f * s)
         pixText(canvas, info, w / 2f, by + 6f * s, infoSize, Color.WHITE, sdx, sdy)
 
-        val buyH = if (portrait) 52f * s else 44f * s
-        val buyW = if (portrait) min(150f * s, w * 0.34f) else 120f * s
-        btnHomeBuy.set(w / 2f - buyW, h * 0.855f, w / 2f + buyW, h * 0.855f + buyH)
-        drawBtn(canvas, btnHomeBuy, action, s)
+        if (action.isNotEmpty()) {
+            val buyH = if (portrait) 52f * s else 44f * s
+            val buyW = if (portrait) min(150f * s, w * 0.34f) else 120f * s
+            // 紧跟在名称/翻页那一行下面，不再按固定的 0.855h 往下拉开一截
+            val buyTop = by + 34f * s
+            btnHomeBuy.set(w / 2f - buyW, buyTop, w / 2f + buyW, buyTop + buyH)
+            drawBtn(canvas, btnHomeBuy, action, s)
+        } else {
+            btnHomeBuy.setEmpty()
+        }
     }
 
     private fun homeBrowseRow(): HomeRow = when (game.homeTab) {
@@ -1864,7 +1860,9 @@ class HudView(context: Context, private val game: Game) : View(context) {
             HomeRow(
                 Game.DECO_NAMES[i], Game.DECO_PRICES[i],
                 if (game.ownsDeco(i)) "已摆放" else "",
-                if (game.ownsDeco(i)) "已摆放" else "购买"
+                // 摆件一旦拥有就直接摆进院子，没有再点一次的意义；
+                // action 留空表示这行不需要按钮，避免和上面的状态文字重复
+                if (game.ownsDeco(i)) "" else "购买"
             )
         }
         Game.HOME_TAB_COLOR -> {
@@ -2175,7 +2173,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val label = "藏品 ${game.relicsFound}/${Game.RELIC_COUNT}"
         val size = fittedTextSize(label, min(15f * s, 17f * u), 100f * u, 12f * s)
         textPaint.textAlign = Paint.Align.CENTER
-        pixText(canvas, label, mx, (friezeT + friezeB) * 0.5f + size * 0.34f, size, 0xFF5C3D0A.toInt(), 0f, 0f)
+        pixText(canvas, label, mx, centeredBaselineY((friezeT + friezeB) * 0.5f, size), size, 0xFF5C3D0A.toInt(), 0f, 0f)
         landmarkPulseFrame(canvas, mx - 54f * u, friezeT, mx + 54f * u, friezeB, s)
 
         hitMuseum.set(mx - 60f * u, friezeT - 30f * u, mx + 60f * u, base + 6f * s)
@@ -2284,7 +2282,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val label = "荣誉 ${game.achieveCount}/${Game.ACHIEVE_MAX}"
         val size = fittedTextSize(label, min(15f * s, 17f * u), 92f * u, 12f * s)
         textPaint.textAlign = Paint.Align.CENTER
-        pixText(canvas, label, hx, (signT + signB) * 0.5f + size * 0.34f, size, 0xFFFFF6E8.toInt(), 0f, 0f)
+        pixText(canvas, label, hx, centeredBaselineY((signT + signB) * 0.5f, size), size, 0xFFFFF6E8.toInt(), 0f, 0f)
         landmarkPulseFrame(canvas, hx - 50f * u, signT, hx + 50f * u, signB, s)
 
         hitHonorWall.set(hx - 76f * u, signT, hx + 76f * u, base + 6f * s)
@@ -3026,19 +3024,8 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private fun drawStargazeOverlay(canvas: Canvas, w: Float, h: Float, s: Float, sdx: Float, sdy: Float) {
         dim(canvas, w, h)
         val pw = min(w * 0.92f, 560f * s)
-        val top = h * 0.10f
         val left = w / 2f - pw / 2f
         val right = w / 2f + pw / 2f
-        val bottom = h * 0.90f
-
-        btnPaint.style = Paint.Style.FILL
-        btnPaint.color = 0xF20C1220.toInt()
-        canvas.drawRect(left, top, right, bottom, btnPaint)
-        btnPaint.style = Paint.Style.STROKE
-        btnPaint.strokeWidth = 2f
-        btnPaint.color = 0xFF6B8CFF.toInt()
-        canvas.drawRect(left, top, right, bottom, btnPaint)
-        btnPaint.style = Paint.Style.FILL
 
         val body = stargazeBody.coerceIn(0, game.telescopeLevel)
         val card = StargazeCards.card(body)
@@ -3049,96 +3036,107 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val facts = StargazeCards.facts(card, age)
         val tonight = StargazeCards.tonight(card, age)
 
+        // 卡片高度按内容实际需要来算，不再固定占屏幕 80%，避免大片空白；
+        // 各元素先算出「相对卡片顶部」的位置，最后统一居中定出 top/bottom
+        val nameY = 66f * s
+        val readTagY = nameY + 34f * s
+        val lensR = min(pw * 0.26f, 92f * s)
+        val lensCy = readTagY + 26f * s + lensR
+        val badgeY = lensCy + lensR + 30f * s
+        val hookY = badgeY + 32f * s
+        val chipTop = hookY + 30f * s
+        val chipH = 40f * s
+        val chipY = chipTop + chipH * 0.62f
+        val tipY = chipTop + chipH + 30f * s
+        val footTextY = tipY + 40f * s
+        val hasUpgrade = game.telescopeCanUpgrade()
+        val upH = 44f * s
+        val btnRowCy = footTextY + 34f * s
+        // 没有升级按钮时不再单独留一整行给收尾按钮，卡片会更短
+        val hintY = if (hasUpgrade) btnRowCy + upH / 2f + 26f * s else footTextY + 30f * s
+        val relBottom = hintY + 20f * s
+
+        val top = ((h - relBottom) / 2f).coerceIn(h * 0.05f, h * 0.16f)
+        val bottom = top + relBottom
+        pixelPanel(canvas, left, top, right, bottom, 0xF20C1220.toInt(), 0xFF6B8CFF.toInt(), 2.5f * s, 16f * s)
+
         // 顶栏：名称 + 年龄切换
-        pixText(canvas, name, w / 2f, top + 34f * s, 34f * s, 0xFFB8CCFF.toInt(), sdx, sdy)
+        pixText(canvas, name, w / 2f, top + nameY, 34f * s, 0xFFB8CCFF.toInt(), sdx, sdy)
         val ageW = 72f * s
         val ageH = 32f * s
-        btnStargazeAge.set(right - ageW - 14f * s, top + 14f * s, right - 14f * s, top + 14f * s + ageH)
+        btnStargazeAge.set(right - ageW - 14f * s, top + 16f * s, right - 14f * s, top + 16f * s + ageH)
         drawBtn(canvas, btnStargazeAge, game.stargazeAgeLabel(), s)
         pixText(canvas, "$readTag · ${game.stargazeReadCount()}/${game.telescopeLevel + 1}",
-            w / 2f, top + 60f * s, 18f * s, 0xFF88AACC.toInt(), sdx, sdy)
+            w / 2f, top + readTagY, 18f * s, 0xFF88AACC.toInt(), sdx, sdy)
 
         // 中央大镜筒（主视觉）
-        val lensR = min(pw * 0.28f, 110f * s)
         val lensCx = w / 2f
-        val lensCy = top + 60f * s + lensR + 18f * s
+        val lensCyAbs = top + lensCy
         btnPaint.color = 0xFF060818.toInt()
-        canvas.drawCircle(lensCx, lensCy, lensR + 6f * s, btnPaint)
+        canvas.drawCircle(lensCx, lensCyAbs, lensR + 6f * s, btnPaint)
         canvas.save()
-        canvas.clipRect(lensCx - lensR, lensCy - lensR, lensCx + lensR, lensCy + lensR)
+        canvas.clipRect(lensCx - lensR, lensCyAbs - lensR, lensCx + lensR, lensCyAbs + lensR)
         btnPaint.color = 0xFF0A1028.toInt()
-        canvas.drawRect(lensCx - lensR, lensCy - lensR, lensCx + lensR, lensCy + lensR, btnPaint)
-        drawStargazeStars(canvas, lensCx, lensCy, lensR, s, body)
-        drawCelestialBody(canvas, lensCx, lensCy, lensR * 0.58f, s, body)
+        canvas.drawRect(lensCx - lensR, lensCyAbs - lensR, lensCx + lensR, lensCyAbs + lensR, btnPaint)
+        drawStargazeStars(canvas, lensCx, lensCyAbs, lensR, s, body)
+        drawCelestialBody(canvas, lensCx, lensCyAbs, lensR * 0.58f, s, body)
         canvas.restore()
         btnPaint.style = Paint.Style.STROKE
         btnPaint.strokeWidth = 3f * s
         btnPaint.color = 0xFF4A5A88.toInt()
-        canvas.drawCircle(lensCx, lensCy, lensR, btnPaint)
+        canvas.drawCircle(lensCx, lensCyAbs, lensR, btnPaint)
         btnPaint.strokeWidth = 1.5f * s
         btnPaint.color = 0xFF2A3458.toInt()
-        canvas.drawCircle(lensCx, lensCy, lensR + 6f * s, btnPaint)
+        canvas.drawCircle(lensCx, lensCyAbs, lensR + 6f * s, btnPaint)
         btnPaint.style = Paint.Style.FILL
 
         // 术语徽章
-        val badgeY = lensCy + lensR + 28f * s
-        pixText(canvas, card.term, w / 2f, badgeY, 26f * s, 0xFFFFD426.toInt(), sdx, sdy)
+        pixText(canvas, card.term, w / 2f, top + badgeY, 26f * s, 0xFFFFD426.toInt(), sdx, sdy)
 
         // 一句钩子
         val hookSize = fittedTextSize(hook, 22f * s, pw * 0.86f, 16f * s)
-        pixText(canvas, hook, w / 2f, badgeY + 30f * s, hookSize, 0xFFE8ECF4.toInt(), sdx, sdy)
+        pixText(canvas, hook, w / 2f, top + hookY, hookSize, 0xFFE8ECF4.toInt(), sdx, sdy)
 
         // 两条要点（并排小卡）
         val chipW = (pw - 48f * s) / 2f
-        val chipH = 40f * s
-        val chipTop = badgeY + 52f * s
-        val chipY = chipTop + chipH * 0.62f
+        val chipTopAbs = top + chipTop
         for (i in 0 until minOf(2, facts.size)) {
             val cx = left + 16f * s + chipW * 0.5f + i * (chipW + 16f * s)
             val cl = cx - chipW * 0.5f
             val cr = cx + chipW * 0.5f
-            btnPaint.color = 0xFF162038.toInt()
-            canvas.drawRect(cl, chipTop, cr, chipTop + chipH, btnPaint)
-            btnPaint.style = Paint.Style.STROKE
-            btnPaint.strokeWidth = 1.5f * s
-            btnPaint.color = 0xFF3A4A70.toInt()
-            canvas.drawRect(cl, chipTop, cr, chipTop + chipH, btnPaint)
-            btnPaint.style = Paint.Style.FILL
+            pixelPanel(canvas, cl, chipTopAbs, cr, chipTopAbs + chipH, 0xFF162038.toInt(), 0xFF3A4A70.toInt(), 1.5f * s, 6f * s, shadow = false)
             val factSize = fittedTextSize(facts[i], 18f * s, chipW * 0.9f, 14f * s)
-            pixText(canvas, facts[i], cx, chipY, factSize, 0xFFCCDDFF.toInt(), sdx, sdy)
+            pixText(canvas, facts[i], cx, top + chipY, factSize, 0xFFCCDDFF.toInt(), sdx, sdy)
         }
 
         // 今晚一看
-        val tipTop = chipTop + chipH + 22f * s
-        pixText(canvas, "今晚 · $tonight", w / 2f, tipTop,
+        pixText(canvas, "今晚 · $tonight", w / 2f, top + tipY,
             fittedTextSize("今晚 · $tonight", 20f * s, pw * 0.88f, 15f * s),
             0xFF9AD9A0.toInt(), sdx, sdy)
 
         // 左右切换（贴在镜筒两侧）
         val arrowHalf = 28f * s
-        btnStargazeL.set(left + 10f * s, lensCy - arrowHalf, left + 10f * s + arrowHalf * 2f, lensCy + arrowHalf)
-        btnStargazeR.set(right - 10f * s - arrowHalf * 2f, lensCy - arrowHalf, right - 10f * s, lensCy + arrowHalf)
+        btnStargazeL.set(left + 10f * s, lensCyAbs - arrowHalf, left + 10f * s + arrowHalf * 2f, lensCyAbs + arrowHalf)
+        btnStargazeR.set(right - 10f * s - arrowHalf * 2f, lensCyAbs - arrowHalf, right - 10f * s, lensCyAbs + arrowHalf)
         if (body > 0) drawBtn(canvas, btnStargazeL, "<", s)
         if (body < game.telescopeLevel) drawBtn(canvas, btnStargazeR, ">", s)
 
-        // 升级 / 关闭
-        val upH = 44f * s
-        val upW = min(pw * 0.42f, 220f * s)
-        val upLeft = w / 2f - upW - 8f * s
-        btnStargazeUpgrade.set(upLeft, bottom - upH - 18f * s, upLeft + upW, bottom - 18f * s)
-        if (game.telescopeCanUpgrade()) {
+        // 提示语：读完新卡的引导语优先，否则显示常规说明
+        val foot = stargazeDoneHint.ifEmpty { "新卡每天 1 张 · 旧卡可随时复习" }
+        pixText(canvas, foot, w / 2f, top + footTextY, 16f * s, 0xFF888888.toInt(), sdx, sdy)
+
+        // 没有独立的关闭按钮：点卡片外任意空白处即可关闭，升级（如有）居中显示
+        if (hasUpgrade) {
+            val upW = min(pw * 0.55f, 220f * s)
+            val upLeft = w / 2f - upW / 2f
+            val btnRowCyAbs = top + btnRowCy
+            btnStargazeUpgrade.set(upLeft, btnRowCyAbs - upH / 2f, upLeft + upW, btnRowCyAbs + upH / 2f)
             drawBtn(canvas, btnStargazeUpgrade, "升级 (${game.telescopeUpgradePrice()})", s)
         } else {
             btnStargazeUpgrade.setEmpty()
         }
-        val doneW = min(pw * 0.42f, 220f * s)
-        val doneLeft = w / 2f + 8f * s
-        btnStargazeDone.set(doneLeft, bottom - upH - 18f * s, doneLeft + doneW, bottom - 18f * s)
-        drawBtn(canvas, btnStargazeDone,
-            if (stargazeDoneHint.isNotEmpty()) "读完了，休息去" else "关闭", s)
 
-        val foot = stargazeDoneHint.ifEmpty { "新卡每天 1 张 · 旧卡可随时复习" }
-        pixText(canvas, foot, w / 2f, bottom - 72f * s, 16f * s, 0xFF888888.toInt(), sdx, sdy)
+        pixText(canvas, "点击外部关闭", w / 2f, top + hintY, 14f * s, 0xFF667088.toInt(), sdx, sdy)
     }
 
     private fun drawStargazeStars(canvas: Canvas, cx: Float, cy: Float, r: Float, s: Float, body: Int) {
@@ -3444,9 +3442,12 @@ class HudView(context: Context, private val game: Game) : View(context) {
         )
     }
 
-    private fun drawPauseButton(canvas: Canvas, s: Float) {
+    private fun drawPauseButton(canvas: Canvas, w: Float, h: Float, s: Float) {
+        // 放在右下角，方便单手握持时用拇指直接点到
         val size = 100f * s
-        btnPause.set(30f * s, hudTop + 30f * s, 30f * s + size, hudTop + 30f * s + size)
+        val right = w - safeR - 30f * s
+        val bottom = h - safeB - 30f * s
+        btnPause.set(right - size, bottom - size, right, bottom)
         btnPaint.style = Paint.Style.FILL
         btnPaint.color = 0x88222C38.toInt()
         canvas.drawRect(btnPause, btnPaint)
@@ -3541,18 +3542,11 @@ class HudView(context: Context, private val game: Game) : View(context) {
 
         homeOverlayPanel.set(0f, 0f, w, h)
 
-        val closeSize = 44f * s
-        btnCatalogClose.set(
-            right - 14f * s - closeSize, top + 14f * s,
-            right - 14f * s, top + 14f * s + closeSize
-        )
-        drawLightBtn(canvas, btnCatalogClose, "X", s)
-
         textPaint.textAlign = Paint.Align.CENTER
         val titleCx = (left + right) * 0.5f
-        lightText(canvas, title, titleCx, top + 38f * s, 36f * s, LIGHT_TITLE)
+        lightText(canvas, title, titleCx, top + 46f * s, 36f * s, LIGHT_TITLE)
         val subSize = fittedTextSize(subtitle, 20f * s, (right - left) * 0.72f, 14f * s)
-        lightText(canvas, subtitle, titleCx, top + 72f * s, subSize, LIGHT_SUB)
+        lightText(canvas, subtitle, titleCx, top + 80f * s, subSize, LIGHT_SUB)
 
         return OverlayFrame(left, top, right, bottom, right - left, contentTop, contentBottom)
     }
@@ -3633,15 +3627,15 @@ class HudView(context: Context, private val game: Game) : View(context) {
         closeHint: String? = null
     ) {
         val cx = (frame.left + frame.right) * 0.5f
-        val pagerCy = frame.bottom - 52f * s
         val hint = closeHint ?: if (pages > 1) {
             "左右滑动翻页 · 点 X 或返回退出"
         } else {
             "点 X 或返回退出"
         }
+        // 页码单独一行，坐落在收尾行（提示 + 关闭按钮）正上方
         textPaint.textAlign = Paint.Align.CENTER
-        lightText(canvas, "${page + 1}/$pages", cx, pagerCy + 8f * s, 22f * s, LIGHT_TEXT)
-        lightText(canvas, hint, cx, frame.bottom - 18f * s, 16f * s, LIGHT_HINT)
+        lightText(canvas, "${page + 1}/$pages", cx, frame.bottom - 70f * s, 22f * s, LIGHT_TEXT)
+        drawOverlayCloseRow(canvas, frame.left, frame.right, frame.bottom, s, hint, btnCatalogClose)
     }
 
     /** 钉在荣誉墙上的木质匾额：木框 + 内板 + 四角螺钉，已解锁的镶一圈金属边 */
@@ -3685,18 +3679,15 @@ class HudView(context: Context, private val game: Game) : View(context) {
         canvas: Canvas, r: RectF, label: String, s: Float,
         selected: Boolean = false, enabled: Boolean = true
     ) {
-        btnPaint.style = Paint.Style.FILL
-        btnPaint.color = when {
+        val fill = when {
             !enabled -> 0xFFE8E2D6.toInt()
             selected -> 0xFFFFF6DC.toInt()
             else -> LIGHT_BTN
         }
-        canvas.drawRect(r, btnPaint)
-        btnPaint.style = Paint.Style.STROKE
-        btnPaint.strokeWidth = if (selected) 2.5f * s else 1.5f * s
-        btnPaint.color = if (selected) LIGHT_PANEL_EDGE else LIGHT_BTN_EDGE
-        canvas.drawRect(r, btnPaint)
-        btnPaint.style = Paint.Style.FILL
+        val edge = if (selected) LIGHT_PANEL_EDGE else LIGHT_BTN_EDGE
+        val edgeW = if (selected) 2.5f * s else 1.5f * s
+        val notch = min(r.width(), r.height()) * 0.22f
+        pixelPanel(canvas, r.left, r.top, r.right, r.bottom, fill, edge, edgeW, notch, shadow = selected)
         textPaint.textAlign = Paint.Align.CENTER
         val labelSize = min(32f * s, r.height() * 0.45f).coerceAtLeast(24f * s)
         val ink = when {
@@ -3704,7 +3695,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
             selected -> LIGHT_TITLE
             else -> LIGHT_TEXT
         }
-        lightText(canvas, label, r.centerX(), r.centerY() + labelSize * 0.32f, labelSize, ink)
+        lightText(canvas, label, r.centerX(), centeredBaselineY(r.centerY(), labelSize), labelSize, ink)
     }
 
     /** 亮色底上的稀有度字色，避免霓虹色 + 阴影发糊 */
@@ -3873,6 +3864,8 @@ class HudView(context: Context, private val game: Game) : View(context) {
             btnPaint.color = color
             canvas.drawRect(l, t, r, b, btnPaint)
         }
+        // 投影：让展柜从墙面/地板底色上脱离出来，呼应荣誉匾额的投影处理
+        rc(left + 3f * s, top + 4f * s, right + 3f * s, bottom + 4f * s, 0x2E000000)
         // 柜顶射灯
         rc((left + right) * 0.5f - 4f * s, top - 7f * s, (left + right) * 0.5f + 4f * s, top - 1f * s, 0xFF6B4A2B.toInt())
         // 玻璃罩
@@ -4014,17 +4007,22 @@ class HudView(context: Context, private val game: Game) : View(context) {
     }
 
     private fun drawBtn(canvas: Canvas, r: RectF, label: String, s: Float) {
-        btnPaint.style = Paint.Style.FILL
-        btnPaint.color = 0xCC222C38.toInt()
-        canvas.drawRect(r, btnPaint)
-        btnPaint.style = Paint.Style.STROKE
-        btnPaint.strokeWidth = 1f
-        btnPaint.color = 0xAAFFFFFF.toInt()
-        canvas.drawRect(r, btnPaint)
-        btnPaint.style = Paint.Style.FILL
+        val notch = min(r.width(), r.height()) * 0.22f
+        pixelPanel(canvas, r.left, r.top, r.right, r.bottom, 0xCC222C38.toInt(), 0xAAFFFFFF.toInt(), 1f, notch, shadow = false)
         textPaint.textAlign = Paint.Align.CENTER
         val labelSize = min(32f * s, r.height() * 0.45f).coerceAtLeast(24f * s)
-        pixText(canvas, label, r.centerX(), r.centerY() + labelSize * 0.32f, labelSize, Color.WHITE, 1f, 1f)
+        pixText(canvas, label, r.centerX(), centeredBaselineY(r.centerY(), labelSize), labelSize, Color.WHITE, 1f, 1f)
+    }
+
+    /**
+     * 按钮标签的居中基线：用字体真实 ascent/descent 算，而不是固定的 0.32 经验系数。
+     * 按钮框越贴字号（比如迷你的年龄切换按钮），经验系数的误差就越明显。
+     */
+    private fun centeredBaselineY(cy: Float, textSize: Float): Float {
+        val steps = (textSize / FONT_PX).roundToInt().coerceAtLeast(1)
+        textPaint.textSize = (steps * FONT_PX).toFloat()
+        val fm = textPaint.fontMetrics
+        return cy - (fm.ascent + fm.descent) / 2f
     }
 
     private fun fittedTextSize(text: String, preferredSize: Float, maxWidth: Float, minSize: Float): Float {
@@ -4104,5 +4102,68 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private fun dim(canvas: Canvas, w: Float, h: Float) {
         dimPaint.color = 0x66000000
         canvas.drawRect(0f, 0f, w, h, dimPaint)
+    }
+
+    private val chamferPathBuf = Path()
+
+    /** 切角八边形路径：直角面板的四角各削掉一块方口，比直角柔和又不脱离像素风格 */
+    private fun chamferPath(l: Float, t: Float, r: Float, b: Float, n: Float): Path {
+        val nn = n.coerceAtMost(min(r - l, b - t) * 0.5f)
+        chamferPathBuf.reset()
+        chamferPathBuf.moveTo(l + nn, t)
+        chamferPathBuf.lineTo(r - nn, t)
+        chamferPathBuf.lineTo(r, t + nn)
+        chamferPathBuf.lineTo(r, b - nn)
+        chamferPathBuf.lineTo(r - nn, b)
+        chamferPathBuf.lineTo(l + nn, b)
+        chamferPathBuf.lineTo(l, b - nn)
+        chamferPathBuf.lineTo(l, t + nn)
+        chamferPathBuf.close()
+        return chamferPathBuf
+    }
+
+    /**
+     * 图鉴类浮层通用的"切角面板"：偏移投影 + 主体 + 描边，统一排行榜/藏品/荣誉的观感。
+     * notch 控制切角大小；shadow 关闭时用于行内小面板，避免层层投影糊在一起。
+     */
+    private fun pixelPanel(
+        canvas: Canvas, l: Float, t: Float, r: Float, b: Float,
+        fill: Int, edge: Int, edgeW: Float, notch: Float, shadow: Boolean = true
+    ) {
+        if (shadow) {
+            val sh = notch * 0.5f
+            btnPaint.style = Paint.Style.FILL
+            btnPaint.color = 0x3A000000
+            canvas.drawPath(chamferPath(l + sh, t + sh, r + sh, b + sh, notch), btnPaint)
+        }
+        btnPaint.style = Paint.Style.FILL
+        btnPaint.color = fill
+        canvas.drawPath(chamferPath(l, t, r, b, notch), btnPaint)
+        if (edgeW > 0f) {
+            btnPaint.style = Paint.Style.STROKE
+            btnPaint.strokeWidth = edgeW
+            btnPaint.color = edge
+            canvas.drawPath(chamferPath(l, t, r, b, notch), btnPaint)
+        }
+        btnPaint.style = Paint.Style.FILL
+    }
+
+    /**
+     * 图鉴类浮层统一的底部收尾行：提示文字与关闭按钮共用同一条基线，
+     * 排行榜 / 藏品 / 荣誉三处共用，改一处三处一起对齐。
+     */
+    private fun drawOverlayCloseRow(
+        canvas: Canvas, left: Float, right: Float, panelBottom: Float, s: Float,
+        hint: String, closeBtn: RectF
+    ) {
+        val closeSize = CLOSE_BTN_SIZE * s
+        val margin = CLOSE_ROW_MARGIN * s
+        val cy = panelBottom - margin - closeSize / 2f
+        closeBtn.set(right - margin - closeSize, cy - closeSize / 2f, right - margin, cy + closeSize / 2f)
+        val hintMaxW = ((right - left) - (closeSize + margin) * 2f - 16f * s).coerceAtLeast(40f * s)
+        val hintSize = fittedTextSize(hint, 18f * s, hintMaxW, 12f * s)
+        textPaint.textAlign = Paint.Align.CENTER
+        lightText(canvas, hint, (left + right) * 0.5f, centeredBaselineY(cy, hintSize), hintSize, LIGHT_HINT)
+        drawLightBtn(canvas, closeBtn, "X", s)
     }
 }
