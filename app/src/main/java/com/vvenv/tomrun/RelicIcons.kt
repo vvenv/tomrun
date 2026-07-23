@@ -407,7 +407,7 @@ object RelicIcons {
             76 -> drawGu(canvas, paint, cx, cy, u, fancy)
             77 -> drawJue(canvas, paint, cx, cy, u, fancy)
             78 -> drawZun(canvas, paint, cx, cy, u, fancy)
-            79 -> drawBells(canvas, paint, cx, cy, u, fancy)
+            79 -> drawNao(canvas, paint, cx, cy, u, fancy)
             80 -> drawStoneDrum(canvas, paint, cx, cy, u, fancy)
             81 -> drawStele(canvas, paint, cx, cy, u, fancy)
             82 -> drawFishTally(canvas, paint, cx, cy, u, fancy)
@@ -1707,6 +1707,33 @@ object RelicIcons {
         disc(canvas, paint, cx, cy, u, 1.5f, -2.5f, 1.1f, CLAY_LT)
         px(canvas, paint, cx, cy, u, 0.7f, -1.5f, 1.6f, 2.0f, 0xFFC04040.toInt())
         px(canvas, paint, cx, cy, u, -1.5f, -1.2f, 0.35f, 3f, 0x55B8E0C0)
+    }
+
+    /** 铜铙：商代单面铜铙，口沿向下、顶部有钮 */
+    private fun drawNao(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
+        if (!fancy) {
+            px(canvas, paint, cx, cy, u, -0.5f, -5.5f, 1f, 2f, BRONZE_DK)
+            px(canvas, paint, cx, cy, u, -4.5f, -3.5f, 9f, 5.5f, BRONZE)
+            px(canvas, paint, cx, cy, u, -5f, 1.5f, 10f, 1f, BRONZE_DK)
+            return
+        }
+        // 顶部环钮
+        px(canvas, paint, cx, cy, u, -0.6f, -6.5f, 1.2f, 2.5f, BRONZE_DK)
+        disc(canvas, paint, cx, cy, u, 0f, -6.8f, 0.9f, BRONZE)
+        // 钟身：上窄下宽的倒钟形
+        px(canvas, paint, cx, cy, u, -3.5f, -4.0f, 7f, 2.5f, BRONZE_LT)
+        px(canvas, paint, cx, cy, u, -5.0f, -1.5f, 10f, 4.5f, BRONZE)
+        px(canvas, paint, cx, cy, u, -5.5f, 2.5f, 11f, 1.2f, BRONZE_DK)
+        // 口沿卷边
+        px(canvas, paint, cx, cy, u, -5.8f, 3.2f, 11.6f, 0.6f, BRONZE_LT)
+        // 枚（乳钉）
+        for (i in -2..2) for (j in 0..2) {
+            disc(canvas, paint, cx, cy, u, i * 1.8f, -2.5f + j * 1.6f, 0.35f, GOLD_DK)
+        }
+        // 兽面纹带
+        px(canvas, paint, cx, cy, u, -4f, 0.5f, 8f, 1.2f, BRONZE_DK)
+        px(canvas, paint, cx, cy, u, -1.5f, 0.7f, 3f, 0.8f, GOLD_DK)
+        px(canvas, paint, cx, cy, u, -4.5f, -1f, 0.35f, 4f, 0x55B8E0C0)
     }
 
     /** 舞马衔杯：跪姿骏马口衔酒杯 */

@@ -274,7 +274,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         private const val HONOR_PER_PAGE = 8
         /** 全屏图鉴：顶栏 + 底栏固定占位，中间才是内容 */
         private const val OVERLAY_HEADER_H = 96f
-        private const val OVERLAY_FOOTER_H = 96f
+        private const val OVERLAY_FOOTER_H = 128f
         /** 图鉴类浮层收尾行：关闭按钮尺寸 + 与面板底边的留白，排行榜/藏品/荣誉共用同一条基线 */
         private const val CLOSE_BTN_SIZE = 44f
         private const val CLOSE_ROW_MARGIN = 14f
@@ -3477,10 +3477,12 @@ class HudView(context: Context, private val game: Game) : View(context) {
         } else {
             "点 X 或返回退出"
         }
-        // 页码单独一行；默认坐落在收尾行上方，pageMidY 可让页码居中于列表与页脚间的留白
+        // 页码单独一行，居中于「内容分割线 ↔ 页脚收尾行」之间的页脚带；pageMidY 可覆盖
         textPaint.textAlign = Paint.Align.CENTER
-        val pageBaseline = if (pageMidY != null) centeredBaselineY(pageMidY, 22f * s) else frame.bottom - 70f * s
-        lightText(canvas, "${page + 1}/$pages", cx, pageBaseline, 22f * s, LIGHT_TEXT)
+        val dividerY = frame.contentBottom + 14f * s
+        val closeRowCy = frame.bottom - (CLOSE_ROW_MARGIN + CLOSE_BTN_SIZE * 0.5f) * s
+        val midY = pageMidY ?: (dividerY + closeRowCy) * 0.5f
+        lightText(canvas, "${page + 1}/$pages", cx, centeredBaselineY(midY, 22f * s), 22f * s, LIGHT_TEXT)
         drawOverlayCloseRow(canvas, frame.left, frame.right, frame.bottom, s, hint, btnCatalogClose)
     }
 
@@ -3588,10 +3590,8 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val end = min(start + HONOR_PER_PAGE, Game.ACHIEVE_CATS)
         val rows = (end - start).coerceAtLeast(1)
         val rowGap = 6f * s
-        // 列表底部预留一条留白带放页码，让页码落在末卡与页脚之间而非贴着卡片
-        val listBottom = frame.contentBottom - 48f * s
         // 卡片高度按满页行数固定，短页顶端对齐、底部留白，避免不同页卡片忽高忽低
-        val rowH = ((listBottom - frame.contentTop) - rowGap * (HONOR_PER_PAGE - 1)) / HONOR_PER_PAGE
+        val rowH = ((frame.contentBottom - frame.contentTop) - rowGap * (HONOR_PER_PAGE - 1)) / HONOR_PER_PAGE
         val rowLeft = frame.left + 16f * s
         val rowRight = frame.right - 16f * s
         val badgeW = 56f * s
@@ -3635,12 +3635,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
             textPaint.textAlign = Paint.Align.CENTER
         }
 
-        // 页码居中于列表留白带与页脚收尾行之间
-        val closeRowCy = frame.bottom - (CLOSE_ROW_MARGIN + CLOSE_BTN_SIZE * 0.5f) * s
-        drawCatalogFooter(
-            canvas, frame, s, page, pages, sdx, sdy,
-            pageMidY = (listBottom + closeRowCy) * 0.5f - 20f * s
-        )
+        drawCatalogFooter(canvas, frame, s, page, pages, sdx, sdy)
     }
 
     private fun drawCollectionOverlay(canvas: Canvas, w: Float, h: Float, s: Float, sdx: Float, sdy: Float) {
@@ -3662,9 +3657,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val gap = 10f * s
         val padX = 18f * s
         val availW = frame.pw - padX * 2f
-        // 底部预留一条留白带放页码，与荣誉页一致：网格整体上移，末行不贴分割线
-        val listBottom = frame.contentBottom - 48f * s
-        val availH = listBottom - frame.contentTop
+        val availH = frame.contentBottom - frame.contentTop
         val cellW = (availW - gap * (MUSEUM_COLS - 1)) / MUSEUM_COLS
         val cellH = (availH - gap * (MUSEUM_ROWS - 1)) / MUSEUM_ROWS
         // 展柜是竖长的：宽度吃满，高度尽量占满整面墙
@@ -3706,12 +3699,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
             previewAll -> "左右滑动翻页 · 点图标查看 · X 退出"
             else -> "左右滑动翻页 · 点图标查看 · X 或返回退出"
         }
-        // 页码居中于留白带与页脚收尾行之间，与荣誉页一致
-        val closeRowCy = frame.bottom - (CLOSE_ROW_MARGIN + CLOSE_BTN_SIZE * 0.5f) * s
-        drawCatalogFooter(
-            canvas, frame, s, page, pages, sdx, sdy,
-            closeHint = footerHint, pageMidY = (listBottom + closeRowCy) * 0.5f
-        )
+        drawCatalogFooter(canvas, frame, s, page, pages, sdx, sdy, closeHint = footerHint)
 
         if (museumDetailId in 0 until Game.RELIC_COUNT &&
             (game.relicCollected(museumDetailId) || previewAll)
