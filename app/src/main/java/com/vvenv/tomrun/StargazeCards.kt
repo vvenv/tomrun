@@ -2,8 +2,7 @@ package com.vvenv.tomrun
 
 /**
  * 望月镜观测卡：图文并茂的短卡。
- * 每卡 = 术语徽章 + 一句钩子 + 两条要点 + 今晚一看。
- * [Game.STARGAZE_AGE_PRIMARY] 小学版 / [Game.STARGAZE_AGE_MIDDLE] 初中版。
+ * 每卡 = 术语徽章 + 两句钩子 + 四条要点 + 两条「今晚一看」。
  */
 object StargazeCards {
 
@@ -67,12 +66,9 @@ object StargazeCards {
 
     fun card(index: Int): Card = cards[index.coerceIn(0, cards.lastIndex)]
 
-    fun hook(card: Card, age: Int): String =
-        if (age == Game.STARGAZE_AGE_MIDDLE) card.hookMiddle else card.hookPrimary
+    fun hooks(card: Card): Array<String> = arrayOf(card.hookPrimary, card.hookMiddle)
 
-    fun facts(card: Card, age: Int): Array<String> =
-        if (age == Game.STARGAZE_AGE_MIDDLE) card.factsMiddle else card.factsPrimary
+    fun facts(card: Card): Array<String> = card.factsPrimary + card.factsMiddle
 
-    fun tonight(card: Card, age: Int): String =
-        if (age == Game.STARGAZE_AGE_MIDDLE) card.tonightMiddle else card.tonightPrimary
+    fun tonights(card: Card): Array<String> = arrayOf(card.tonightPrimary, card.tonightMiddle)
 }

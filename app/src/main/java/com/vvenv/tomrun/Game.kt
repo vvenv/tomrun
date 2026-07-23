@@ -41,9 +41,14 @@ class Game {
         const val RAMP_HEIGHT = 2.4f
         const val CABLE_H = 5.4f
         const val RIDE_Y = 3.0f
-        /** 滑索悬挂高度：上滑升高、下滑降低 */
+        /**
+         * 滑索悬挂高度：上滑升高、下滑降低。
+         * 上限受握杆长度限制（GameRenderer 里的 reach≈1.52），
+         * RIDE_Y_MAX 逼近 CABLE_H - reach（≈3.88）时握杆会缩成一小截甚至消失，
+         * 目前 3.8 还留了 0.08 的余量。
+         */
         const val RIDE_Y_MIN = 0.5f
-        const val RIDE_Y_MAX = 3.6f
+        const val RIDE_Y_MAX = 3.8f
         const val RIDE_STEP = 0.9f
 
         // 速度：慢起步，约 110 秒接近上限（整体节奏偏慢，便于看清藏品/妖怪）
@@ -55,9 +60,11 @@ class Game {
         /** 拾取/击倒等奖励瞬间：短暂减速让玩家读清反馈 */
         const val PACE_SLOW_MULT = 0.68f
 
-        // 连击阈值：x2/x3/x4/x5
-        const val COMBO_WINDOW = 1.6f
-        val COMBO_THRESH = intArrayOf(5, 12, 22, 35)
+        // 连击阈值：x2/x3/x4/x5。
+        // 窗口拉长到 2.6s，覆盖住波与波之间的正常空档，让高档位靠「持续好好玩」够得到，
+        // 而不是靠金币恰好排得密；真正断档（漏掉一整波、长时间不动）才会断。
+        const val COMBO_WINDOW = 2.6f
+        val COMBO_THRESH = intArrayOf(4, 10, 18, 28)
         const val COMBO_MAX_MULT = 5
 
         const val MAGNET_BASE = 8f
@@ -215,8 +222,8 @@ class Game {
             floatArrayOf(1.00f, 0.55f, 0.75f, 1f),
             floatArrayOf(0.60f, 0.30f, 0.90f, 1f)
         )
-        const val SCENE_GAP_MIN = 24f
-        const val SCENE_GAP_RANGE = 20f
+        const val SCENE_GAP_MIN = 12f
+        const val SCENE_GAP_RANGE = 14f
         const val SCENE_DUR_MIN = 6f
         const val SCENE_DUR_RANGE = 3f
         // 宇宙图鉴集齐一次性大奖
@@ -284,8 +291,6 @@ class Game {
         val TELESCOPE_BODY_NAMES = arrayOf("月亮", "火星", "土星", "木星", "深空星云")
         /** 从当前等级升到下一级所需金币 */
         val TELESCOPE_UPGRADE_PRICES = intArrayOf(400, 800, 1500, 2500)
-        const val STARGAZE_AGE_PRIMARY = 0
-        const val STARGAZE_AGE_MIDDLE = 1
         const val HOME_TAB_HOUSE = 0
         const val HOME_TAB_ROOF = 1
         const val HOME_TAB_DECO = 2
@@ -451,9 +456,6 @@ class Game {
     @Volatile var yokaiLane = 1
     @Volatile var yokaiSpawnZ = -55f
     @Volatile var yokaiRunPhase = 0f
-    @Volatile var yokaiHudX = 0.5f
-    @Volatile var yokaiHudY = 0.35f
-    @Volatile var yokaiHudVisible = false
     @Volatile var chaseTimeLeft = 0f
     @Volatile var chaseTimeMax = 15f
     @Volatile var chaseRelicDrop = -1
@@ -502,8 +504,6 @@ class Game {
     /** 今日是否已读过一张「新卡」；跨日重置 */
     private var stargazeDailyNewDone = false
     private var stargazeDayKey = ""
-    /** 小学 / 初中文案档位 */
-    @Volatile var stargazeAgeMode = STARGAZE_AGE_PRIMARY
     @Volatile var characterName = DEFAULT_CHARACTER_NAME
         private set
     @Volatile var hasChosenCharacterName = false
@@ -668,8 +668,6 @@ class Game {
         stargazeReadMask = p.getInt("stargazeReadMask", 0)
         stargazeDayKey = p.getString("stargazeDayKey", "") ?: ""
         stargazeDailyNewDone = p.getBoolean("stargazeDailyNewDone", false)
-        stargazeAgeMode = p.getInt("stargazeAgeMode", STARGAZE_AGE_PRIMARY)
-            .coerceIn(STARGAZE_AGE_PRIMARY, STARGAZE_AGE_MIDDLE)
         refreshStargazeDay()
         // 新类别可能已达标（旧存档），启动时静默补发解锁与奖励
         tryUnlockAchievements(persist = true, quiet = true)
@@ -736,19 +734,6 @@ class Game {
         return -1
     }
 
-    fun toggleStargazeAgeMode(): Int {
-        stargazeAgeMode = if (stargazeAgeMode == STARGAZE_AGE_PRIMARY) {
-            STARGAZE_AGE_MIDDLE
-        } else {
-            STARGAZE_AGE_PRIMARY
-        }
-        persistStargaze()
-        return stargazeAgeMode
-    }
-
-    fun stargazeAgeLabel(): String =
-        if (stargazeAgeMode == STARGAZE_AGE_MIDDLE) "初中" else "小学"
-
     /** 切换或打开某张观测卡；每日最多标记一张新卡为已读 */
     @Synchronized fun onStargazeView(body: Int): StargazeViewResult {
         if (!canUseTelescope() || body < 0 || body > telescopeLevel) return StargazeViewResult.REVIEW
@@ -800,7 +785,6 @@ class Game {
             ?.putInt("stargazeReadMask", stargazeReadMask)
             ?.putString("stargazeDayKey", stargazeDayKey)
             ?.putBoolean("stargazeDailyNewDone", stargazeDailyNewDone)
-            ?.putInt("stargazeAgeMode", stargazeAgeMode)
             ?.apply()
     }
 
@@ -1231,6 +1215,7 @@ class Game {
         if (!onGround) velY = -14f
         runSlides++
         bumpQuest(Q_SLIDE, 1)
+        keepCombo()
         emit(EV_SLIDE, HAPTIC_LIGHT)
     }
 
@@ -1256,6 +1241,7 @@ class Game {
             slideTimer = 0f
             runJumps++
             bumpQuest(Q_JUMP, 1)
+            keepCombo()
             emit(EV_JUMP, HAPTIC_LIGHT)
         }
     }
@@ -1303,7 +1289,6 @@ class Game {
         sceneBlend = 0f
         sceneGap = SCENE_GAP_MIN + Random.nextFloat() * SCENE_GAP_RANGE
         chaseActive = false
-        yokaiHudVisible = false
         paceSlowUntil = 0f
         nextChaseAt = CHASE_FIRST + Random.nextFloat() * 180f
         runBattleWins = 0
@@ -1654,19 +1639,6 @@ class Game {
     }
 
     // ---------- 妖怪追击 ----------
-    /** 追击进度 0~1，越接近 1 越快要追上 */
-    fun chaseProgress(): Float {
-        if (!chaseActive) return 0f
-        val start = yokaiSpawnZ
-        val end = CHASE_CATCH_Z
-        if (start <= end) return 0f
-        return ((start - yokaiZ) / (start - end)).coerceIn(0f, 1f)
-    }
-
-    /** 是否与妖怪在同一道（击倒必要条件） */
-    fun chaseSameLane(): Boolean =
-        chaseActive && lane == yokaiLane && abs(catX - LANE_X[yokaiLane]) < 0.65f
-
     private fun startChase() {
         val uni = universe.coerceIn(0, UNIVERSE_COUNT - 1)
         val kind = Random.nextInt(YOKAI_NAMES[uni].size)
@@ -1687,7 +1659,6 @@ class Game {
         clearObstaclesAhead((speed * 2.5f).coerceAtLeast(55f))
         invulnTime = invulnTime.coerceAtLeast(1.2f)
         triggerPaceSlow(2.4f)
-        // 换道提示已经常驻在追击面板里，这里只报出场，避免信息重复
         enqueueBanner("妖怪出没！$yokaiName 追来了！", yokaiColor, 3.0f)
         emit(EV_BATTLE, HAPTIC_HEAVY)
     }
@@ -1719,7 +1690,6 @@ class Game {
     private fun finishChase(won: Boolean, missedLane: Boolean = false) {
         if (!chaseActive) return
         chaseActive = false
-        yokaiHudVisible = false
         if (won) {
             runBattleWins++
             totalBattleWins++
@@ -1820,13 +1790,11 @@ class Game {
         entities.removeAll {
             it.kind == COIN && it.lane == laneZ && it.z <= zip.entryZ && it.z >= zip.exitZ
         }
-        // 高低交错，滑索上需上滑/下滑够到
-        val coinYs = floatArrayOf(CABLE_H - 1.1f, CABLE_H - 2.2f, CABLE_H - 3.3f)
+        // 高度统一，贴着骑乘可达的最高点：视觉上更靠近缆绳，代价是要上滑到顶才够得到
+        val coinY = RIDE_Y_MAX + 1.0f
         var cz = SPAWN_Z - 8f
-        var i = 0
         while (cz > SPAWN_Z - length + 4f) {
-            entities.add(makeCoin(laneZ, cz, coinYs[i % coinYs.size]))
-            i++
+            entities.add(makeCoin(laneZ, cz, coinY))
             cz -= 4f
         }
     }
@@ -2117,30 +2085,14 @@ class Game {
         grantWallet(if (universe == UNI_CANDY) 2 else 1)
 
         val prevMult = comboMult
-        combo++
-        comboTimer = COMBO_WINDOW
-        if (combo > bestComboRun) bestComboRun = combo
-        if (bestComboRun > bestComboEver) bestComboEver = bestComboRun
-        comboMult = multForCombo(combo)
-        comboNextAt = if (comboMult >= COMBO_MAX_MULT) combo else COMBO_THRESH[comboMult - 1]
-
         val basePts = 10 * scoreGained
-        val comboExtra = basePts * (comboMult - 1)
-        comboScore += comboExtra
+        val comboExtra = advanceCombo(basePts)
 
         val show = if (comboMult > 1) "+${basePts + comboExtra} x$comboMult" else "+$basePts"
         pushFloat(show, 0xFFFFD54A.toInt())
         spawnBurst(e.x, e.y, e.z, floatArrayOf(1f, 0.84f, 0.10f, 1f), 5)
-
-        if (comboMult > prevMult) {
-            notices.push(
-                "连击 x$comboMult！", 0xFFFFC21F.toInt(), 1.4f,
-                Notices.Style.COMBO, Notices.P_COMBO, Notices.KEY_COMBO
-            )
-            emit(EV_COMBO, HAPTIC_MED)
-        } else {
-            emit(EV_COIN, HAPTIC_LIGHT)
-        }
+        // 升档提示与音效由 advanceCombo 统一处理，这里只补没升档时的普通拾取音
+        if (comboMult == prevMult) emit(EV_COIN, HAPTIC_LIGHT)
         bumpQuest(Q_COINS, 1)
         bumpQuest(Q_COMBO, 0) // 用 sync 刷新
         if (e.isRelic) collectRelic(e)
@@ -2153,6 +2105,40 @@ class Game {
         }
         return min(COMBO_MAX_MULT, m)
     }
+
+    /** 连击 +1：更新档位/计时/最佳，累加额外分并在升档时提示；返回本次额外分。 */
+    private fun advanceCombo(basePts: Int): Int {
+        val prevMult = comboMult
+        combo++
+        comboTimer = COMBO_WINDOW
+        if (combo > bestComboRun) bestComboRun = combo
+        if (bestComboRun > bestComboEver) bestComboEver = bestComboRun
+        comboMult = multForCombo(combo)
+        comboNextAt = if (comboMult >= COMBO_MAX_MULT) combo else COMBO_THRESH[comboMult - 1]
+        val extra = basePts * (comboMult - 1)
+        comboScore += extra
+        if (comboMult > prevMult) {
+            notices.push(
+                "连击 x$comboMult！", 0xFFFFC21F.toInt(), 1.4f,
+                Notices.Style.COMBO, Notices.P_COMBO, Notices.KEY_COMBO
+            )
+            emit(EV_COMBO, HAPTIC_MED)
+        }
+        return extra
+    }
+
+    /**
+     * 技巧动作（起跳 / 铲滑 / 撞碎）不涨连击数，但刷新计时。
+     * 于是穿越一段只有障碍、没有金币的路时，只要在积极操作，连击就不会白白断掉——
+     * 连击因此代表"持续玩得好"，而不再只是"金币恰好排得密"。额外分仍只由金币产生，不存在刷分漏洞。
+     */
+    private fun keepCombo() {
+        if (combo > 0) comboTimer = COMBO_WINDOW
+    }
+
+    /** 连击剩余时间占窗口的比例，供 HUD 做"即将断连"提示；无连击时为 0。 */
+    fun comboTimeFrac(): Float =
+        if (combo > 0) (comboTimer / COMBO_WINDOW).coerceIn(0f, 1f) else 0f
 
     private fun pickupPower(e: Entity) {
         when (e.kind) {
@@ -2184,6 +2170,7 @@ class Game {
         missionBonus += 25
         runSmashes++
         bumpQuest(Q_SMASH, 1)
+        keepCombo()
         pushFloat("+25 撞碎", 0xFF4DE8FF.toInt())
         shake = 0.35f
         val col = when (e.kind) {
@@ -2366,7 +2353,6 @@ class Game {
             ?.putInt("stargazeReadMask", stargazeReadMask)
             ?.putString("stargazeDayKey", stargazeDayKey)
             ?.putBoolean("stargazeDailyNewDone", stargazeDailyNewDone)
-            ?.putInt("stargazeAgeMode", stargazeAgeMode)
             ?.apply()
     }
 
@@ -2404,7 +2390,6 @@ class Game {
             .putInt("stargazeReadMask", stargazeReadMask)
             .putString("stargazeDayKey", stargazeDayKey)
             .putBoolean("stargazeDailyNewDone", stargazeDailyNewDone)
-            .putInt("stargazeAgeMode", stargazeAgeMode)
             .putString("characterName", characterName)
         for (i in 0 until ACHIEVE_CATS) ed.putInt("achieveLv$i", achieveLevels[i])
         ed.apply()

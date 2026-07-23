@@ -267,6 +267,12 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         private val STRAW_BAND = floatArrayOf(0.30f, 0.62f, 0.30f, 1f)
         private val CROWN_GOLD = floatArrayOf(0.95f, 0.78f, 0.20f, 1f)
         private val CROWN_RUBY = floatArrayOf(0.90f, 0.20f, 0.35f, 1f)
+        // 世界专属配件：叠在现有装扮之上，不替换猫本体
+        private val GOGGLE_LENS = floatArrayOf(0.55f, 0.85f, 0.92f, 0.55f)
+        private val GOGGLE_STRAP = floatArrayOf(0.20f, 0.22f, 0.26f, 1f)
+        private val SPACE_HELMET = floatArrayOf(0.80f, 0.92f, 0.98f, 0.30f)
+        private val SPACE_HELMET_SHINE = floatArrayOf(1.0f, 1.0f, 1.0f, 0.35f)
+        private val SPACE_COLLAR = floatArrayOf(0.82f, 0.84f, 0.88f, 1f)
 
         private val RAIN_SKY = floatArrayOf(0.44f, 0.51f, 0.62f, 1f)
         private val SNOW_SKY = floatArrayOf(0.72f, 0.78f, 0.86f, 1f)
@@ -558,7 +564,6 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         )
         Matrix.multiplyMM(vp, 0, proj, 0, view, 0)
         publishRelicLabels()
-        publishYokaiHud()
 
         drawSky()
         drawTrack()
@@ -607,22 +612,6 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
                 n++
             }
             game.relicHudCount = n
-        }
-    }
-
-    /** 妖怪头顶屏幕坐标，供 HUD 画呼喊气泡 */
-    private fun publishYokaiHud() {
-        game.yokaiHudVisible = false
-        if (!game.chaseActive) return
-        val z = game.yokaiZ
-        if (z < -220f || z > 4f) return
-        val lane = game.yokaiLane.coerceIn(0, 2)
-        val x = Game.LANE_X[lane]
-        val bob = abs(sin(game.yokaiRunPhase)) * 0.09f
-        if (projectWorld(x, 2.55f + bob, z, projectTmp)) {
-            game.yokaiHudX = projectTmp[0]
-            game.yokaiHudY = projectTmp[1]
-            game.yokaiHudVisible = true
         }
     }
 
@@ -859,23 +848,160 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
             return
         }
         val wallBase = TUNNEL_WALL[uni]
-        val wall = floatArrayOf(wallBase[0], wallBase[1], wallBase[2], wallBase[3] * blend)
         val glowBase = TUNNEL_GLOW[uni]
         val glow = floatArrayOf(glowBase[0], glowBase[1], glowBase[2], glowBase[3] * blend)
+
+        // 关键：相机眼睛在 y≈6.8（竖屏）/4.35（横屏），洞顶必须**高过眼睛**才是"身处洞中"，
+        // 否则相机浮在洞顶之上，等于从外面俯视一条明沟。洞壁/洞顶/洞底整段封闭包住相机，
+        // 看不看得到外面交给各世界自己的 alpha（云隙隧道透亮、其它更实，见 TUNNEL_WALL）。
         mMode = 0
-        scroll(9f, game.distance) { m, z ->
-            val archY = 3.6f + 0.3f * sin(scenePhase * 1.4f + m)
-            drawBox(-6.4f, 1.6f, z, 0.6f, 3.4f, 1.1f, wall)
-            drawBox(6.4f, 1.6f, z, 0.6f, 3.4f, 1.1f, wall)
-            drawBox(0f, archY, z, 13.4f, 0.6f, 1.1f, wall)
-        }
+        val pulse = 0.94f + 0.06f * sin(scenePhase * 1.4f)
+        val wall = floatArrayOf(wallBase[0], wallBase[1], wallBase[2], wallBase[3] * blend * pulse)
+        val ceilY = 9.5f     // 洞顶底面 ≈ 9.1，高过相机眼睛，避免视角穿出洞外
+        val wallH = ceilY + 0.5f
+        drawBox(-6.4f, wallH / 2f - 0.5f, -106f, 0.9f, wallH, 228f, wall)
+        drawBox(6.4f, wallH / 2f - 0.5f, -106f, 0.9f, wallH, 228f, wall)
+        drawBox(0f, ceilY, -106f, 13.4f, 0.8f, 228f, wall)
+        // 洞顶再压一圈内衬，往下探一点，强调"头顶有盖"的封闭感
+        drawBox(0f, ceilY - 0.9f, -106f, 12.0f, 0.4f, 228f, wall)
+        val floorCol = floatArrayOf(wallBase[0] * 0.5f, wallBase[1] * 0.5f, wallBase[2] * 0.5f, 0.7f * blend)
+        drawBox(0f, 0.01f, -106f, 13.6f, 0.02f, 228f, floorCol)
+
+        // 洞壁内侧的发光纹路：贴着洞壁内表面（比墙的内边缘更靠中心），高低错落爬满整面墙
         mMode = 2
         scroll(4.5f, game.distance) { m, z ->
-            val gy = 0.4f + mod(m * 17, 30) / 10f
+            val gy = 0.5f + mod(m * 17, 80) / 10f
             val side = if (mod(m, 2) == 0) -1f else 1f
-            drawBox(side * 6.2f, gy, z, 0.22f, 0.22f, 0.22f, glow)
+            drawBox(side * 5.85f, gy, z, 0.22f, 0.22f, 0.22f, glow)
         }
+
+        // 各世界隧道的专属地貌 / 悬垂物 / 漂浮粒子：让"洞里"和"洞外"是两种环境
+        drawTunnelDetail(uni, blend)
         mMode = 0
+    }
+
+    /**
+     * 隧道内的世界专属氛围。洞体几何是通用的，这里只往里塞各世界的辨识元素：
+     * 藤蔓垂枝、暗涌海草气泡、云隙光柱、熔岩钟乳火星、糖霜奶油柱。
+     * 结构件走 mMode=0（受光有体积感），漂浮 / 发光的小件走 mMode=2（平色透明）。
+     */
+    private fun drawTunnelDetail(uni: Int, blend: Float) {
+        when (uni) {
+            Game.UNI_MEADOW -> {
+                // 藤蔓隧道：洞顶垂下会摆动的藤蔓与叶片
+                mMode = 0
+                scroll(5.5f, game.distance) { m, z ->
+                    val bx = (mod(m * 53, 100) / 100f - 0.5f) * 10f
+                    val sway = sin(scenePhase * 1.2f + m) * 0.35f
+                    val len = 1.6f + mod(m * 29, 30) / 10f
+                    val vc = floatArrayOf(0.16f, 0.5f, 0.2f, blend)
+                    for (j in 0 until 3) {
+                        val yy = 9.0f - j * (len / 3f) - len / 6f
+                        drawBox(bx + sway * (j + 1) * 0.4f, yy, z, 0.12f, len / 3f, 0.12f, vc)
+                    }
+                    val lc = if (mod(m, 2) == 0) TREE_LEAF else TREE_LEAF2
+                    val leaf = floatArrayOf(lc[0], lc[1], lc[2], blend)
+                    drawBox(bx + sway * 1.6f, 9.0f - len, z, 0.42f, 0.24f, 0.14f, leaf)
+                }
+                // 飘浮荧光孢子
+                mMode = 2
+                scroll(3.0f, game.distance * 0.7f) { m, z ->
+                    val sx = (mod(m * 71, 100) / 100f - 0.5f) * 11f
+                    val sy = 1.0f + mod((scenePhase * 20f).toInt() + m * 13, 70) / 10f
+                    drawBox(sx, sy, z, 0.10f, 0.10f, 0.10f, floatArrayOf(0.75f, 1.0f, 0.55f, 0.5f * blend))
+                }
+            }
+            Game.UNI_WATER -> {
+                // 暗涌隧道：暗色海草 + 上浮气泡 + 顶部荡漾焦散光
+                mMode = 0
+                scroll(6f, game.distance) { m, z ->
+                    val side = if (mod(m, 2) == 0) -1f else 1f
+                    val kx = side * (4.6f + mod(m * 31, 20) / 10f)
+                    val kc = floatArrayOf(SEAWEED[0] * 0.7f, SEAWEED[1] * 0.7f, SEAWEED[2] * 0.85f, blend)
+                    for (j in 0..3) {
+                        val sway = sin(scenePhase * 1.8f + m + j * 0.7f) * 0.22f * j
+                        drawBox(kx + sway, 0.4f + j * 0.7f, z, 0.24f, 0.7f, 0.16f, kc)
+                    }
+                }
+                mMode = 2
+                scroll(3.3f, game.distance * 1.6f) { m, z ->
+                    val bx = (mod(m * 53, 100) / 100f - 0.5f) * 10f
+                    val cyc = mod((scenePhase * 60f).toInt() + m * 37, 42) / 10f
+                    val a = (0.42f * blend * (1f - cyc / 4.2f)).coerceIn(0f, 0.42f)
+                    drawBox(bx, 0.3f + cyc, z, 0.12f, 0.12f, 0.12f, floatArrayOf(0.78f, 0.94f, 1f, a))
+                }
+                scroll(4.0f, game.distance * 0.5f) { m, z ->
+                    val flick = 0.16f + 0.14f * abs(sin(scenePhase * 2f + m))
+                    val cx = (mod(m * 17, 100) / 100f - 0.5f) * 11f
+                    drawBox(cx, 8.3f, z, 2.6f, 0.08f, 0.08f, floatArrayOf(0.4f, 0.85f, 1f, flick * blend))
+                }
+            }
+            Game.UNI_SKY -> {
+                // 云隙隧道：半透明云团在洞里飘 + 斜射柔光柱（本身就透，能看到外面）
+                mMode = 2
+                scroll(6.5f, game.distance * 0.8f) { m, z ->
+                    val cx = (mod(m * 53, 100) / 100f - 0.5f) * 9f
+                    val cy = 2.5f + mod(m * 29, 50) / 10f
+                    val bob = sin(scenePhase * 0.7f + m) * 0.3f
+                    val cc = floatArrayOf(1f, 1f, 1f, 0.28f * blend)
+                    drawBox(cx, cy + bob, z, 2.2f, 0.9f, 0.9f, cc)
+                    drawBox(cx + 0.9f, cy + bob + 0.2f, z, 1.3f, 0.7f, 0.7f, cc)
+                }
+                scroll(9f, game.distance * 0.4f) { m, z ->
+                    val lx = (mod(m * 41, 100) / 100f - 0.5f) * 8f
+                    drawBox(lx, 5.0f, z, 0.7f, 9f, 0.7f, floatArrayOf(1f, 1f, 0.9f, 0.10f * blend))
+                }
+            }
+            Game.UNI_LAVA -> {
+                // 熔岩隧道：洞顶岩钟乳（尖端灼红）+ 墙面熔岩裂纹脉动 + 上升火星
+                mMode = 0
+                scroll(5f, game.distance) { m, z ->
+                    val bx = (mod(m * 53, 100) / 100f - 0.5f) * 10f
+                    val len = 1.2f + mod(m * 29, 25) / 10f
+                    drawBox(bx, 9.1f - len / 2f, z, 0.5f, len, 0.5f, floatArrayOf(0.22f, 0.08f, 0.05f, blend))
+                }
+                mMode = 2
+                val crackPulse = 0.6f + 0.4f * abs(sin(scenePhase * 2.4f))
+                scroll(5f, game.distance) { m, z ->
+                    val bx = (mod(m * 53, 100) / 100f - 0.5f) * 10f
+                    val len = 1.2f + mod(m * 29, 25) / 10f
+                    drawBox(bx, 9.1f - len, z, 0.3f, 0.32f, 0.3f, floatArrayOf(1f, 0.55f, 0.12f, 0.9f * blend))
+                }
+                scroll(3.5f, game.distance) { m, z ->
+                    val side = if (mod(m, 2) == 0) -1f else 1f
+                    val gy = 0.8f + mod(m * 17, 70) / 10f
+                    drawBox(side * 5.8f, gy, z, 0.14f, 0.9f, 0.14f, floatArrayOf(1f, 0.42f, 0.1f, crackPulse * blend))
+                }
+                scroll(2.8f, game.distance * 1.4f) { m, z ->
+                    val ex = (mod(m * 71, 100) / 100f - 0.5f) * 11f
+                    val cyc = mod((scenePhase * 70f).toInt() + m * 29, 90) / 10f
+                    val a = (0.85f * blend * (1f - cyc / 9f)).coerceIn(0f, 0.85f)
+                    drawBox(ex, 0.3f + cyc, z, 0.09f, 0.09f, 0.09f, floatArrayOf(1f, 0.6f, 0.2f, a))
+                }
+            }
+            Game.UNI_CANDY -> {
+                // 糖霜隧道：洞顶奶油糖霜柱（带滴珠）+ 墙面软糖 + 彩色糖针飘落
+                mMode = 0
+                scroll(5f, game.distance) { m, z ->
+                    val bx = (mod(m * 53, 100) / 100f - 0.5f) * 10f
+                    val len = 1.0f + mod(m * 29, 25) / 10f
+                    val fc = floatArrayOf(0.99f, 0.93f, 0.96f, blend)
+                    drawBox(bx, 9.1f - len / 2f, z, 0.6f, len, 0.6f, fc)
+                    drawBox(bx, 9.1f - len - 0.14f, z, 0.22f, 0.3f, 0.22f, fc)
+                    val side = if (mod(m, 2) == 0) -1f else 1f
+                    val gc = GUMDROP[mod(m, 3)]
+                    drawBox(side * 5.75f, 1.2f + mod(m * 17, 50) / 10f, z, 0.45f, 0.45f, 0.35f,
+                        floatArrayOf(gc[0], gc[1], gc[2], blend))
+                }
+                mMode = 2
+                scroll(2.4f, game.distance * 0.9f) { m, z ->
+                    val sx = (mod(m * 71, 100) / 100f - 0.5f) * 11f
+                    val sy = 1.0f + mod((scenePhase * 15f).toInt() + m * 13, 80) / 10f
+                    val lc = LOLLIPOP[mod(m, 3)]
+                    drawBox(sx, sy, z, 0.10f, 0.20f, 0.10f, floatArrayOf(lc[0], lc[1], lc[2], 0.7f * blend))
+                }
+            }
+        }
     }
 
     private fun drawBlackHole(blend: Float) {
@@ -2133,9 +2259,33 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
                 drawPart(0f, 0.62f, 0f, 0.7f, 0.14f, 0.7f, BOOST_CORE)
             }
         }
+        drawWorldGear(g.universe)
         popModel()
 
         popModel()
+    }
+
+    /**
+     * 世界专属小配件：叠在已有装扮之上，不遮挡玩家自己买的帽子/围巾。
+     * 水世界潜水镜、星世界头盔泡都是半透明的，用现有的 alpha 混合直接画。
+     */
+    private fun drawWorldGear(universe: Int) {
+        when (universe) {
+            Game.UNI_WATER -> {
+                // 潜水镜：两片镜面 + 鼻梁桥 + 两侧系带
+                drawPart(-0.24f, 0.09f, -0.47f, 0.22f, 0.22f, 0.05f, GOGGLE_LENS)
+                drawPart(0.24f, 0.09f, -0.47f, 0.22f, 0.22f, 0.05f, GOGGLE_LENS)
+                drawPart(0f, 0.06f, -0.47f, 0.10f, 0.08f, 0.05f, GOGGLE_STRAP)
+                drawPart(-0.44f, 0.09f, -0.22f, 0.06f, 0.08f, 0.30f, GOGGLE_STRAP)
+                drawPart(0.44f, 0.09f, -0.22f, 0.06f, 0.08f, 0.30f, GOGGLE_STRAP)
+            }
+            Game.UNI_SPACE -> {
+                // 透明头盔罩住整颗头（含已戴的帽子），底部一圈领环收口
+                drawPart(0f, 0.05f, -0.02f, 1.24f, 1.08f, 1.20f, SPACE_HELMET)
+                drawPart(-0.30f, 0.30f, -0.42f, 0.20f, 0.16f, 0.06f, SPACE_HELMET_SHINE)
+                drawPart(0f, -0.46f, 0f, 1.28f, 0.14f, 1.22f, SPACE_COLLAR)
+            }
+        }
     }
 
     /** 把生效中的道具做成猫身上的装备，HUD 之外也能一眼辨认。 */
