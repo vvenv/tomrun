@@ -3066,7 +3066,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
             btnPaint.color = withAlpha(0xFFFFFFFF.toInt(), a)
             canvas.drawRect(sx - size * s, sy - size * s, sx + size * s, sy + size * s, btnPaint)
         }
-        if (body >= Game.TELESCOPE_MAX_LEVEL) {
+        if (body == 4) {
             // 深空星云背景雾
             btnPaint.color = withAlpha(0xFF8B5CF6.toInt(), 48)
             canvas.drawCircle(cx - r * 0.2f, cy + r * 0.1f, r * 0.55f, btnPaint)
@@ -3119,7 +3119,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 btnPaint.color = 0xFFE05040.toInt()
                 canvas.drawCircle(cx + r * 0.35f, cy + r * 0.2f, r * 0.16f, btnPaint)
             }
-            else -> { // 深空星云
+            4 -> { // 深空星云
                 btnPaint.color = withAlpha(0xFF7C3AED.toInt(), 200)
                 canvas.drawCircle(cx - r * 0.15f, cy, r * 0.75f, btnPaint)
                 btnPaint.color = withAlpha(0xFFEC4899.toInt(), 160)
@@ -3129,6 +3129,36 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 btnPaint.color = Color.WHITE
                 canvas.drawRect(cx - 2f * s, cy - r * 0.4f, cx + 2f * s, cy - r * 0.36f, btnPaint)
                 canvas.drawRect(cx + r * 0.3f, cy + r * 0.1f, cx + r * 0.34f, cy + r * 0.14f, btnPaint)
+            }
+            5 -> { // 金星
+                btnPaint.color = 0xFFF0E8C8.toInt()
+                canvas.drawCircle(cx, cy, r, btnPaint)
+                btnPaint.color = withAlpha(0xFFE8D8A8.toInt(), 200)
+                canvas.drawCircle(cx - r * 0.15f, cy - r * 0.1f, r * 0.55f, btnPaint)
+                btnPaint.color = withAlpha(0xFFD8C898.toInt(), 160)
+                canvas.drawCircle(cx + r * 0.2f, cy + r * 0.15f, r * 0.4f, btnPaint)
+            }
+            6 -> { // 水星
+                btnPaint.color = 0xFFB0A898.toInt()
+                canvas.drawCircle(cx, cy, r * 0.82f, btnPaint)
+                btnPaint.color = 0xFF908878.toInt()
+                canvas.drawCircle(cx - r * 0.22f, cy + r * 0.18f, r * 0.14f, btnPaint)
+                canvas.drawCircle(cx + r * 0.18f, cy - r * 0.12f, r * 0.1f, btnPaint)
+                canvas.drawCircle(cx + r * 0.05f, cy + r * 0.28f, r * 0.08f, btnPaint)
+            }
+            7 -> { // 天王星
+                btnPaint.color = 0xFF88C8D8.toInt()
+                canvas.drawCircle(cx, cy, r * 0.78f, btnPaint)
+                btnPaint.color = withAlpha(0xFF68A8C8.toInt(), 140)
+                canvas.drawRect(cx - r * 1.05f, cy - r * 0.04f, cx + r * 1.05f, cy + r * 0.04f, btnPaint)
+            }
+            else -> { // 海王星
+                btnPaint.color = 0xFF3060C8.toInt()
+                canvas.drawCircle(cx, cy, r, btnPaint)
+                btnPaint.color = withAlpha(0xFF2048A8.toInt(), 180)
+                canvas.drawCircle(cx - r * 0.18f, cy + r * 0.12f, r * 0.35f, btnPaint)
+                btnPaint.color = withAlpha(0xFF4878D0.toInt(), 140)
+                canvas.drawCircle(cx + r * 0.22f, cy - r * 0.15f, r * 0.25f, btnPaint)
             }
         }
     }

@@ -343,7 +343,7 @@ class Game {
             intArrayOf(3, 15, 50, 150),                // 穿越次数
             intArrayOf(2, 4, 5, UNIVERSE_COUNT),       // 探索宇宙数（封顶 6）
             intArrayOf(5, 20, 50, RELIC_COUNT),        // 文物图鉴（封顶 88）
-            intArrayOf(1, 2, 4, 5),                    // 观星手册（封顶 5）
+            intArrayOf(1, 3, 6, TELESCOPE_MAX_LEVEL + 1), // 观星手册（封顶 9）
             intArrayOf(1000, 5000, 12000, 25000),      // 小屋繁荣值
             intArrayOf(5, 25, 80, 200),                // 累计击倒妖怪
             intArrayOf(10, 50, 200, 500),              // 跑酷场次
@@ -354,7 +354,7 @@ class Game {
             intArrayOf(1500, 5000, 15000, 40000),      // 单场最远
             intArrayOf(50, 150, 400, 900),             // 单场最多金币
             intArrayOf(600, 3600, 14400, 43200),       // 累计时长：10min/1h/4h/12h
-            intArrayOf(1, 2, 3, TELESCOPE_MAX_LEVEL),  // 望月镜等级（封顶 4）
+            intArrayOf(1, 3, 6, TELESCOPE_MAX_LEVEL),  // 望月镜等级
             intArrayOf(6, 9, 12, 16),                  // 猫咪装扮拥有数（封顶 16）
             intArrayOf(5, 9, 13, 16)                   // 家园建造拥有数（封顶 16）
         )
@@ -389,11 +389,14 @@ class Game {
         val DECO_NAMES = arrayOf("花坛", "木栅栏", "信箱", "秋千", "猫爬架", "小泳池", "望远镜", "彩旗")
         val DECO_PRICES = intArrayOf(150, 200, 250, 400, 550, 700, 900, 1200)
         const val DECO_TELESCOPE = 6
-        /** 望月镜可观测天体；telescopeLevel 0~4 对应已解锁的最高索引 */
-        const val TELESCOPE_MAX_LEVEL = 4
-        val TELESCOPE_BODY_NAMES = arrayOf("月亮", "火星", "土星", "木星", "深空星云")
+        /** 望月镜可观测天体；telescopeLevel 0~8 对应已解锁的最高索引 */
+        const val TELESCOPE_MAX_LEVEL = 8
+        val TELESCOPE_BODY_NAMES = arrayOf(
+            "月亮", "火星", "土星", "木星", "深空星云",
+            "金星", "水星", "天王星", "海王星"
+        )
         /** 从当前等级升到下一级所需金币 */
-        val TELESCOPE_UPGRADE_PRICES = intArrayOf(400, 800, 1500, 2500)
+        val TELESCOPE_UPGRADE_PRICES = intArrayOf(400, 800, 1500, 2500, 4000, 6500, 10000, 15000)
         const val HOME_TAB_HOUSE = 0
         const val HOME_TAB_ROOF = 1
         const val HOME_TAB_DECO = 2
@@ -609,7 +612,7 @@ class Game {
     @Volatile var homeBrowseHouse = 0
     @Volatile var homeBrowseRoof = 0
     @Volatile var homeBrowseDeco = 0
-    /** 望月镜等级 0~4：决定可观测的最高天体索引 */
+    /** 望月镜等级 0~8：决定可观测的最高天体索引 */
     @Volatile var telescopeLevel = 0
     /** 观测卡已读位掩码（bit i = 天体 i 至少读过一次） */
     private var stargazeReadMask = 0
