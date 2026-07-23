@@ -3358,13 +3358,42 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private fun museumPages(): Int =
         (Game.RELIC_COUNT + MUSEUM_PER_PAGE - 1) / MUSEUM_PER_PAGE
 
-    /** 藏品 / 荣誉图鉴：左滑下一页，右滑上一页 */
+    private fun relicDetailNavIndex(id: Int, delta: Int): Int {
+        val n = Game.RELIC_COUNT
+        return ((id + delta) % n + n) % n
+    }
+
+    /** 详情浮层：左滑下一件，右滑上一件；测试全览可浏览全部，否则只在已收集间切换 */
+    private fun navigateMuseumDetail(delta: Int) {
+        if (museumDetailId !in 0 until Game.RELIC_COUNT) return
+        val nextId = if (game.immortalMode) {
+            relicDetailNavIndex(museumDetailId, delta)
+        } else {
+            var id = museumDetailId
+            var found = museumDetailId
+            for (step in 1 until Game.RELIC_COUNT) {
+                id = relicDetailNavIndex(id, delta)
+                if (game.relicCollected(id)) {
+                    found = id
+                    break
+                }
+            }
+            found
+        }
+        museumDetailId = nextId
+        museumPage = museumDetailId / MUSEUM_PER_PAGE
+    }
+
+    /** 藏品 / 荣誉图鉴：左滑下一页，右滑上一页；详情打开时左滑下一件、右滑上一件 */
     private fun tryCatalogPageSwipe(dx: Float, dy: Float, minDist: Float): Boolean {
         if (game.menuPanel != Game.PANEL_HOME) return false
         if (abs(dx) < minDist || abs(dx) <= abs(dy)) return false
         when (homeSubView) {
             HOME_SUB_COLLECTION -> {
-                if (museumDetailId >= 0) return false
+                if (museumDetailId >= 0) {
+                    navigateMuseumDetail(if (dx < 0f) 1 else -1)
+                    return true
+                }
                 val pages = museumPages()
                 if (pages <= 1) return false
                 museumPage = if (dx < 0f) (museumPage + 1) % pages
@@ -3889,10 +3918,12 @@ class HudView(context: Context, private val game: Game) : View(context) {
             lightText(canvas, fact, cx, ty, factSize, LIGHT_TEXT)
         }
 
-        lightText(
-            canvas, "点击外部关闭",
-            cx, bottom - 36f * s, 20f * s, LIGHT_HINT
-        )
+        val swipeHint = if (game.immortalMode || game.relicsFound > 1) {
+            "左右滑动查看 · 点击外部关闭"
+        } else {
+            "点击外部关闭"
+        }
+        lightText(canvas, swipeHint, cx, bottom - 36f * s, 20f * s, LIGHT_HINT)
     }
 
     private fun drawBtn(canvas: Canvas, r: RectF, label: String, s: Float) {
