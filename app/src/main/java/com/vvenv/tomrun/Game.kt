@@ -139,14 +139,29 @@ class Game {
             "四羊方尊", "金缕玉衣", "清明上河图", "敦煌飞天",
             // 新增（追加末尾，保持旧存档 bitmask 下标不变）
             "玉琮", "铜镜", "算盘", "司南", "长信宫灯", "马王堆帛画", "三星堆面具", "莲鹤方壶",
-            "红山玉龙", "太阳神鸟", "何尊", "击鼓说唱俑", "虎符", "铜车马"
+            "红山玉龙", "太阳神鸟", "何尊", "击鼓说唱俑", "虎符", "铜车马",
+            // 32–87（追加末尾，保持旧存档 bitmask 下标不变）
+            "舞马衔杯", "鎏金铜蚕", "夫差剑", "妇好鸮尊", "毛公鼎", "大克鼎", "利簋", "博山炉",
+            "漆画屏风", "反弹琵琶", "银则", "宫廷火锅", "镂空玉璧", "皇后玉玺", "铜鼓", "彩绘陶仓",
+            "石辟邪", "琉璃走兽", "犀角杯", "象牙如意", "珐琅彩碗", "青花凤首壶", "汝窑青瓷", "定窑白枕",
+            "哥窑笔洗", "官窑弦纹瓶", "建窑兔毫盏", "紫砂提梁壶", "端石砚台", "徽墨锭", "澄心堂纸", "活字印版",
+            "铜活字", "石通印", "里耶秦简", "楚帛书", "漆耳杯", "兽首玛瑙杯", "金凤钗", "金步摇",
+            "谷纹玉璧", "玉璜", "青铜敦", "战国水晶杯", "青铜觚", "青铜斝", "饕餮纹卣", "铜铙",
+            "石鼓", "峄山刻石", "鱼符", "铁矢", "弩机", "烽火台", "青花釉里红", "铜莲鹤灯"
         )
         val RELIC_ERAS = arrayOf(
             "新石器时代", "商代", "商周", "战国", "秦代", "汉代", "唐代", "元明",
             "商代", "春秋", "战国", "秦代", "汉代", "东晋",
             "商代", "汉代", "北宋", "唐代",
             "良渚", "汉代", "明清", "战国", "汉代", "汉代", "商代", "春秋",
-            "红山文化", "古蜀", "西周", "汉代", "战国", "秦代"
+            "红山文化", "古蜀", "西周", "汉代", "战国", "秦代",
+            "唐代", "汉代", "春秋", "商代", "西周", "西周", "西周", "汉代",
+            "汉代", "唐代", "唐代", "清代", "汉代", "汉代", "战国", "汉代",
+            "南朝", "明代", "明清", "清代", "清代", "元代", "北宋", "宋代",
+            "宋代", "宋代", "宋代", "明清", "宋代", "明清", "五代", "宋代",
+            "明代", "战国", "秦代", "战国", "战国", "唐代", "唐代", "魏晋",
+            "战国", "新石器", "春秋", "战国", "商代", "商代", "西周", "商代",
+            "秦代", "秦代", "唐代", "汉代", "汉代", "汉代", "元代", "战国"
         )
         val RELIC_FACTS = arrayOf(
             "半坡遗址出土，画着人面鱼纹",
@@ -180,18 +195,81 @@ class Game {
             "铭文最早出现「中国」二字",
             "开怀大笑的说唱艺人陶俑",
             "剖开两半才能调兵的信物",
-            "始皇陵出土的彩绘青铜御车"
+            "始皇陵出土的彩绘青铜御车",
+            "舞马屈膝捧杯，祝寿宴上的奇观",
+            "丝路起点出土的蚕形金饰",
+            "吴王夫差自铸，铭文锋利如新",
+            "妇好墓出土的猫头鹰形酒器",
+            "铭文最长的青铜重器之一",
+            "克氏为祖父铸，历载西周功勋",
+            "铭文记载武王伐纣的最早青铜器",
+            "博山叠嶂，香烟从镂空处袅袅升起",
+            "漆画列女仁智，屏风上的古画",
+            "敦煌壁画里反弹琵琶的乐伎",
+            "量茶舀药的银质小勺",
+            "故宫火锅分格涮肉，格数即礼仪",
+            "透雕龙凤，光能穿过玉璧",
+            "皇后之玺，螭虎钮和田白玉",
+            "鼓面铸太阳纹，击之震山谷",
+            "汉代陶仓模型，仓廪实而知礼节",
+            "辟邪镇墓，翼兽张口欲啸",
+            "黄绿釉琉璃，檐脊上的走兽",
+            "杯壁雕松鹤，角材温润如玉",
+            "如意首雕灵芝，象牙细腻光洁",
+            "洋彩花卉，碗壁薄如蛋壳",
+            "凤首扁腹，青花海水江崖",
+            "天青釉色，雨过天青云破处",
+            "白瓷枕面刻娃娃，定窑孩儿枕",
+            "金丝铁线，哥窑开片如冰裂",
+            "官窑青釉，弦纹简洁典雅",
+            "黑釉兔毫，茶沫与盏相映",
+            "紫砂提梁，泡茶不夺茶香",
+            "端石紫润，研墨无声发墨快",
+            "松烟徽墨，墨色如漆千年不褪",
+            "澄心堂纸，纸寿千年墨韵长",
+            "毕昇泥活字，一字一印可重排",
+            "铜铸字模，印书比雕版更快",
+            "战国官印，钮刻驼形通字",
+            "里耶古城出土，秦代户籍竹简",
+            "楚墓帛书，最早的帛画文献",
+            "耳杯羽觞，曲水流觞饮酒器",
+            "兽首镶金，玛瑙杯壁晶莹",
+            "凤形金钗，步摇垂珠颤巍巍",
+            "金叶花片，行走时铃声叮当",
+            "谷纹密布，礼天敬地的玉璧",
+            "半环形玉佩，新石器时代的饰件",
+            "圆鼓三足，春秋宴饮盛食器",
+            "战国水晶杯，透明如现代玻璃",
+            "细腰喇叭口，商代盛酒礼器",
+            "三足柱足，商代温酒青铜斝",
+            "盖顶兽首，西周饕餮纹盛酒器",
+            "商代铜铙，军阵鸣金收兵",
+            "十块鼓形石，上刻先秦书法",
+            "李斯小篆，刻石颂秦德",
+            "剖鱼验身份，唐代宫廷信物",
+            "汉代铁箭镞，箭去如风",
+            "青铜弩机，扳机一扣箭离弦",
+            "边塞烽火，狼烟传警千里",
+            "青花釉里红，元代釉下彩绝技",
+            "莲鹤铜灯，灯盘承露鹤衔莲"
         )
         val RELIC_RARITY = intArrayOf(
             0, 0, 0, 0, 0, 0, 0, 0,
             1, 1, 1, 1, 1, 1,
             2, 2, 2, 2,
             0, 0, 0, 1, 1, 1, 2, 2,
-            0, 2, 1, 0, 1, 2
+            0, 2, 1, 0, 1, 2,
+            1, 0, 1, 2, 2, 2, 2, 1,
+            1, 2, 0, 0, 1, 2, 0, 1,
+            1, 0, 0, 1, 1, 0, 1, 2,
+            2, 2, 1, 0, 0, 1, 0, 1,
+            1, 0, 1, 2, 0, 1, 1, 2,
+            0, 0, 1, 2, 1, 1, 2, 1,
+            2, 2, 1, 0, 1, 0, 2, 2
         )
         val RELIC_COUNT = RELIC_NAMES.size
         // 文物图鉴集齐一次性大奖（随件数上调）
-        const val MUSEUM_REWARD = 2200
+        const val MUSEUM_REWARD = 6000
         const val RELIC_HUD_MAX = 8
 
         // 平行宇宙
@@ -229,7 +307,7 @@ class Game {
         // 宇宙图鉴集齐一次性大奖
         const val CODEX_REWARD = 1000
 
-        // 成就类别（每类铜银金三级）
+        // 成就类别（每类铜银金钻四段，共 22 类 × 4 段 = 88 条荣誉）
         const val A_COINS = 0
         const val A_DIST = 1
         const val A_QUESTS = 2
@@ -241,28 +319,53 @@ class Game {
         const val A_STAR = 8
         const val A_HOME = 9
         const val A_BATTLE = 10
-        const val ACHIEVE_CATS = 11
-        const val ACHIEVE_TIERS_PER = 3
+        // —— 第二批（复用已有统计 / 结算时累计的新计数器）——
+        const val A_RUNS = 11        // 跑酷场次
+        const val A_JUMP = 12        // 累计跳跃
+        const val A_SLIDE = 13       // 累计滑铲
+        const val A_SMASH = 14       // 累计破障
+        const val A_PICKUP = 15      // 累计文物拾取（含重复）
+        const val A_FARRUN = 16      // 单场最远
+        const val A_RICHRUN = 17     // 单场最多金币
+        const val A_TIME = 18        // 累计跑酷时长（秒）
+        const val A_TELESCOPE = 19   // 望月镜等级
+        const val A_DRESS = 20       // 猫咪装扮拥有数（色/光迹/围巾/帽）
+        const val A_DECO = 21        // 家园建造拥有数（屋/顶/庭院装饰）
+        const val ACHIEVE_CATS = 22
+        const val ACHIEVE_TIERS_PER = 4
         const val ACHIEVE_MAX = ACHIEVE_CATS * ACHIEVE_TIERS_PER
         val ACHIEVE_TARGETS = arrayOf(
-            intArrayOf(200, 1000, 5000),       // 累计金币
-            intArrayOf(2000, 10000, 50000),    // 累计距离
-            intArrayOf(5, 25, 100),            // 任务数
-            intArrayOf(30, 100, 250),          // 最高连击
-            intArrayOf(3000, 8000, 20000),     // 最高分
-            intArrayOf(3, 15, 50),             // 穿越次数
-            intArrayOf(2, 4, 6),               // 探索宇宙数
-            intArrayOf(5, 13, RELIC_COUNT),    // 文物图鉴
-            intArrayOf(1, 3, 5),               // 观星手册
-            intArrayOf(1, 2, 3),               // 小屋能量等级
-            intArrayOf(5, 25, 80)              // 累计击倒妖怪
+            intArrayOf(200, 1000, 5000, 20000),        // 累计金币
+            intArrayOf(2000, 10000, 50000, 200000),    // 累计距离
+            intArrayOf(5, 25, 100, 300),               // 任务数
+            intArrayOf(30, 100, 250, 500),             // 最高连击
+            intArrayOf(3000, 8000, 20000, 50000),      // 最高分
+            intArrayOf(3, 15, 50, 150),                // 穿越次数
+            intArrayOf(2, 4, 5, UNIVERSE_COUNT),       // 探索宇宙数（封顶 6）
+            intArrayOf(5, 20, 50, RELIC_COUNT),        // 文物图鉴（封顶 88）
+            intArrayOf(1, 2, 4, 5),                    // 观星手册（封顶 5）
+            intArrayOf(1000, 5000, 12000, 25000),      // 小屋繁荣值
+            intArrayOf(5, 25, 80, 200),                // 累计击倒妖怪
+            intArrayOf(10, 50, 200, 500),              // 跑酷场次
+            intArrayOf(100, 500, 2000, 6000),          // 累计跳跃
+            intArrayOf(50, 250, 1000, 3000),           // 累计滑铲
+            intArrayOf(30, 150, 600, 2000),            // 累计破障
+            intArrayOf(20, 100, 400, 1000),            // 累计文物拾取
+            intArrayOf(1500, 5000, 15000, 40000),      // 单场最远
+            intArrayOf(50, 150, 400, 900),             // 单场最多金币
+            intArrayOf(600, 3600, 14400, 43200),       // 累计时长：10min/1h/4h/12h
+            intArrayOf(1, 2, 3, TELESCOPE_MAX_LEVEL),  // 望月镜等级（封顶 4）
+            intArrayOf(6, 9, 12, 16),                  // 猫咪装扮拥有数（封顶 16）
+            intArrayOf(5, 9, 13, 16)                   // 家园建造拥有数（封顶 16）
         )
         val ACHIEVE_NAMES = arrayOf(
             "金币收藏家", "长跑健将", "任务达人", "连击大师", "得分王",
-            "平行旅人", "宇宙旅者", "考古少年", "观星少年", "筑巢达人", "猎妖少年"
+            "平行旅人", "宇宙旅者", "考古少年", "观星少年", "筑巢达人", "猎妖少年",
+            "跑酷老手", "跳跃健将", "滑铲高手", "破障专家", "寻宝少年",
+            "远征先锋", "单场富翁", "持久跑者", "望镜大师", "装扮达人", "家园建造师"
         )
-        val ACHIEVE_TIERS = arrayOf("铜", "银", "金")
-        val ACHIEVE_REWARDS = intArrayOf(100, 250, 500)
+        val ACHIEVE_TIERS = arrayOf("铜", "银", "金", "钻")
+        val ACHIEVE_REWARDS = intArrayOf(100, 250, 500, 1000)
 
         // 外观：4 色 + 4 双脚光迹（0 免费）
         const val CAT_COLOR_COUNT = 4
@@ -410,7 +513,9 @@ class Game {
     // 文物收集：本局发现数 + 持久图鉴位掩码
     @Volatile var runRelics = 0
     @Volatile var relicsFound = 0
-    private var relicMask = 0
+    private var relicMask = 0       // 图鉴位 0..31
+    private var relicMaskHi = 0       // 图鉴位 32..63
+    private var relicMaskTop = 0    // 图鉴位 64..87
     private var museumRewarded = false
     @Volatile var totalRelicPickups = 0
     private var nextRelicAt = 0f
@@ -428,6 +533,13 @@ class Game {
     @Volatile var totalQuests = 0
     @Volatile var totalBattleWins = 0
     @Volatile var bestComboEver = 0
+    // 荣誉第二批用：均在 settleRun() 一次性累计，避免散落各处埋点
+    @Volatile var totalRuns = 0
+    @Volatile var totalJumps = 0
+    @Volatile var totalSlides = 0
+    @Volatile var totalSmashes = 0
+    @Volatile var totalPlaySeconds = 0
+    @Volatile var highRunCoins = 0
 
     // 成就：每类 0~3 级
     val achieveLevels = IntArray(ACHIEVE_CATS)
@@ -599,6 +711,12 @@ class Game {
         totalQuests = p.getInt("totalQuests", 0)
         totalBattleWins = p.getInt("totalBattleWins", 0)
         bestComboEver = p.getInt("bestCombo", 0)
+        totalRuns = p.getInt("totalRuns", 0)
+        totalJumps = p.getInt("totalJumps", 0)
+        totalSlides = p.getInt("totalSlides", 0)
+        totalSmashes = p.getInt("totalSmashes", 0)
+        totalPlaySeconds = p.getInt("totalPlaySeconds", 0)
+        highRunCoins = p.getInt("highRunCoins", 0)
         wallet = p.getInt("wallet", 0)
         hasChosenCharacterName = p.contains("characterName")
         characterName = p.getString("characterName", DEFAULT_CHARACTER_NAME)
@@ -645,11 +763,10 @@ class Game {
         codexRewarded = p.getBoolean("codexRewarded", false)
 
         relicMask = p.getInt("relicMask", 0)
-        // 只统计当前图鉴范围内的位，避免旧存档高位脏数据。
-        // 注意 Int 移位会把位数取模 32：RELIC_COUNT 满 32 时 (1 shl 32) - 1 == 0，
-        // 会把整份图鉴清空，所以满 32 位时直接用全 1。
-        relicMask = relicMask and if (RELIC_COUNT >= Int.SIZE_BITS) -1 else (1 shl RELIC_COUNT) - 1
-        relicsFound = Integer.bitCount(relicMask)
+        relicMaskHi = p.getInt("relicMaskHi", 0)
+        relicMaskTop = p.getInt("relicMaskTop", 0)
+        sanitizeRelicMasks()
+        relicsFound = countRelicsFound()
         museumRewarded = p.getBoolean("museumRewarded", false)
         // 图鉴扩容后：未集齐新件数则允许再次领取全收集奖
         if (museumRewarded && relicsFound < RELIC_COUNT) museumRewarded = false
@@ -824,7 +941,63 @@ class Game {
     fun ownsDeco(i: Int) = (ownedDecos and (1 shl i)) != 0
     fun seenUniverse(i: Int) = (seenMask and (1 shl i)) != 0
     fun codexComplete() = universesSeen >= UNIVERSE_COUNT
-    fun relicCollected(i: Int) = (relicMask and (1 shl i)) != 0
+    fun relicCollected(i: Int): Boolean {
+        if (i !in 0 until RELIC_COUNT) return false
+        return (relicMaskWordValue(i) and relicMaskBit(i)) != 0
+    }
+
+    private fun relicMaskWordIndex(i: Int) = when {
+        i < 32 -> 0
+        i < 64 -> 1
+        else -> 2
+    }
+
+    private fun relicMaskBit(i: Int) = 1 shl (i and 31)
+
+    private fun relicMaskWordValue(i: Int): Int = when (relicMaskWordIndex(i)) {
+        0 -> relicMask
+        1 -> relicMaskHi
+        else -> relicMaskTop
+    }
+
+    private fun setRelicMaskWord(word: Int, value: Int) {
+        when (word) {
+            0 -> relicMask = value
+            1 -> relicMaskHi = value
+            else -> relicMaskTop = value
+        }
+    }
+
+    private fun markRelicCollected(id: Int) {
+        val word = relicMaskWordIndex(id)
+        setRelicMaskWord(word, relicMaskWordValue(id) or relicMaskBit(id))
+    }
+
+    private fun maskForBits(bits: Int): Int =
+        if (bits >= Int.SIZE_BITS) -1 else (1 shl bits) - 1
+
+    private fun sanitizeRelicMasks() {
+        relicMask = if (RELIC_COUNT <= 32) {
+            relicMask and maskForBits(RELIC_COUNT)
+        } else -1
+        relicMaskHi = if (RELIC_COUNT <= 32) {
+            0
+        } else {
+            relicMaskHi and maskForBits((RELIC_COUNT - 32).coerceAtMost(32))
+        }
+        relicMaskTop = if (RELIC_COUNT <= 64) {
+            0
+        } else {
+            relicMaskTop and maskForBits(RELIC_COUNT - 64)
+        }
+    }
+
+    private fun countRelicsFound(): Int {
+        var n = Integer.bitCount(relicMask)
+        if (RELIC_COUNT > 32) n += Integer.bitCount(relicMaskHi)
+        if (RELIC_COUNT > 64) n += Integer.bitCount(relicMaskTop)
+        return n
+    }
     fun museumComplete() = relicsFound >= RELIC_COUNT
 
     fun decoOwnedCount(): Int = Integer.bitCount(ownedDecos)
@@ -1158,10 +1331,31 @@ class Game {
         A_UNIVERSE -> universesSeen
         A_RELIC -> relicsFound
         A_STAR -> stargazeReadCount()
-        A_HOME -> homeLevel()
+        A_HOME -> homeScore()
         A_BATTLE -> totalBattleWins
+        A_RUNS -> totalRuns + if (settled || state == State.READY) 0 else 1
+        A_JUMP -> totalJumps + if (settled) 0 else runJumps
+        A_SLIDE -> totalSlides + if (settled) 0 else runSlides
+        A_SMASH -> totalSmashes + if (settled) 0 else runSmashes
+        A_PICKUP -> totalRelicPickups
+        A_FARRUN -> maxOf(highDistance, distance.toInt())
+        A_RICHRUN -> maxOf(highRunCoins, sessionPickupCoins)
+        A_TIME -> totalPlaySeconds + if (settled) 0 else runTime.toInt()
+        A_TELESCOPE -> telescopeLevel
+        A_DRESS -> catCosmeticCount()
+        A_DECO -> homeCosmeticCount()
         else -> 0
     }
+
+    /** 猫咪装扮拥有件数：配色 / 光迹 / 围巾 / 帽子（含免费默认项） */
+    fun catCosmeticCount(): Int =
+        Integer.bitCount(ownedColors) + Integer.bitCount(ownedTrails) +
+            Integer.bitCount(ownedScarves) + Integer.bitCount(ownedHats)
+
+    /** 家园建造拥有件数：房屋 / 屋顶 / 庭院装饰 */
+    fun homeCosmeticCount(): Int =
+        Integer.bitCount(ownedHouses) + Integer.bitCount(ownedRoofs) +
+            Integer.bitCount(ownedDecos)
 
     // ---------- 输入 ----------
     /** Debug 测试开关（不死 + 藏品全览）：仅当前进程内有效，重启后自动关闭。 */
@@ -1745,8 +1939,8 @@ class Game {
         pushFloat(RELIC_NAMES[id], color)
         spawnBurst(catX, 2.2f, -2f, floatArrayOf(0.78f, 0.45f, 1f, 1f), 8)
         if (!relicCollected(id)) {
-            relicMask = relicMask or (1 shl id)
-            relicsFound = Integer.bitCount(relicMask)
+            markRelicCollected(id)
+            relicsFound = countRelicsFound()
             recordMuseumLeaderboard(RELIC_NAMES[id])
             enqueueBanner("文物图鉴 +1（$relicsFound/$RELIC_COUNT）", 0xFFFFD426.toInt(), 2.2f)
             if (!museumRewarded && museumComplete()) {
@@ -1991,8 +2185,8 @@ class Game {
         pushFloat(RELIC_NAMES[id], color)
         spawnBurst(e.x, e.y, e.z, floatArrayOf(0.78f, 0.45f, 1f, 1f), 6)
         if (!relicCollected(id)) {
-            relicMask = relicMask or (1 shl id)
-            relicsFound = Integer.bitCount(relicMask)
+            markRelicCollected(id)
+            relicsFound = countRelicsFound()
             recordMuseumLeaderboard(RELIC_NAMES[id])
             enqueueBanner("文物图鉴 +1（$relicsFound/$RELIC_COUNT）", 0xFFFFD426.toInt(), 2.2f)
             if (!museumRewarded && museumComplete()) {
@@ -2366,6 +2560,12 @@ class Game {
             .putInt("totalQuests", totalQuests)
             .putInt("totalBattleWins", totalBattleWins)
             .putInt("bestCombo", bestComboEver)
+            .putInt("totalRuns", totalRuns)
+            .putInt("totalJumps", totalJumps)
+            .putInt("totalSlides", totalSlides)
+            .putInt("totalSmashes", totalSmashes)
+            .putInt("totalPlaySeconds", totalPlaySeconds)
+            .putInt("highRunCoins", highRunCoins)
             .putInt("wallet", wallet)
             .putInt("ownedColors", ownedColors)
             .putInt("ownedTrails", ownedTrails)
@@ -2379,6 +2579,8 @@ class Game {
             .putInt("seenUniverses", seenMask)
             .putBoolean("codexRewarded", codexRewarded)
             .putInt("relicMask", relicMask)
+            .putInt("relicMaskHi", relicMaskHi)
+            .putInt("relicMaskTop", relicMaskTop)
             .putBoolean("museumRewarded", museumRewarded)
             .putInt("totalRelicPickups", totalRelicPickups)
             .putInt("ownedHouses", ownedHouses)
@@ -2401,6 +2603,12 @@ class Game {
         if (settled) return
         totalCoins += sessionPickupCoins
         totalDistance += distance.toInt()
+        totalRuns++
+        totalJumps += runJumps
+        totalSlides += runSlides
+        totalSmashes += runSmashes
+        totalPlaySeconds += runTime.toInt()
+        if (sessionPickupCoins > highRunCoins) highRunCoins = sessionPickupCoins
         if (bestComboRun > bestComboEver) bestComboEver = bestComboRun
         runNewDistRecord = distance.toInt() > highDistance
         runNewScoreRecord = score > highScore

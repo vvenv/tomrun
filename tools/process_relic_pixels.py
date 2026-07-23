@@ -20,7 +20,7 @@ PIXEL = ROOT / "tools/relic_assets/pixel"
 ASSETS = Path.home() / ".cursor/projects/Users-liwenfu-vvenv-tomrun/assets"
 OUT = ROOT / "app/src/main/res/drawable-nodpi"
 SIZE = 256
-RELIC_COUNT = 32
+RELIC_COUNT = 88
 
 
 def sync_from_cursor_assets(only: int | None = None) -> None:

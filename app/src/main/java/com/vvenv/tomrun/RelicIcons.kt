@@ -360,6 +360,62 @@ object RelicIcons {
             29 -> drawStoryteller(canvas, paint, cx, cy, u, fancy)
             30 -> drawTigerTally(canvas, paint, cx, cy, u, fancy)
             31 -> drawBronzeChariot(canvas, paint, cx, cy, u, fancy)
+            32 -> drawDancingHorse(canvas, paint, cx, cy, u, fancy)
+            33 -> drawSilkworm(canvas, paint, cx, cy, u, fancy)
+            34 -> drawSword(canvas, paint, cx, cy, u, fancy)
+            35 -> drawOwlZun(canvas, paint, cx, cy, u, fancy)
+            36 -> drawDing(canvas, paint, cx, cy, u, fancy)
+            37 -> drawDing(canvas, paint, cx, cy, u, fancy)
+            38 -> drawGui(canvas, paint, cx, cy, u, fancy)
+            39 -> drawBoshanBurner(canvas, paint, cx, cy, u, fancy)
+            40 -> drawScreen(canvas, paint, cx, cy, u, fancy)
+            41 -> drawApsara(canvas, paint, cx, cy, u, fancy)
+            42 -> drawScoop(canvas, paint, cx, cy, u, fancy)
+            43 -> drawHotpot(canvas, paint, cx, cy, u, fancy)
+            44 -> drawBiDisc(canvas, paint, cx, cy, u, fancy)
+            45 -> drawSeal(canvas, paint, cx, cy, u, fancy)
+            46 -> drawDrum(canvas, paint, cx, cy, u, fancy)
+            47 -> drawGranary(canvas, paint, cx, cy, u, fancy)
+            48 -> drawStoneBeast(canvas, paint, cx, cy, u, fancy)
+            49 -> drawRidgeBeast(canvas, paint, cx, cy, u, fancy)
+            50 -> drawHornCup(canvas, paint, cx, cy, u, fancy)
+            51 -> drawRuyi(canvas, paint, cx, cy, u, fancy)
+            52 -> drawPorcelain(canvas, paint, cx, cy, u, fancy)
+            53 -> drawPorcelain(canvas, paint, cx, cy, u, fancy)
+            54 -> drawPorcelain(canvas, paint, cx, cy, u, fancy)
+            55 -> drawPillow(canvas, paint, cx, cy, u, fancy)
+            56 -> drawBrushWasher(canvas, paint, cx, cy, u, fancy)
+            57 -> drawPorcelain(canvas, paint, cx, cy, u, fancy)
+            58 -> drawTeaBowl(canvas, paint, cx, cy, u, fancy)
+            59 -> drawTeapot(canvas, paint, cx, cy, u, fancy)
+            60 -> drawInkstone(canvas, paint, cx, cy, u, fancy)
+            61 -> drawInkStick(canvas, paint, cx, cy, u, fancy)
+            62 -> drawPaperStack(canvas, paint, cx, cy, u, fancy)
+            63 -> drawMovableType(canvas, paint, cx, cy, u, fancy)
+            64 -> drawMovableType(canvas, paint, cx, cy, u, fancy)
+            65 -> drawSeal(canvas, paint, cx, cy, u, fancy)
+            66 -> drawBamboo(canvas, paint, cx, cy, u, fancy)
+            67 -> drawSilkPainting(canvas, paint, cx, cy, u, fancy)
+            68 -> drawEarCup(canvas, paint, cx, cy, u, fancy)
+            69 -> drawAgateCup(canvas, paint, cx, cy, u, fancy)
+            70 -> drawHairpin(canvas, paint, cx, cy, u, fancy)
+            71 -> drawBuyao(canvas, paint, cx, cy, u, fancy)
+            72 -> drawBiDisc(canvas, paint, cx, cy, u, fancy)
+            73 -> drawJadeHuang(canvas, paint, cx, cy, u, fancy)
+            74 -> drawDui(canvas, paint, cx, cy, u, fancy)
+            75 -> drawCrystalCup(canvas, paint, cx, cy, u, fancy)
+            76 -> drawGu(canvas, paint, cx, cy, u, fancy)
+            77 -> drawJue(canvas, paint, cx, cy, u, fancy)
+            78 -> drawZun(canvas, paint, cx, cy, u, fancy)
+            79 -> drawBells(canvas, paint, cx, cy, u, fancy)
+            80 -> drawStoneDrum(canvas, paint, cx, cy, u, fancy)
+            81 -> drawStele(canvas, paint, cx, cy, u, fancy)
+            82 -> drawFishTally(canvas, paint, cx, cy, u, fancy)
+            83 -> drawArrow(canvas, paint, cx, cy, u, fancy)
+            84 -> drawCrossbow(canvas, paint, cx, cy, u, fancy)
+            85 -> drawBeaconTower(canvas, paint, cx, cy, u, fancy)
+            86 -> drawPorcelain(canvas, paint, cx, cy, u, fancy)
+            87 -> drawLotusCrane(canvas, paint, cx, cy, u, fancy)
             else -> drawDing(canvas, paint, cx, cy, u, fancy)
         }
     }
@@ -1651,6 +1707,409 @@ object RelicIcons {
         disc(canvas, paint, cx, cy, u, 1.5f, -2.5f, 1.1f, CLAY_LT)
         px(canvas, paint, cx, cy, u, 0.7f, -1.5f, 1.6f, 2.0f, 0xFFC04040.toInt())
         px(canvas, paint, cx, cy, u, -1.5f, -1.2f, 0.35f, 3f, 0x55B8E0C0)
+    }
+
+    /** 舞马衔杯：跪姿骏马口衔酒杯 */
+    private fun drawDancingHorse(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
+        if (!fancy) {
+            px(canvas, paint, cx, cy, u, -4f, 0f, 7f, 3f, BRONZE)
+            px(canvas, paint, cx, cy, u, -5f, -2.5f, 3f, 2.5f, BRONZE_DK)
+            disc(canvas, paint, cx, cy, u, 3.5f, -1.5f, 0.9f, GOLD)
+            return
+        }
+        px(canvas, paint, cx, cy, u, -5.5f, 1.5f, 9f, 2.5f, BRONZE_DK)
+        px(canvas, paint, cx, cy, u, -5f, 0.5f, 8f, 3f, BRONZE)
+        px(canvas, paint, cx, cy, u, -6f, -3f, 3.5f, 3.5f, BRONZE)
+        px(canvas, paint, cx, cy, u, -6.5f, -1.5f, 1.5f, 1.2f, BRONZE_DK)
+        disc(canvas, paint, cx, cy, u, 4.5f, -2f, 1.2f, GOLD)
+        px(canvas, paint, cx, cy, u, 4f, -2.5f, 1.8f, 0.8f, GOLD_LT)
+        px(canvas, paint, cx, cy, u, -3f, 2.5f, 1f, 2.5f, BRONZE_DK)
+        px(canvas, paint, cx, cy, u, 1f, 2.5f, 1f, 2.5f, BRONZE_DK)
+        px(canvas, paint, cx, cy, u, -4.5f, -0.5f, 6f, 0.5f, GOLD)
+    }
+
+    /** 鎏金铜蚕 */
+    private fun drawSilkworm(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
+        val body = if (fancy) 9f else 7f
+        for (i in 0 until if (fancy) 5 else 4) {
+            disc(canvas, paint, cx, cy, u, -body * 0.4f + i * (body * 0.2f), 0f, if (fancy) 1.4f else 1.1f, if (i % 2 == 0) GOLD else GOLD_DK)
+        }
+        if (fancy) {
+            px(canvas, paint, cx, cy, u, -5.5f, -0.8f, 1.5f, 0.6f, GOLD_LT)
+            px(canvas, paint, cx, cy, u, 4.5f, -0.5f, 1.2f, 0.5f, GOLD_LT)
+        }
+    }
+
+    /** 妇好鸮尊：立鸮形尊 */
+    private fun drawOwlZun(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
+        px(canvas, paint, cx, cy, u, -3f, -1f, 6f, if (fancy) 7f else 5f, BRONZE)
+        px(canvas, paint, cx, cy, u, -3.5f, -4f, 7f, 3.5f, BRONZE_DK)
+        px(canvas, paint, cx, cy, u, -2.5f, -3.2f, 1.2f, 1.2f, 0xFF1A1020.toInt())
+        px(canvas, paint, cx, cy, u, 1.3f, -3.2f, 1.2f, 1.2f, 0xFF1A1020.toInt())
+        if (fancy) {
+            px(canvas, paint, cx, cy, u, -1f, -1.8f, 2f, 0.8f, BRONZE_LT)
+            px(canvas, paint, cx, cy, u, -4.5f, 0f, 1.5f, 4f, BRONZE_DK)
+            px(canvas, paint, cx, cy, u, 3f, 0f, 1.5f, 4f, BRONZE_DK)
+        }
+    }
+
+    /** 利簋：双耳圈足食器 */
+    private fun drawGui(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
+        disc(canvas, paint, cx, cy, u, 0f, 1.5f, if (fancy) 3.5f else 2.8f, BRONZE_DK)
+        px(canvas, paint, cx, cy, u, -4f, -2f, 8f, if (fancy) 4.5f else 3.5f, BRONZE)
+        if (fancy) px(canvas, paint, cx, cy, u, -3.5f, -1.5f, 7f, 3.5f, BRONZE_LT)
+        px(canvas, paint, cx, cy, u, -5.5f, -0.5f, 1.2f, 2f, BRONZE_DK)
+        px(canvas, paint, cx, cy, u, 4.3f, -0.5f, 1.2f, 2f, BRONZE_DK)
+    }
+
+    /** 博山炉：博山形熏炉 */
+    private fun drawBoshanBurner(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
+        px(canvas, paint, cx, cy, u, -3f, 2f, 6f, if (fancy) 3f else 2.5f, BRONZE_DK)
+        px(canvas, paint, cx, cy, u, -4f, -2f, 8f, 4.5f, BRONZE)
+        if (fancy) {
+            px(canvas, paint, cx, cy, u, -3f, -4.5f, 2f, 2.5f, BRONZE_LT)
+            px(canvas, paint, cx, cy, u, -0.5f, -5.5f, 2f, 3f, BRONZE_LT)
+            px(canvas, paint, cx, cy, u, 2f, -4f, 2f, 2.5f, BRONZE_LT)
+        } else {
+            px(canvas, paint, cx, cy, u, -2f, -3.5f, 4f, 2f, BRONZE_LT)
+        }
+    }
+
+    /** 漆画屏风 */
+    private fun drawScreen(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
+        px(canvas, paint, cx, cy, u, -1.5f, 3f, 3f, if (fancy) 4f else 3f, WOOD)
+        px(canvas, paint, cx, cy, u, -5f, -5f, 10f, if (fancy) 9f else 7f, 0xFF6A2020.toInt())
+        if (fancy) {
+            px(canvas, paint, cx, cy, u, -4f, -3f, 8f, 5f, 0xFF8A4040.toInt())
+            px(canvas, paint, cx, cy, u, -2f, -1f, 1.5f, 3f, GOLD_DK)
+            px(canvas, paint, cx, cy, u, 1f, -2f, 2f, 4f, 0xFF4A8A6A.toInt())
+        }
+    }
+
+    /** 银则：量茶药勺 */
+    private fun drawScoop(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
+        px(canvas, paint, cx, cy, u, -1f, -5f, 2f, if (fancy) 10f else 8f, 0xFFC0C8D0.toInt())
+        px(canvas, paint, cx, cy, u, -2.5f, 3f, 5f, if (fancy) 3f else 2.5f, 0xFFD8E0E8.toInt())
+        if (fancy) px(canvas, paint, cx, cy, u, -2f, 3.3f, 4f, 0.5f, 0xFFE8F0F8.toInt())
+    }
+
+    /** 宫廷火锅 */
+    private fun drawHotpot(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
+        px(canvas, paint, cx, cy, u, -4f, 0f, 8f, if (fancy) 4f else 3f, BRONZE)
+        px(canvas, paint, cx, cy, u, -1f, -4f, 2f, if (fancy) 5f else 4f, BRONZE_DK)
+        if (fancy) {
+            px(canvas, paint, cx, cy, u, -3.5f, 0.5f, 3.5f, 2.5f, 0xFF8A3030.toInt())
+            px(canvas, paint, cx, cy, u, 0f, 0.5f, 3.5f, 2.5f, 0xFF8A3030.toInt())
+        }
+    }
+
+    /** 玉璧：圆环（镂空/谷纹） */
+    private fun drawBiDisc(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
+        val r = if (fancy) 6.5f else 5f
+        disc(canvas, paint, cx, cy, u, 0f, 0f, r, JADE_DK)
+        disc(canvas, paint, cx, cy, u, 0f, 0f, r - 1.2f, JADE)
+        disc(canvas, paint, cx, cy, u, 0f, 0f, if (fancy) 2.2f else 1.6f, 0xFF1A2030.toInt())
+        if (fancy) {
+            for (i in 0 until 8) {
+                val a = i * (Math.PI * 2 / 8).toFloat()
+                disc(canvas, paint, cx, cy, u, cos(a) * 4f, sin(a) * 4f, 0.5f, JADE_DK)
+            }
+        }
+    }
+
+    /** 玉玺/石印 */
+    private fun drawSeal(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
+        val s = if (fancy) 5f else 4f
+        px(canvas, paint, cx, cy, u, -s, 0f, s * 2, s * 2, JADE_LT)
+        px(canvas, paint, cx, cy, u, -s + 0.4f, 0.4f, s * 2 - 0.8f, s * 2 - 0.8f, JADE)
+        px(canvas, paint, cx, cy, u, -1.5f, -2.5f, 3f, if (fancy) 2.8f else 2.2f, JADE_DK)
+        if (fancy) {
+            px(canvas, paint, cx, cy, u, -0.8f, -3.5f, 1.6f, 1.2f, JADE_LT)
+            px(canvas, paint, cx, cy, u, -2f, 1f, 4f, 0.4f, JADE_DK)
+        }
+    }
+
+    /** 铜鼓 */
+    private fun drawDrum(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
+        val r = if (fancy) 6f else 4.8f
+        disc(canvas, paint, cx, cy, u, 0f, 0f, r, BRONZE_DK)
+        disc(canvas, paint, cx, cy, u, 0f, 0f, r - 0.8f, BRONZE)
+        disc(canvas, paint, cx, cy, u, 0f, 0f, if (fancy) 2.5f else 1.8f, GOLD_DK)
+        if (fancy) {
+            for (i in 0 until 12) {
+                val a = i * (Math.PI * 2 / 12).toFloat()
+                px(canvas, paint, cx, cy, u, cos(a) * 4.5f - 0.2f, sin(a) * 4.5f - 0.2f, 0.4f, 1.2f, BRONZE_DK)
+            }
+        }
+    }
+
+    /** 彩绘陶仓 */
+    private fun drawGranary(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
+        px(canvas, paint, cx, cy, u, -4f, -1f, 8f, if (fancy) 6f else 5f, CLAY)
+        px(canvas, paint, cx, cy, u, -3.5f, -4.5f, 7f, 2f, 0xFFC04040.toInt())
+        if (fancy) {
+            px(canvas, paint, cx, cy, u, -2f, 0f, 4f, 3f, CLAY_LT)
+            px(canvas, paint, cx, cy, u, -1.5f, 1.5f, 3f, 1.5f, 0xFF1A2030.toInt())
+        }
+    }
+
+    /** 石辟邪 */
+    private fun drawStoneBeast(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
+        val g = 0xFF8A9098.toInt()
+        val gDk = 0xFF5A6068.toInt()
+        px(canvas, paint, cx, cy, u, -4f, 0f, 8f, if (fancy) 4f else 3f, g)
+        px(canvas, paint, cx, cy, u, -5f, -3f, 4f, 3.5f, gDk)
+        if (fancy) {
+            px(canvas, paint, cx, cy, u, -6.5f, -1f, 3f, 1.5f, g)
+            px(canvas, paint, cx, cy, u, 3.5f, -1f, 3f, 1.5f, g)
+            px(canvas, paint, cx, cy, u, -4.5f, -2.5f, 1f, 0.8f, 0xFF1A1020.toInt())
+        }
+    }
+
+    /** 琉璃走兽 */
+    private fun drawRidgeBeast(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
+        px(canvas, paint, cx, cy, u, -3f, 1f, 6f, if (fancy) 4f else 3f, 0xFF6A9A40.toInt())
+        px(canvas, paint, cx, cy, u, -4f, -2f, 5f, 3.5f, 0xFF8AB850.toInt())
+        px(canvas, paint, cx, cy, u, -1f, -4f, 2f, 2.5f, 0xFFC0D060.toInt())
+        if (fancy) px(canvas, paint, cx, cy, u, 2f, -1f, 2.5f, 1.5f, 0xFF4A7030.toInt())
+    }
+
+    /** 犀角杯 */
+    private fun drawHornCup(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
+        px(canvas, paint, cx, cy, u, -2f, -4f, 4f, if (fancy) 7f else 5.5f, 0xFFD0A060.toInt())
+        px(canvas, paint, cx, cy, u, -1.5f, -3.5f, 3f, if (fancy) 6f else 4.5f, 0xFFE8C080.toInt())
+        if (fancy) {
+            px(canvas, paint, cx, cy, u, -0.5f, -1f, 1f, 2f, 0xFF4A8A50.toInt())
+            px(canvas, paint, cx, cy, u, 0.5f, 2f, 1.5f, 1.5f, 0xFFE8E8E8.toInt())
+        }
+    }
+
+    /** 象牙如意 */
+    private fun drawRuyi(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
+        px(canvas, paint, cx, cy, u, -1f, -5f, 2f, if (fancy) 10f else 8f, 0xFFF0E8D8.toInt())
+        px(canvas, paint, cx, cy, u, -2.5f, -5.5f, 5f, 2.5f, 0xFFF8F0E0.toInt())
+        if (fancy) disc(canvas, paint, cx, cy, u, 0f, -4.5f, 2f, 0xFFE8E0D0.toInt())
+    }
+
+    /** 定窑白枕 */
+    private fun drawPillow(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
+        px(canvas, paint, cx, cy, u, -5f, -2f, 10f, if (fancy) 5f else 4f, 0xFFF0ECE8.toInt())
+        if (fancy) {
+            disc(canvas, paint, cx, cy, u, 0f, -0.5f, 2f, 0xFFF8D8C8.toInt())
+            px(canvas, paint, cx, cy, u, -0.5f, 0f, 1f, 1.5f, 0xFFE8C0B0.toInt())
+        }
+    }
+
+    /** 哥窑笔洗 */
+    private fun drawBrushWasher(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
+        val r = if (fancy) 5.5f else 4.5f
+        disc(canvas, paint, cx, cy, u, 0f, 0.5f, r, 0xFF6A8A7A.toInt())
+        disc(canvas, paint, cx, cy, u, 0f, 0.5f, r - 1f, 0xFF8AA898.toInt())
+        if (fancy) {
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = u * 0.3f
+            paint.color = 0xFF3A4A40.toInt()
+            canvas.drawCircle(cx, cy + u * 0.5f, u * (r - 0.5f), paint)
+            paint.style = Paint.Style.FILL
+        }
+    }
+
+    /** 建窑兔毫盏 */
+    private fun drawTeaBowl(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
+        val r = if (fancy) 5.5f else 4.5f
+        disc(canvas, paint, cx, cy, u, 0f, 1f, r, 0xFF2A1810.toInt())
+        disc(canvas, paint, cx, cy, u, 0f, 0.8f, r - 0.6f, 0xFF3A2018.toInt())
+        if (fancy) {
+            for (i in -3..3) px(canvas, paint, cx, cy, u, i * 0.8f, 0.5f, 0.3f, 2.5f, 0xFFD0A040.toInt())
+        }
+    }
+
+    /** 紫砂提梁壶 */
+    private fun drawTeapot(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
+        disc(canvas, paint, cx, cy, u, 0f, 1.5f, if (fancy) 4.5f else 3.5f, 0xFF6A4030.toInt())
+        px(canvas, paint, cx, cy, u, -3.5f, -1f, 7f, if (fancy) 4f else 3f, 0xFF7A5040.toInt())
+        px(canvas, paint, cx, cy, u, -4f, -5f, 8f, 0.8f, 0xFF5A3828.toInt())
+        if (fancy) px(canvas, paint, cx, cy, u, 3.5f, 0f, 2f, 0.6f, 0xFF5A3828.toInt())
+    }
+
+    /** 端石砚台 */
+    private fun drawInkstone(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
+        px(canvas, paint, cx, cy, u, -5f, -3f, 10f, if (fancy) 6f else 5f, 0xFF3A3848.toInt())
+        px(canvas, paint, cx, cy, u, -3.5f, -1f, 7f, if (fancy) 3.5f else 2.8f, 0xFF1A1820.toInt())
+        if (fancy) px(canvas, paint, cx, cy, u, 2f, -2.5f, 2.5f, 2f, 0xFF4A4858.toInt())
+    }
+
+    /** 徽墨锭 */
+    private fun drawInkStick(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
+        px(canvas, paint, cx, cy, u, -2f, -4f, 4f, if (fancy) 8f else 6.5f, INK)
+        if (fancy) {
+            px(canvas, paint, cx, cy, u, -1.5f, -2f, 3f, 0.5f, GOLD_DK)
+            px(canvas, paint, cx, cy, u, -1.5f, 0.5f, 3f, 0.5f, GOLD_DK)
+        }
+    }
+
+    /** 澄心堂纸 */
+    private fun drawPaperStack(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
+        val n = if (fancy) 4 else 3
+        for (i in 0 until n) {
+            px(canvas, paint, cx, cy, u, -4f + i * 0.3f, -4f + i * 0.2f, 8f, if (fancy) 9f else 7f, PAPER)
+        }
+        if (fancy) px(canvas, paint, cx, cy, u, -3f, -3f, 1.5f, 6f, 0xFFC04040.toInt())
+    }
+
+    /** 活字印版 */
+    private fun drawMovableType(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
+        px(canvas, paint, cx, cy, u, -5f, -4f, 10f, if (fancy) 8f else 6.5f, WOOD)
+        val cols = if (fancy) 4 else 3
+        for (r in 0 until cols) for (c in 0 until cols) {
+            px(canvas, paint, cx, cy, u, -3.5f + c * 2f, -2.5f + r * 1.8f, 1.2f, 1.2f, BRONZE_DK)
+        }
+    }
+
+    /** 漆耳杯 */
+    private fun drawEarCup(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
+        px(canvas, paint, cx, cy, u, -4f, -1.5f, 8f, if (fancy) 3.5f else 2.8f, 0xFF6A1818.toInt())
+        px(canvas, paint, cx, cy, u, -5.5f, -1f, 2f, 2f, 0xFF6A1818.toInt())
+        px(canvas, paint, cx, cy, u, 3.5f, -1f, 2f, 2f, 0xFF6A1818.toInt())
+        if (fancy) px(canvas, paint, cx, cy, u, -3f, -0.5f, 6f, 0.4f, GOLD_DK)
+    }
+
+    /** 兽首玛瑙杯 */
+    private fun drawAgateCup(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
+        px(canvas, paint, cx, cy, u, -2f, -3f, 4f, if (fancy) 6f else 4.5f, 0xFFD07040.toInt())
+        px(canvas, paint, cx, cy, u, -3.5f, -2f, 2.5f, 2.5f, GOLD)
+        if (fancy) {
+            px(canvas, paint, cx, cy, u, -3.8f, -1.5f, 0.8f, 0.6f, 0xFF1A1020.toInt())
+            px(canvas, paint, cx, cy, u, -1f, -1f, 2f, 0.4f, 0xFFE8A060.toInt())
+        }
+    }
+
+    /** 金凤钗 */
+    private fun drawHairpin(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
+        px(canvas, paint, cx, cy, u, -0.4f, -5f, 0.8f, if (fancy) 10f else 8f, GOLD)
+        px(canvas, paint, cx, cy, u, -3f, -5.5f, 6f, 3f, GOLD_LT)
+        if (fancy) {
+            px(canvas, paint, cx, cy, u, -2f, -4f, 1.5f, 2f, GOLD)
+            px(canvas, paint, cx, cy, u, 1f, -3.5f, 2f, 1.5f, GOLD_DK)
+        }
+    }
+
+    /** 金步摇 */
+    private fun drawBuyao(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
+        px(canvas, paint, cx, cy, u, -0.4f, -4f, 0.8f, if (fancy) 8f else 6.5f, GOLD)
+        px(canvas, paint, cx, cy, u, -2.5f, -5f, 5f, 1.5f, GOLD_LT)
+        val n = if (fancy) 4 else 3
+        for (i in 0 until n) {
+            disc(canvas, paint, cx, cy, u, -2f + i * 1.3f, -2.5f + i * 0.3f, 0.6f, GOLD)
+            px(canvas, paint, cx, cy, u, -2.2f + i * 1.3f, -1.5f, 0.4f, if (fancy) 2f else 1.5f, GOLD_DK)
+        }
+    }
+
+    /** 玉璜 */
+    private fun drawJadeHuang(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
+        val w = if (fancy) 10f else 8f
+        px(canvas, paint, cx, cy, u, -w * 0.5f, -1.5f, w, if (fancy) 3f else 2.5f, JADE)
+        px(canvas, paint, cx, cy, u, -w * 0.4f, -1f, w * 0.8f, if (fancy) 2f else 1.5f, JADE_LT)
+        if (fancy) {
+            disc(canvas, paint, cx, cy, u, -w * 0.45f, 0f, 0.4f, JADE_DK)
+            disc(canvas, paint, cx, cy, u, w * 0.45f, 0f, 0.4f, JADE_DK)
+        }
+    }
+
+    /** 青铜敦 */
+    private fun drawDui(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
+        disc(canvas, paint, cx, cy, u, 0f, 2f, if (fancy) 4f else 3.2f, BRONZE_DK)
+        px(canvas, paint, cx, cy, u, -4f, -3f, 8f, if (fancy) 5.5f else 4.5f, BRONZE)
+        px(canvas, paint, cx, cy, u, -3.5f, -5f, 7f, 2.5f, BRONZE_LT)
+        if (fancy) {
+            px(canvas, paint, cx, cy, u, -5f, -1f, 1.2f, 2.5f, BRONZE_DK)
+            px(canvas, paint, cx, cy, u, 3.8f, -1f, 1.2f, 2.5f, BRONZE_DK)
+        }
+    }
+
+    /** 战国水晶杯：上宽下窄直筒 */
+    private fun drawCrystalCup(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
+        val crystal = 0xAACCE0F0.toInt()
+        val crystalLt = 0xDDE8F8FF.toInt()
+        val crystalDk = 0x88A0B8C8.toInt()
+        if (!fancy) {
+            px(canvas, paint, cx, cy, u, -2.2f, -4f, 4.4f, 7.5f, crystal)
+            px(canvas, paint, cx, cy, u, -1.5f, 2.5f, 3f, 0.8f, crystalDk)
+            return
+        }
+        px(canvas, paint, cx, cy, u, -2.8f, -5f, 5.6f, 9f, crystalDk)
+        px(canvas, paint, cx, cy, u, -2.4f, -4.5f, 4.8f, 8.5f, crystal)
+        px(canvas, paint, cx, cy, u, -1.8f, -4f, 3.6f, 7.5f, crystalLt)
+        px(canvas, paint, cx, cy, u, -2f, 3f, 4f, 1f, crystalDk)
+        px(canvas, paint, cx, cy, u, -0.8f, -2f, 0.5f, 5f, 0x66FFFFFF)
+        px(canvas, paint, cx, cy, u, 0.5f, 1f, 0.4f, 3f, 0x44FFFFFF)
+    }
+
+    /** 青铜觚：细腰高足 */
+    private fun drawGu(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
+        px(canvas, paint, cx, cy, u, -3.5f, -5f, 7f, if (fancy) 2.5f else 2f, BRONZE_LT)
+        px(canvas, paint, cx, cy, u, -2f, -2.5f, 4f, if (fancy) 6f else 5f, BRONZE)
+        px(canvas, paint, cx, cy, u, -1.5f, 3f, 3f, if (fancy) 3f else 2.5f, BRONZE_DK)
+        if (fancy) px(canvas, paint, cx, cy, u, -2.5f, -0.5f, 5f, 1.2f, BRONZE_DK)
+    }
+
+    /** 石鼓 */
+    private fun drawStoneDrum(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
+        val g = 0xFF7A8088.toInt()
+        px(canvas, paint, cx, cy, u, -4.5f, -3f, 9f, if (fancy) 6f else 5f, g)
+        if (fancy) {
+            for (i in 0 until 4) px(canvas, paint, cx, cy, u, -3.5f, -2f + i * 1.5f, 7f, 0.35f, 0xFF5A6068.toInt())
+            px(canvas, paint, cx, cy, u, -2f, -1f, 0.5f, 3f, 0xFF4A5058.toInt())
+        }
+    }
+
+    /** 峄山刻石 */
+    private fun drawStele(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
+        px(canvas, paint, cx, cy, u, -3f, -5.5f, 6f, if (fancy) 11f else 9f, 0xFF8A9098.toInt())
+        if (fancy) {
+            for (i in 0 until 5) px(canvas, paint, cx, cy, u, -2f, -4f + i * 1.8f, 4f, 0.35f, 0xFF5A6068.toInt())
+        }
+    }
+
+    /** 鱼符 */
+    private fun drawFishTally(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
+        px(canvas, paint, cx, cy, u, -5f, -1.5f, 10f, if (fancy) 3.5f else 2.8f, BRONZE)
+        px(canvas, paint, cx, cy, u, 4f, -2.5f, 2f, 2f, BRONZE_DK)
+        if (fancy) {
+            px(canvas, paint, cx, cy, u, -4f, -0.5f, 0.5f, 1.5f, BRONZE_DK)
+            disc(canvas, paint, cx, cy, u, -3f, 0f, 0.5f, 0xFF1A1020.toInt())
+        }
+    }
+
+    /** 铁矢 */
+    private fun drawArrow(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
+        px(canvas, paint, cx, cy, u, -0.8f, -5f, 1.6f, if (fancy) 10f else 8f, 0xFF5A6068.toInt())
+        px(canvas, paint, cx, cy, u, -2f, 3f, 4f, if (fancy) 2.5f else 2f, 0xFF3A4048.toInt())
+        if (fancy) {
+            px(canvas, paint, cx, cy, u, -1.5f, -5.5f, 3f, 1.5f, 0xFF4A5058.toInt())
+            px(canvas, paint, cx, cy, u, -0.5f, 4.5f, 1f, 1.5f, WOOD)
+        }
+    }
+
+    /** 弩机 */
+    private fun drawCrossbow(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
+        px(canvas, paint, cx, cy, u, -4f, -1f, 8f, if (fancy) 4f else 3f, BRONZE)
+        px(canvas, paint, cx, cy, u, -1f, -2.5f, 2f, if (fancy) 3f else 2.5f, BRONZE_DK)
+        if (fancy) {
+            px(canvas, paint, cx, cy, u, -5f, 0.5f, 1.5f, 1.5f, BRONZE_LT)
+            px(canvas, paint, cx, cy, u, 3.5f, 0.5f, 1.5f, 1.5f, BRONZE_LT)
+            disc(canvas, paint, cx, cy, u, 0f, 0f, 1f, 0xFF1A1020.toInt())
+        }
+    }
+
+    /** 烽火台 */
+    private fun drawBeaconTower(canvas: Canvas, paint: Paint, cx: Float, cy: Float, u: Float, fancy: Boolean) {
+        px(canvas, paint, cx, cy, u, -3f, 0f, 6f, if (fancy) 5f else 4f, 0xFF6A6058.toInt())
+        px(canvas, paint, cx, cy, u, -2f, -3f, 4f, 3.5f, 0xFF7A7068.toInt())
+        if (fancy) {
+            px(canvas, paint, cx, cy, u, -1f, -5.5f, 2f, 2f, 0xFFFF8040.toInt())
+            px(canvas, paint, cx, cy, u, -0.5f, -6.5f, 1f, 1.5f, 0xFFFFC040.toInt())
+        }
     }
 }
 

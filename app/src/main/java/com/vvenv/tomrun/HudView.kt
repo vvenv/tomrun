@@ -2073,7 +2073,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         hitMuseum.set(mx - 60f * u, friezeT - 30f * u, mx + 60f * u, base + 6f * s)
     }
 
-    /** 奖牌盘面：lv 0 为未解锁的灰位，1/2/3 对应铜 / 银 / 金 */
+    /** 奖牌盘面：lv 0 为未解锁的灰位，1/2/3/4 对应铜 / 银 / 金 / 钻 */
     private fun drawMedal(canvas: Canvas, cx: Float, cy: Float, r: Float, lv: Int) {
         if (lv <= 0) {
             pixDisc(canvas, cx, cy, r, 0xFF8A7561.toInt())
@@ -2083,12 +2083,14 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val face = when (lv) {
             1 -> 0xFFC87A3A.toInt()
             2 -> 0xFFAEB6C4.toInt()
-            else -> 0xFFF2C14E.toInt()
+            3 -> 0xFFF2C14E.toInt()
+            else -> 0xFF6FD3E0.toInt()
         }
         val glow = when (lv) {
             1 -> 0xFFE8AE74.toInt()
             2 -> 0xFFDCE3EC.toInt()
-            else -> 0xFFFFEDB0.toInt()
+            3 -> 0xFFFFEDB0.toInt()
+            else -> 0xFFCBF3F9.toInt()
         }
         pixDisc(canvas, cx, cy, r, darken(face))
         pixDisc(canvas, cx, cy, r * 0.82f, face)
@@ -2154,16 +2156,26 @@ class HudView(context: Context, private val game: Game) : View(context) {
         rc(hx - 76f * u, base - 106f * u, hx + 76f * u, wallT, 0xFF8B7A66.toInt())
         rc(hx - 76f * u, base - 106f * u, hx + 76f * u, base - 103f * u, 0xFFC4B399.toInt())
 
-        // 奖牌网格：≤10 枚用 5×2，更多时用 6 列并居中各行
-        val medalCols = if (Game.ACHIEVE_CATS <= 10) 5 else 6
+        // 奖牌网格：按类别数选列数，行距自适应地铺满整面墙（22 枚用 8 列 3 行）
+        val medalCols = when {
+            Game.ACHIEVE_CATS <= 10 -> 5
+            Game.ACHIEVE_CATS <= 12 -> 6
+            else -> 8
+        }
+        val medalRows = (Game.ACHIEVE_CATS + medalCols - 1) / medalCols
+        val gridTop = base - 78f * u
+        val gridBot = base - 20f * u
+        val rowStep = if (medalRows > 1) (gridBot - gridTop) / (medalRows - 1) else 0f
+        val colStep = 132f * u / medalCols
+        val vSpan = if (medalRows > 1) rowStep else 40f * u
+        val r = min(11f * u, min(colStep * 0.42f, vSpan * 0.34f))
         for (c in 0 until Game.ACHIEVE_CATS) {
             val row = c / medalCols
             val col = c % medalCols
             val itemsInRow = min(medalCols, Game.ACHIEVE_CATS - row * medalCols)
-            val px = hx + (col - (itemsInRow - 1) * 0.5f) * 27f * u
-            val my = base - (68f - row * 36f) * u
+            val px = hx + (col - (itemsInRow - 1) * 0.5f) * colStep
+            val my = if (medalRows > 1) gridTop + row * rowStep else (gridTop + gridBot) * 0.5f
             val lv = game.achieveLevels[c]
-            val r = 11f * u
             drawMedalRibbon(canvas, px, my - r, r, lv)
             drawMedal(canvas, px, my, r, lv)
         }
@@ -3457,7 +3469,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private fun drawCatalogFooter(
         canvas: Canvas, frame: OverlayFrame, s: Float,
         page: Int, pages: Int, sdx: Float, sdy: Float,
-        closeHint: String? = null
+        closeHint: String? = null, pageMidY: Float? = null
     ) {
         val cx = (frame.left + frame.right) * 0.5f
         val hint = closeHint ?: if (pages > 1) {
@@ -3465,9 +3477,10 @@ class HudView(context: Context, private val game: Game) : View(context) {
         } else {
             "点 X 或返回退出"
         }
-        // 页码单独一行，坐落在收尾行（提示 + 关闭按钮）正上方
+        // 页码单独一行；默认坐落在收尾行上方，pageMidY 可让页码居中于列表与页脚间的留白
         textPaint.textAlign = Paint.Align.CENTER
-        lightText(canvas, "${page + 1}/$pages", cx, frame.bottom - 70f * s, 22f * s, LIGHT_TEXT)
+        val pageBaseline = if (pageMidY != null) centeredBaselineY(pageMidY, 22f * s) else frame.bottom - 70f * s
+        lightText(canvas, "${page + 1}/$pages", cx, pageBaseline, 22f * s, LIGHT_TEXT)
         drawOverlayCloseRow(canvas, frame.left, frame.right, frame.bottom, s, hint, btnCatalogClose)
     }
 
@@ -3489,7 +3502,8 @@ class HudView(context: Context, private val game: Game) : View(context) {
             val edge = when (lv) {
                 1 -> 0xFFC87A3A.toInt()
                 2 -> 0xFFAEB6C4.toInt()
-                else -> 0xFFF2C14E.toInt()
+                3 -> 0xFFF2C14E.toInt()
+                else -> 0xFF6FD3E0.toInt()
             }
             btnPaint.style = Paint.Style.STROKE
             btnPaint.strokeWidth = 2f * s
@@ -3574,7 +3588,10 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val end = min(start + HONOR_PER_PAGE, Game.ACHIEVE_CATS)
         val rows = (end - start).coerceAtLeast(1)
         val rowGap = 6f * s
-        val rowH = ((frame.contentBottom - frame.contentTop) - rowGap * (rows - 1)) / rows
+        // 列表底部预留一条留白带放页码，让页码落在末卡与页脚之间而非贴着卡片
+        val listBottom = frame.contentBottom - 48f * s
+        // 卡片高度按满页行数固定，短页顶端对齐、底部留白，避免不同页卡片忽高忽低
+        val rowH = ((listBottom - frame.contentTop) - rowGap * (HONOR_PER_PAGE - 1)) / HONOR_PER_PAGE
         val rowLeft = frame.left + 16f * s
         val rowRight = frame.right - 16f * s
         val badgeW = 56f * s
@@ -3588,7 +3605,8 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 0 -> LIGHT_LOCKED
                 1 -> 0xFF8A5520.toInt()
                 2 -> 0xFF5A6068.toInt()
-                else -> 0xFF8A6410.toInt()
+                3 -> 0xFF8A6410.toInt()
+                else -> 0xFF2E8898.toInt()
             }
             drawHonorPlaque(canvas, rowLeft, rowTop, rowRight, rowBottom, s, lv)
 
@@ -3602,7 +3620,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
             val cur = game.achieveProgress(c)
             val nameLine = Game.ACHIEVE_NAMES[c]
             val detail = if (lv >= Game.ACHIEVE_TIERS_PER) {
-                "金满级"
+                "${Game.ACHIEVE_TIERS[Game.ACHIEVE_TIERS_PER - 1]}满级"
             } else {
                 val target = Game.ACHIEVE_TARGETS[c][lv]
                 val reward = Game.ACHIEVE_REWARDS[lv]
@@ -3617,7 +3635,12 @@ class HudView(context: Context, private val game: Game) : View(context) {
             textPaint.textAlign = Paint.Align.CENTER
         }
 
-        drawCatalogFooter(canvas, frame, s, page, pages, sdx, sdy)
+        // 页码居中于列表留白带与页脚收尾行之间
+        val closeRowCy = frame.bottom - (CLOSE_ROW_MARGIN + CLOSE_BTN_SIZE * 0.5f) * s
+        drawCatalogFooter(
+            canvas, frame, s, page, pages, sdx, sdy,
+            pageMidY = (listBottom + closeRowCy) * 0.5f - 20f * s
+        )
     }
 
     private fun drawCollectionOverlay(canvas: Canvas, w: Float, h: Float, s: Float, sdx: Float, sdy: Float) {
@@ -3639,7 +3662,9 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val gap = 10f * s
         val padX = 18f * s
         val availW = frame.pw - padX * 2f
-        val availH = frame.contentBottom - frame.contentTop
+        // 底部预留一条留白带放页码，与荣誉页一致：网格整体上移，末行不贴分割线
+        val listBottom = frame.contentBottom - 48f * s
+        val availH = listBottom - frame.contentTop
         val cellW = (availW - gap * (MUSEUM_COLS - 1)) / MUSEUM_COLS
         val cellH = (availH - gap * (MUSEUM_ROWS - 1)) / MUSEUM_ROWS
         // 展柜是竖长的：宽度吃满，高度尽量占满整面墙
@@ -3681,7 +3706,12 @@ class HudView(context: Context, private val game: Game) : View(context) {
             previewAll -> "左右滑动翻页 · 点图标查看 · X 退出"
             else -> "左右滑动翻页 · 点图标查看 · X 或返回退出"
         }
-        drawCatalogFooter(canvas, frame, s, page, pages, sdx, sdy, closeHint = footerHint)
+        // 页码居中于留白带与页脚收尾行之间，与荣誉页一致
+        val closeRowCy = frame.bottom - (CLOSE_ROW_MARGIN + CLOSE_BTN_SIZE * 0.5f) * s
+        drawCatalogFooter(
+            canvas, frame, s, page, pages, sdx, sdy,
+            closeHint = footerHint, pageMidY = (listBottom + closeRowCy) * 0.5f
+        )
 
         if (museumDetailId in 0 until Game.RELIC_COUNT &&
             (game.relicCollected(museumDetailId) || previewAll)
