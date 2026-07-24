@@ -3795,7 +3795,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         RelicIcons.draw(
             canvas, btnPaint, id,
             (left + right) * 0.5f, (top + glassB) * 0.5f,
-            iconHalf, showArt, lightSurface = true, withChrome = false
+            iconHalf, showArt, lightSurface = true, withChrome = false, richArt = true
         )
         // 斜向反光：裁剪在罩内，斜条穿过整块玻璃
         canvas.save()

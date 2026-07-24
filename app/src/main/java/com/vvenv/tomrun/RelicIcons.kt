@@ -102,7 +102,13 @@ object RelicIcons {
         lightSurface: Boolean = false,
         withChrome: Boolean = true,
         /** 整体透明度；跑道名牌按远近淡入时用 */
-        alpha: Int = 255
+        alpha: Int = 255,
+        /**
+         * 器物用高清大图（relic_fancy_XX）而非粗糙小图烘焙。
+         * 图鉴展柜格子够大，粗小图放大后辨识度太低，这里直接贴精修大图。
+         * 跑道名牌等极小尺寸仍走小图，避免下采样发糊。
+         */
+        richArt: Boolean = false
     ) {
         paint.style = Paint.Style.FILL
         blitPaint.alpha = alpha
@@ -135,7 +141,7 @@ object RelicIcons {
             if (!collected) {
                 drawMystery(canvas, paint, cx, cy, half)
             } else {
-                blitCachedArtifact(canvas, id, cx, cy, half * 0.88f, fancy = false)
+                blitCachedArtifact(canvas, id, cx, cy, half * 0.88f, fancy = richArt)
             }
         }
     }
@@ -149,9 +155,10 @@ object RelicIcons {
         val target = displayHalf * 2f
         val dst: Float
         if (fancy) {
-            // 预制像素大图：尽量铺满展示区，最近邻保持锐利
+            // 预制像素大图：尽量铺满展示区。放大保最近邻锐利，
+            // 缩小（图鉴格子 256→~180）开滤波，避免点阵抽稀成毛边。
             dst = target
-            blitPaint.isFilterBitmap = false
+            blitPaint.isFilterBitmap = target < src
         } else if (target >= src) {
             dst = src * floor(target / src).toInt().coerceAtLeast(1)
             blitPaint.isFilterBitmap = false
