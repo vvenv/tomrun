@@ -172,8 +172,15 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         """
 
         private val SKY = floatArrayOf(0.42f, 0.80f, 0.95f, 1f)
-        /** 家页面背景（Canvas 小屋场景铺在其上） */
-        private val HOME_SKY = floatArrayOf(0.56f, 0.83f, 0.95f, 1f)
+        /** 家页面背景（Canvas 小屋场景铺在其上）：按当前家所在世界取天顶色 */
+        private val HOME_SKIES = arrayOf(
+            floatArrayOf(0.43f, 0.71f, 0.90f, 1f),   // 草原
+            floatArrayOf(0.03f, 0.16f, 0.25f, 1f),   // 水下
+            floatArrayOf(0.24f, 0.56f, 0.88f, 1f),   // 天空
+            floatArrayOf(0.16f, 0.06f, 0.05f, 1f),   // 熔岩
+            floatArrayOf(1.00f, 0.66f, 0.81f, 1f),   // 糖果
+            floatArrayOf(0.02f, 0.03f, 0.08f, 1f)    // 星空
+        )
         /** 文物名牌可见距离：超出就不画，避免远处名牌糊住路面 */
         private const val RELIC_LABEL_RANGE = 45f
         private val ROAD = floatArrayOf(0.42f, 0.40f, 0.44f, 1f)
@@ -510,7 +517,7 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         if (game.menuPanel == Game.PANEL_HOME &&
             (game.state == Game.State.READY || game.state == Game.State.DEAD)
         ) {
-            EyeComfort.grade(HOME_SKY, gradedSky)
+            EyeComfort.grade(HOME_SKIES[game.homeWorld.coerceIn(0, HOME_SKIES.size - 1)], gradedSky)
             GLES20.glClearColor(gradedSky[0], gradedSky[1], gradedSky[2], 1f)
             GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
             return

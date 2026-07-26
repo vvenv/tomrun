@@ -23,13 +23,15 @@ object PlayerHomeLayout {
         var nameDX = 0f; var nameDY = 0f
         var energyDX = 0f; var energyDY = 0f
         var rewardDX = 0f; var rewardDY = 0f
+        var catDX = 0f; var catDY = 0f
+        var scarfDX = 0f; var scarfDY = 0f
         val uiDX = HashMap<String, Float>()
         val uiDY = HashMap<String, Float>()
     }
 
     val UI_IDS = arrayOf(
         "leave", "wallet", "tabColor", "tabTrail", "tabScarf", "tabHat",
-        "arrowL", "arrowR", "buy"
+        "arrowL", "arrowR", "buy", "worldL", "worldR"
     )
 
     fun toJson(s: Set): JSONObject = JSONObject().apply {
@@ -46,6 +48,8 @@ object PlayerHomeLayout {
         put("nameDX", s.nameDX); put("nameDY", s.nameDY)
         put("energyDX", s.energyDX); put("energyDY", s.energyDY)
         put("rewardDX", s.rewardDX); put("rewardDY", s.rewardDY)
+        put("catDX", s.catDX); put("catDY", s.catDY)
+        put("scarfDX", s.scarfDX); put("scarfDY", s.scarfDY)
         val ui = JSONObject()
         for (id in UI_IDS) {
             val dx = s.uiDX[id] ?: 0f
@@ -84,6 +88,10 @@ object PlayerHomeLayout {
         into.energyDY = j.optDouble("energyDY", 0.0).toFloat()
         into.rewardDX = j.optDouble("rewardDX", 0.0).toFloat()
         into.rewardDY = j.optDouble("rewardDY", 0.0).toFloat()
+        into.catDX = j.optDouble("catDX", 0.0).toFloat()
+        into.catDY = j.optDouble("catDY", 0.0).toFloat()
+        into.scarfDX = j.optDouble("scarfDX", 0.0).toFloat()
+        into.scarfDY = j.optDouble("scarfDY", 0.0).toFloat()
         into.uiDX.clear()
         into.uiDY.clear()
         j.optJSONObject("ui")?.let { ui ->

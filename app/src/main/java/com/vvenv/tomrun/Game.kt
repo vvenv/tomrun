@@ -581,6 +581,8 @@ class Game {
     private var runPortals = 0
 
     // 小屋
+    /** 当前所在的家所属世界：草原家默认解锁，其余世界的家在跑酷中穿越到过即解锁 */
+    @Volatile var homeWorld = UNI_MEADOW
     @Volatile var houseStyle = 0
     @Volatile var roofStyle = 0
     private var ownedHouses = 1       // bit0 免费小木屋
@@ -602,9 +604,9 @@ class Game {
     @Volatile var hasChosenCharacterName = false
         private set
 
-    /** 玩家自定义家园布局偏移（横竖屏各一套） */
-    private val homeLayoutPortrait = PlayerHomeLayout.Set()
-    private val homeLayoutLandscape = PlayerHomeLayout.Set()
+    /** 玩家自定义家园布局偏移（每个世界的家一套，横竖屏各一份） */
+    private val homeLayoutPortrait = Array(UNIVERSE_COUNT) { PlayerHomeLayout.Set() }
+    private val homeLayoutLandscape = Array(UNIVERSE_COUNT) { PlayerHomeLayout.Set() }
     private var homeLayoutPortraitActive = true
 
     // 菜单
@@ -775,6 +777,8 @@ class Game {
         homeBrowseHouse = houseStyle
         homeBrowseRoof = roofStyle
         loadHomePlayerLayout(p.getString("homePlayerLayout", null) ?: p.getString("yardPlayerLayout", null))
+        homeWorld = p.getInt("homeWorld", UNI_MEADOW).coerceIn(0, UNIVERSE_COUNT - 1)
+        if (!homeWorldUnlocked(homeWorld)) homeWorld = UNI_MEADOW
         telescopeLevel = p.getInt("telescopeLevel", 0).coerceIn(0, TELESCOPE_MAX_LEVEL)
         stargazeReadMask = p.getInt("stargazeReadMask", 0)
         stargazeDayKey = p.getString("stargazeDayKey", "") ?: ""
@@ -938,8 +942,35 @@ class Game {
         homeLayoutPortraitActive = portrait
     }
 
-    fun homeLayout(): PlayerHomeLayout.Set =
-        if (homeLayoutPortraitActive) homeLayoutPortrait else homeLayoutLandscape
+    fun homeLayout(): PlayerHomeLayout.Set {
+        val w = homeWorld.coerceIn(0, UNIVERSE_COUNT - 1)
+        return if (homeLayoutPortraitActive) homeLayoutPortrait[w] else homeLayoutLandscape[w]
+    }
+
+    /** 草原家默认拥有；其他世界的家在跑酷中穿越到过该世界即解锁 */
+    fun homeWorldUnlocked(i: Int) = i == UNI_MEADOW || seenUniverse(i)
+
+    fun homeWorldsUnlockedCount(): Int {
+        var n = 0
+        for (i in 0 until UNIVERSE_COUNT) if (homeWorldUnlocked(i)) n++
+        return n
+    }
+
+    /** 切到下一个已解锁世界的家；返回新家所在世界名，没得切时返回空串 */
+    @Synchronized fun switchHomeWorld(dir: Int): String {
+        if (state == State.RUNNING) return ""
+        var w = homeWorld
+        repeat(UNIVERSE_COUNT - 1) {
+            w = (w + dir + UNIVERSE_COUNT) % UNIVERSE_COUNT
+            if (homeWorldUnlocked(w) && w != homeWorld) {
+                homeWorld = w
+                prefs?.edit()?.putInt("homeWorld", w)?.apply()
+                emit(EV_PORTAL, HAPTIC_LIGHT)
+                return UNIVERSE_NAMES[w]
+            }
+        }
+        return ""
+    }
 
     fun yardGardenX() = LayoutConfig.cur.gardenX + homeLayout().gardenX
     fun yardGardenY() = LayoutConfig.cur.gardenY + homeLayout().gardenY
@@ -964,6 +995,10 @@ class Game {
     fun homeEnergyDY() = LayoutConfig.cur.energyDY + homeLayout().energyDY
     fun homeRewardDX() = LayoutConfig.cur.rewardDX + homeLayout().rewardDX
     fun homeRewardDY() = LayoutConfig.cur.rewardDY + homeLayout().rewardDY
+    fun homeCatDX() = homeLayout().catDX
+    fun homeCatDY() = homeLayout().catDY
+    fun homeScarfDX() = homeLayout().scarfDX
+    fun homeScarfDY() = homeLayout().scarfDY
     fun homeUiDX(id: String) = homeLayout().uiDX[id] ?: 0f
     fun homeUiDY(id: String) = homeLayout().uiDY[id] ?: 0f
 
@@ -979,15 +1014,35 @@ class Game {
         if (json.isNullOrBlank()) return
         runCatching {
             val root = org.json.JSONObject(json)
-            PlayerHomeLayout.fromJson(root.optJSONObject("portrait"), homeLayoutPortrait)
-            PlayerHomeLayout.fromJson(root.optJSONObject("landscape"), homeLayoutLandscape)
+            // 旧版顶层 portrait/landscape 即草原家布局
+            PlayerHomeLayout.fromJson(root.optJSONObject("portrait"), homeLayoutPortrait[UNI_MEADOW])
+            PlayerHomeLayout.fromJson(root.optJSONObject("landscape"), homeLayoutLandscape[UNI_MEADOW])
+            root.optJSONObject("worlds")?.let { worlds ->
+                for (i in 0 until UNIVERSE_COUNT) {
+                    worlds.optJSONObject(i.toString())?.let { wj ->
+                        PlayerHomeLayout.fromJson(wj.optJSONObject("portrait"), homeLayoutPortrait[i])
+                        PlayerHomeLayout.fromJson(wj.optJSONObject("landscape"), homeLayoutLandscape[i])
+                    }
+                }
+            }
         }
     }
 
     private fun persistHomeLayout() {
+        // 顶层仍写草原家，旧版本读到的行为不变；各世界的家写进 worlds
+        val worlds = org.json.JSONObject()
+        for (i in 0 until UNIVERSE_COUNT) {
+            worlds.put(
+                i.toString(),
+                org.json.JSONObject()
+                    .put("portrait", PlayerHomeLayout.toJson(homeLayoutPortrait[i]))
+                    .put("landscape", PlayerHomeLayout.toJson(homeLayoutLandscape[i]))
+            )
+        }
         val root = org.json.JSONObject()
-            .put("portrait", PlayerHomeLayout.toJson(homeLayoutPortrait))
-            .put("landscape", PlayerHomeLayout.toJson(homeLayoutLandscape))
+            .put("portrait", PlayerHomeLayout.toJson(homeLayoutPortrait[UNI_MEADOW]))
+            .put("landscape", PlayerHomeLayout.toJson(homeLayoutLandscape[UNI_MEADOW]))
+            .put("worlds", worlds)
         prefs?.edit()
             ?.putString("homePlayerLayout", root.toString())
             ?.putString("yardPlayerLayout", root.toString())
