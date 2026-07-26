@@ -573,8 +573,6 @@ class HudView(context: Context, private val game: Game) : View(context) {
                     hitHouse.contains(x, y) -> selectHomeCategory(Game.HOME_TAB_HOUSE)
                     hitRoof.contains(x, y) -> selectHomeCategory(Game.HOME_TAB_ROOF)
                     hitYardDeco.contains(x, y) -> selectHomeCategory(Game.HOME_TAB_DECO)
-                    hitCosmeticColor.contains(x, y) -> selectHomeCategory(Game.HOME_TAB_COLOR)
-                    hitCosmeticTrail.contains(x, y) -> selectHomeCategory(Game.HOME_TAB_TRAIL)
                     hitCosmeticScarf.contains(x, y) -> selectHomeCategory(Game.HOME_TAB_SCARF)
                     hitCosmeticHat.contains(x, y) -> selectHomeCategory(Game.HOME_TAB_HAT)
                     yardCatHit.contains(x, y) -> selectHomeCategory(Game.HOME_TAB_COLOR)
@@ -2106,8 +2104,8 @@ class HudView(context: Context, private val game: Game) : View(context) {
         scaleRectAround(hcx, hgy, hcx - 118f * s, top + houseDy, hcx + 118f * s, hgy - 108f * s, houseSc, hitRoof)
         scaleRectAround(hcx, hgy, hcx - 108f * s, hgy - 108f * s, hcx + 108f * s, hgy, houseSc, hitHouse)
         hitYardDeco.set(cx - half, gy - 12f * s, cx + half, bottom)
-        hitCosmeticColor.set(cx - 166f * s, gy - 20f * s, cx - 130f * s, gy + 32f * s)
-        hitCosmeticTrail.set(cx - half + 20f * s, gy + 28f * s, cx - half + 210f * s, gy + 54f * s)
+        hitCosmeticColor.setEmpty()
+        hitCosmeticTrail.setEmpty()
         hitCosmeticScarf.set(cx + 26f * s, gy - 72f * s, cx + 118f * s, gy + 10f * s)
         hitCosmeticHat.set(cx + 182f * s, gy - 90f * s, cx + 210f * s, gy + 4f * s)
 
@@ -2120,8 +2118,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 Game.HOME_TAB_HOUSE -> hitHouse
                 Game.HOME_TAB_ROOF -> hitRoof
                 Game.HOME_TAB_DECO -> hitYardDeco
-                Game.HOME_TAB_COLOR -> hitCosmeticColor
-                Game.HOME_TAB_TRAIL -> hitCosmeticTrail
+                Game.HOME_TAB_COLOR, Game.HOME_TAB_TRAIL -> null
                 Game.HOME_TAB_SCARF -> hitCosmeticScarf
                 Game.HOME_TAB_HAT -> hitCosmeticHat
                 else -> null
@@ -2331,7 +2328,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         scaleRectAround(hx, base, hx - 76f * u, signT, hx + 76f * u, base + 6f * s, LayoutConfig.cur.honorS, hitHonorWall)
     }
 
-    /** 装扮物品在庭院中的可视化：配色花盆 / 光迹小径 / 围巾晾绳 / 帽子稻草人 */
+    /** 装扮物品在庭院中的可视化：围巾晾绳 / 帽子稻草人（配色与光迹仅在跑酷中体现，不在庭院铺静态装饰） */
     private fun drawCosmeticYardDeco(
         canvas: Canvas, cx: Float, gy: Float, half: Float, s: Float,
         color: Int, trail: Int, scarf: Int, hat: Int, ghost: Boolean
@@ -2341,23 +2338,6 @@ class HudView(context: Context, private val game: Game) : View(context) {
             btnPaint.style = Paint.Style.FILL
             btnPaint.color = withAlpha(c, alpha)
             canvas.drawRect(l, t, r, b, btnPaint)
-        }
-        if (color > 0) {
-            val pot = COLOR_CHIPS[color % COLOR_CHIPS.size]
-            val fx = cx - 148f * s
-            rc(fx - 14f * s, gy + 10f * s, fx + 14f * s, gy + 28f * s, 0xFF97622F.toInt())
-            rc(fx - 10f * s, gy - 6f * s, fx + 10f * s, gy + 12f * s, pot)
-            rc(fx - 5f * s, gy - 16f * s, fx + 5f * s, gy - 6f * s, darken(pot))
-        }
-        if (trail > 0) {
-            val rainbow = intArrayOf(
-                0xFFF25A5A.toInt(), 0xFFFFD75E.toInt(), 0xFF6FBF56.toInt(), 0xFF57B6E8.toInt()
-            )
-            for (i in 0..4) {
-                val tx = cx - half + 36f * s + i * 34f * s
-                val chip = if (trail == 3) rainbow[i % 4] else TRAIL_CHIPS[trail]
-                rc(tx - 7f * s, gy + 36f * s, tx + 7f * s, gy + 48f * s, chip)
-            }
         }
         if (scarf > 0) {
             val sx = cx + 72f * s
