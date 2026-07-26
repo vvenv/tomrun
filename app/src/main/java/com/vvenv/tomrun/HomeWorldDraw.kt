@@ -84,6 +84,31 @@ object HomeWorldDraw {
         }
     }
 
+    // ---------- 通用小景：炊烟 / 摇摆水草 ----------
+
+    /** 三团循环上升的烟：越高越淡越大，横向随相位轻摆 */
+    private fun smoke(g: Gfx, x: Float, topY: Float, tint: Int) {
+        val s = g.s
+        val aa = g.paint.isAntiAlias; g.paint.isAntiAlias = true
+        for (i in 0 until 3) {
+            val t = (g.homePhase * 0.30f + i * 0.33f) % 1f
+            val py = topY - t * 36f * s
+            val px = x + sin(g.homePhase * 1.3f + i * 2.1f) * 4f * s + t * 7f * s
+            g.paint.color = g.withAlpha(tint, ((1f - t) * 110).toInt())
+            g.canvas.drawCircle(px, py, (3.5f + t * 5f) * s, g.paint)
+        }
+        g.paint.isAntiAlias = aa
+    }
+
+    /** 一株分段水草：底固定，越往上摆幅越大 */
+    private fun kelp(g: Gfx, x: Float, gy: Float, h: Float, c: Int) {
+        val s = g.s
+        for (i in 0 until 4) {
+            val sway = sin(g.homePhase * 1.5f + i * 0.8f) * (0.8f + i * 0.9f) * s
+            g.rc(x - 2.5f * s + sway, gy - h * (i + 1) / 4f, x + 2.5f * s + sway, gy - h * i / 4f + 1f * s, c)
+        }
+    }
+
     // ---------- 房屋：草原（原版造型） ----------
     private fun drawHouseMeadow(house: Int, cx: Float, gy: Float, pal: IntArray, roofC: Int, roofD: Int, win: Int, g: Gfx) {
         val s = g.s; val rc = g.rc
@@ -93,7 +118,16 @@ object HomeWorldDraw {
                 for (i in 0..3) rc(cx - 80f * s, gy - 110f * s + i * 28f * s, cx + 80f * s, gy - 108f * s + i * 28f * s, pal[1])
                 g.boxShade(cx - 80f * s, gy - 110f * s, cx + 80f * s, gy)
                 g.pyramidRoof(cx, gy - 110f * s, 104f * s, 46f * s, roofC, roofD)
+                // 烟囱 + 炊烟
+                rc(cx + 44f * s, gy - 152f * s, cx + 60f * s, gy - 116f * s, pal[1])
+                rc(cx + 42f * s, gy - 158f * s, cx + 62f * s, gy - 152f * s, pal[0])
+                smoke(g, cx + 52f * s, gy - 164f * s, 0xFFF4F0E6.toInt())
                 g.door(cx + 34f * s); g.window(cx - 40f * s, gy - 62f * s, win)
+                // 窗下花箱
+                rc(cx - 58f * s, gy - 42f * s, cx - 22f * s, gy - 34f * s, 0xFF7A4E22.toInt())
+                rc(cx - 52f * s, gy - 48f * s, cx - 46f * s, gy - 42f * s, 0xFFF25A5A.toInt())
+                rc(cx - 43f * s, gy - 48f * s, cx - 37f * s, gy - 42f * s, 0xFFFFD75E.toInt())
+                rc(cx - 34f * s, gy - 48f * s, cx - 28f * s, gy - 42f * s, 0xFFF5A8C1.toInt())
             }
             1 -> {
                 rc(cx - 100f * s, gy - 122f * s, cx + 100f * s, gy, pal[0])
@@ -104,6 +138,9 @@ object HomeWorldDraw {
                 g.boxShade(cx - 100f * s, gy - 122f * s, cx + 100f * s, gy)
                 g.pyramidRoof(cx, gy - 122f * s, 126f * s, 50f * s, roofC, roofD)
                 g.door(cx - 52f * s); g.window(cx + 14f * s, gy - 66f * s, win); g.window(cx + 58f * s, gy - 66f * s, win)
+                // 门口双层雨棚
+                rc(cx - 78f * s, gy - 74f * s, cx - 26f * s, gy - 68f * s, roofC)
+                rc(cx - 74f * s, gy - 68f * s, cx - 30f * s, gy - 64f * s, roofD)
             }
             2 -> {
                 rc(cx - 100f * s, gy - 190f * s, cx + 100f * s, gy, pal[0])
@@ -113,6 +150,11 @@ object HomeWorldDraw {
                 g.door(cx); g.window(cx - 64f * s, gy - 52f * s, win); g.window(cx + 64f * s, gy - 52f * s, win)
                 g.window(cx - 64f * s, gy - 142f * s, win); g.window(cx + 64f * s, gy - 142f * s, win)
                 rc(cx - 30f * s, gy - 126f * s, cx + 30f * s, gy - 118f * s, pal[2])
+                // 阁楼圆窗
+                val aa = g.paint.isAntiAlias; g.paint.isAntiAlias = true
+                g.paint.color = pal[1]; g.canvas.drawCircle(cx, gy - 166f * s, 12f * s, g.paint)
+                g.paint.color = win; g.canvas.drawCircle(cx, gy - 166f * s, 8f * s, g.paint)
+                g.paint.isAntiAlias = aa
             }
             else -> drawCastle(cx, gy, pal, roofC, roofD, g)
         }
@@ -127,19 +169,48 @@ object HomeWorldDraw {
                 rc(cx - 72f * s, gy - 48f * s, cx + 72f * s, gy, pal[0])
                 g.paint.color = pal[0]; g.canvas.drawOval(cx - 78f * s, gy - 118f * s, cx + 78f * s, gy - 38f * s, g.paint)
                 g.paint.color = roofC; g.canvas.drawOval(cx - 62f * s, gy - 108f * s, cx + 62f * s, gy - 52f * s, g.paint)
+                // 圆顶高光 + 门口沙堆 + 两侧摇摆水草
+                g.paint.color = 0x55FFFFFF
+                g.canvas.drawOval(cx - 48f * s, gy - 112f * s, cx - 8f * s, gy - 94f * s, g.paint)
+                g.paint.color = 0xFFD5C68B.toInt()
+                g.canvas.drawOval(cx - 80f * s, gy - 8f * s, cx + 80f * s, gy + 6f * s, g.paint)
+                kelp(g, cx - 86f * s, gy, 42f * s, 0xFF2E8A6E.toInt())
+                kelp(g, cx + 88f * s, gy, 34f * s, 0xFF3EA97E.toInt())
                 g.window(cx - 28f * s, gy - 78f * s, win); g.door(cx + 24f * s)
             }
             1 -> {
                 rc(cx - 88f * s, gy - 90f * s, cx + 88f * s, gy, pal[0])
                 g.paint.color = pal[1]
                 g.canvas.drawArc(cx - 96f * s, gy - 130f * s, cx + 96f * s, gy - 20f * s, 200f, 140f, true, g.paint)
+                // 贝壳棱线 + 壳顶珍珠
+                g.paint.style = Paint.Style.STROKE
+                g.paint.strokeWidth = 3f * s
+                g.paint.color = pal[0]
+                for (i in 1..2) {
+                    val inset = i * 20f * s
+                    g.canvas.drawArc(
+                        cx - 96f * s + inset, gy - 130f * s + inset * 0.6f,
+                        cx + 96f * s - inset, gy - 20f * s - inset * 0.3f,
+                        205f, 130f, false, g.paint
+                    )
+                }
+                g.paint.style = Paint.Style.FILL
+                g.paint.color = 0xFFF8F3E6.toInt(); g.canvas.drawCircle(cx, gy - 122f * s, 7f * s, g.paint)
+                g.paint.color = 0xFFFFFFFF.toInt(); g.canvas.drawCircle(cx - 2f * s, gy - 124f * s, 2.5f * s, g.paint)
+                kelp(g, cx - 94f * s, gy, 36f * s, 0xFF2E8A6E.toInt())
                 g.window(cx, gy - 72f * s, win); g.door(cx - 40f * s)
             }
             2 -> {
                 rc(cx - 90f * s, gy - 170f * s, cx + 90f * s, gy, pal[0])
                 rc(cx - 90f * s, gy - 96f * s, cx + 90f * s, gy - 88f * s, pal[1])
+                g.boxShade(cx - 90f * s, gy - 170f * s, cx + 90f * s, gy)
                 g.paint.color = roofC
                 g.canvas.drawOval(cx - 40f * s, gy - 188f * s, cx + 40f * s, gy - 158f * s, g.paint)
+                // 塔身珊瑚礁架
+                rc(cx - 98f * s, gy - 140f * s, cx - 90f * s, gy - 122f * s, 0xFFE86A5A.toInt())
+                rc(cx - 104f * s, gy - 134f * s, cx - 90f * s, gy - 128f * s, 0xFFD85A4A.toInt())
+                rc(cx + 90f * s, gy - 66f * s, cx + 100f * s, gy - 48f * s, 0xFFFF9A76.toInt())
+                kelp(g, cx + 96f * s, gy, 40f * s, 0xFF3EA97E.toInt())
                 g.window(cx - 50f * s, gy - 56f * s, win); g.window(cx + 50f * s, gy - 56f * s, win)
                 g.window(cx, gy - 140f * s, win); g.door(cx)
             }
@@ -149,6 +220,14 @@ object HomeWorldDraw {
                 g.canvas.drawOval(cx - 100f * s, gy - 200f * s, cx - 30f * s, gy - 120f * s, g.paint)
                 g.canvas.drawOval(cx + 30f * s, gy - 200f * s, cx + 100f * s, gy - 120f * s, g.paint)
                 g.paint.color = roofC; g.canvas.drawOval(cx - 50f * s, gy - 168f * s, cx + 50f * s, gy - 128f * s, g.paint)
+                // 水晶内部脉动微光 + 基座碎晶
+                val pulse = 0.5f + 0.5f * sin(g.homePhase * 1.8f)
+                g.paint.color = g.withAlpha(0xFFFFFFFF.toInt(), (26 + 40 * pulse).toInt())
+                g.canvas.drawOval(cx - 88f * s, gy - 192f * s, cx - 42f * s, gy - 132f * s, g.paint)
+                g.canvas.drawOval(cx + 42f * s, gy - 192f * s, cx + 88f * s, gy - 132f * s, g.paint)
+                rc(cx - 86f * s, gy - 24f * s, cx - 72f * s, gy, pal[1])
+                rc(cx - 78f * s, gy - 34f * s, cx - 70f * s, gy - 24f * s, pal[1])
+                rc(cx + 74f * s, gy - 18f * s, cx + 86f * s, gy, pal[1])
                 g.door(cx); g.window(cx - 36f * s, gy - 90f * s, win); g.window(cx + 36f * s, gy - 90f * s, win)
             }
         }
@@ -163,29 +242,56 @@ object HomeWorldDraw {
             0 -> {
                 g.paint.color = pal[0]
                 g.canvas.drawOval(cx - 90f * s, gy - 28f * s, cx + 90f * s, gy + 10f * s, g.paint)
+                // 云基两端的绒边云球（微微起伏）
+                val bob = sin(g.homePhase * 1.4f) * 2f * s
+                g.canvas.drawCircle(cx - 84f * s, gy - 14f * s + bob, 15f * s, g.paint)
+                g.canvas.drawCircle(cx + 84f * s, gy - 12f * s - bob, 13f * s, g.paint)
                 rc(cx - 70f * s, gy - 100f * s, cx + 70f * s, gy - 20f * s, pal[0])
                 g.paint.color = roofC; g.canvas.drawOval(cx - 82f * s, gy - 118f * s, cx + 82f * s, gy - 88f * s, g.paint)
+                // 檐口金边
+                rc(cx - 66f * s, gy - 92f * s, cx + 66f * s, gy - 88f * s, 0xFFF2C14E.toInt())
                 g.door(cx + 20f * s); g.window(cx - 30f * s, gy - 62f * s, win)
             }
             1 -> {
                 rc(cx - 88f * s, gy - 118f * s, cx + 88f * s, gy, pal[0])
+                g.boxShade(cx - 88f * s, gy - 118f * s, cx + 88f * s, gy)
+                rc(cx - 88f * s, gy - 122f * s, cx + 88f * s, gy - 118f * s, 0xFFF2C14E.toInt())
                 rc(cx - 8f * s, gy - 168f * s, cx + 8f * s, gy - 118f * s, pal[2])
                 g.paint.color = roofC
                 g.canvas.drawRect(cx - 28f * s, gy - 178f * s, cx + 28f * s, gy - 158f * s, g.paint)
+                // 塔顶旗杆 + 迎风三角旗
+                rc(cx - 1.5f * s, gy - 198f * s, cx + 1.5f * s, gy - 178f * s, pal[2])
+                val wave = sin(g.homePhase * 2.4f) * 3f * s
+                rc(cx + 1.5f * s, gy - 196f * s, cx + 16f * s + wave, gy - 190f * s, 0xFFF2C14E.toInt())
+                rc(cx + 1.5f * s, gy - 190f * s, cx + 10f * s + wave * 0.6f, gy - 185f * s, 0xFFF2C14E.toInt())
                 for (i in -1..1) g.window(cx + i * 44f * s, gy - 72f * s, win)
                 g.door(cx - 40f * s)
             }
             2 -> {
                 rc(cx - 82f * s, gy - 178f * s, cx + 82f * s, gy, pal[0])
                 rc(cx - 82f * s, gy - 98f * s, cx + 82f * s, gy - 90f * s, pal[1])
+                g.boxShade(cx - 82f * s, gy - 178f * s, cx + 82f * s, gy)
                 g.pyramidRoof(cx, gy - 178f * s, 100f * s, 44f * s, roofC, roofD)
+                // 墙角的云绒球
+                g.paint.color = pal[0]
+                g.canvas.drawCircle(cx - 80f * s, gy - 8f * s, 13f * s, g.paint)
+                g.canvas.drawCircle(cx + 80f * s, gy - 6f * s, 11f * s, g.paint)
                 g.door(cx); g.window(cx - 48f * s, gy - 56f * s, win); g.window(cx + 48f * s, gy - 56f * s, win)
                 g.window(cx, gy - 140f * s, win)
             }
             else -> {
                 rc(cx - 76f * s, gy - 150f * s, cx + 76f * s, gy, pal[0])
+                g.boxShade(cx - 76f * s, gy - 150f * s, cx + 76f * s, gy)
                 g.paint.color = pal[0]; g.canvas.drawOval(cx - 110f * s, gy - 210f * s, cx - 50f * s, gy - 150f * s, g.paint)
                 g.canvas.drawOval(cx + 50f * s, gy - 210f * s, cx + 110f * s, gy - 150f * s, g.paint)
+                // 双塔金顶 + 身旁缓缓起伏的小浮云
+                g.paint.color = 0xFFF2C14E.toInt()
+                g.canvas.drawCircle(cx - 80f * s, gy - 206f * s, 6f * s, g.paint)
+                g.canvas.drawCircle(cx + 80f * s, gy - 206f * s, 6f * s, g.paint)
+                val bob = sin(g.homePhase * 1.2f) * 4f * s
+                g.paint.color = 0xE6FFFFFF.toInt()
+                g.canvas.drawCircle(cx - 124f * s, gy - 110f * s + bob, 10f * s, g.paint)
+                g.canvas.drawCircle(cx - 112f * s, gy - 106f * s + bob, 8f * s, g.paint)
                 g.pyramidRoof(cx, gy - 150f * s, 88f * s, 38f * s, roofC, roofD)
                 g.door(cx); g.window(cx - 40f * s, gy - 88f * s, win); g.window(cx + 40f * s, gy - 88f * s, win)
             }
@@ -196,31 +302,70 @@ object HomeWorldDraw {
     // ---------- 熔岩：焦木 / 黑曜 / 熔楼 / 火山堡 ----------
     private fun drawHouseLava(house: Int, cx: Float, gy: Float, pal: IntArray, roofC: Int, roofD: Int, win: Int, g: Gfx) {
         val s = g.s; val rc = g.rc
+        val glow = 0.55f + 0.45f * (0.5f + 0.5f * sin(g.homePhase * 2.6f))
         when (house.coerceIn(0, 3)) {
             0 -> {
                 rc(cx - 76f * s, gy - 108f * s, cx + 76f * s, gy, pal[0])
+                g.boxShade(cx - 76f * s, gy - 108f * s, cx + 76f * s, gy)
+                rc(cx - 76f * s, gy - 10f * s, cx + 76f * s, gy, pal[1])
                 rc(cx - 6f * s, gy - 148f * s, cx + 6f * s, gy - 108f * s, 0xFF4A3028.toInt())
                 g.pyramidRoof(cx, gy - 108f * s, 98f * s, 44f * s, roofC, roofD)
+                // 烟囱冒出的灰烟与忽明忽暗的火星
+                smoke(g, cx, gy - 152f * s, 0xFF8A7568.toInt())
+                g.paint.color = g.withAlpha(0xFFFFA25A.toInt(), (glow * 220).toInt())
+                g.canvas.drawRect(cx - 2f * s, gy - 156f * s, cx + 2f * s, gy - 152f * s, g.paint)
                 g.door(cx + 28f * s); g.window(cx - 36f * s, gy - 60f * s, win)
             }
             1 -> {
                 rc(cx - 96f * s, gy - 118f * s, cx + 96f * s, gy, pal[0])
                 for (i in 0..5) rc(cx - 96f * s + i * 32f * s, gy - 118f * s, cx - 88f * s + i * 32f * s, gy, pal[1])
+                g.boxShade(cx - 96f * s, gy - 118f * s, cx + 96f * s, gy)
+                rc(cx - 96f * s, gy - 124f * s, cx + 96f * s, gy - 118f * s, pal[1])
+                // 柱脚渗出的岩浆缝：随呼吸明暗
+                g.paint.color = g.withAlpha(0xFFFF7A2A.toInt(), (glow * 230).toInt())
+                for (i in 0..4) {
+                    val bx = cx - 80f * s + i * 32f * s
+                    g.canvas.drawRect(bx, gy - 4f * s, bx + 16f * s, gy, g.paint)
+                }
                 g.pyramidRoof(cx, gy - 118f * s, 118f * s, 48f * s, roofC, roofD)
                 g.door(cx - 44f * s); g.window(cx + 20f * s, gy - 68f * s, win)
             }
             2 -> {
                 rc(cx - 94f * s, gy - 182f * s, cx + 94f * s, gy, pal[0])
+                g.boxShade(cx - 94f * s, gy - 182f * s, cx + 94f * s, gy)
                 rc(cx - 94f * s, gy - 102f * s, cx + 94f * s, gy - 94f * s, 0xFFFF7A2A.toInt())
+                // 熔岩带脉动亮层 + 低处第二道细缝
+                g.paint.color = g.withAlpha(0xFFFFC48A.toInt(), (glow * 130).toInt())
+                g.canvas.drawRect(cx - 94f * s, gy - 102f * s, cx + 94f * s, gy - 94f * s, g.paint)
+                g.paint.color = g.withAlpha(0xFFFF7A2A.toInt(), (glow * 200).toInt())
+                g.canvas.drawRect(cx - 94f * s, gy - 30f * s, cx + 94f * s, gy - 27f * s, g.paint)
                 g.pyramidRoof(cx, gy - 182f * s, 112f * s, 46f * s, roofC, roofD)
                 g.door(cx); g.window(cx - 58f * s, gy - 54f * s, win); g.window(cx + 58f * s, gy - 54f * s, win)
                 g.window(cx, gy - 138f * s, win)
             }
             else -> {
                 rc(cx - 80f * s, gy - 148f * s, cx + 80f * s, gy, pal[0])
+                g.boxShade(cx - 80f * s, gy - 148f * s, cx + 80f * s, gy)
                 rc(cx - 120f * s, gy - 198f * s, cx - 76f * s, gy - 60f * s, pal[1])
                 rc(cx + 76f * s, gy - 198f * s, cx + 120f * s, gy - 60f * s, pal[1])
+                // 侧塔淌下的熔岩滴流
+                rc(cx - 104f * s, gy - 198f * s, cx - 100f * s, gy - 168f * s, 0xFFFF7A2A.toInt())
+                rc(cx + 92f * s, gy - 198f * s, cx + 96f * s, gy - 172f * s, 0xFFFF7A2A.toInt())
                 rc(cx - 10f * s, gy - 210f * s, cx + 10f * s, gy - 148f * s, 0xFFFF5A2A.toInt())
+                // 火山口辉光：呼吸的光晕 + 上升的火星
+                val aa = g.paint.isAntiAlias
+                g.paint.isAntiAlias = true
+                g.paint.color = g.withAlpha(0xFFFF7A2A.toInt(), (glow * 90).toInt())
+                g.canvas.drawCircle(cx, gy - 210f * s, 24f * s, g.paint)
+                g.paint.color = g.withAlpha(0xFFFFC48A.toInt(), (glow * 220).toInt())
+                g.canvas.drawCircle(cx, gy - 210f * s, 8f * s, g.paint)
+                for (i in 0 until 3) {
+                    val t = (g.homePhase * 0.5f + i * 0.33f) % 1f
+                    val ex = cx + sin(g.homePhase * 2f + i * 2.4f) * 10f * s
+                    g.paint.color = g.withAlpha(0xFFFFA25A.toInt(), ((1f - t) * 200).toInt())
+                    g.canvas.drawRect(ex - 1.6f * s, gy - 214f * s - t * 30f * s, ex + 1.6f * s, gy - 211f * s - t * 30f * s, g.paint)
+                }
+                g.paint.isAntiAlias = aa
                 g.door(cx); g.window(cx - 48f * s, gy - 96f * s, win); g.window(cx + 48f * s, gy - 96f * s, win)
             }
         }
@@ -233,27 +378,66 @@ object HomeWorldDraw {
         when (house.coerceIn(0, 3)) {
             0 -> {
                 rc(cx - 74f * s, gy - 104f * s, cx + 74f * s, gy, pal[0])
+                g.boxShade(cx - 74f * s, gy - 104f * s, cx + 74f * s, gy)
                 rc(cx - 74f * s, gy - 104f * s, cx + 74f * s, gy - 100f * s, 0xFFFFF8F0.toInt())
                 g.pyramidRoof(cx, gy - 104f * s, 96f * s, 42f * s, roofC, roofD)
                 g.door(cx + 26f * s); g.window(cx - 32f * s, gy - 58f * s, win)
+                // 姜饼人式糖豆纽扣
+                g.paint.color = 0xFF7ADBC8.toInt(); g.canvas.drawCircle(cx - 2f * s, gy - 84f * s, 5f * s, g.paint)
+                g.paint.color = 0xFFFF8FBE.toInt(); g.canvas.drawCircle(cx - 2f * s, gy - 66f * s, 5f * s, g.paint)
+                g.paint.color = 0xFFC77DFF.toInt(); g.canvas.drawCircle(cx - 2f * s, gy - 48f * s, 5f * s, g.paint)
             }
             1 -> {
                 g.paint.color = pal[0]; g.canvas.drawRoundRect(cx - 70f * s, gy - 120f * s, cx + 70f * s, gy, 18f * s, 18f * s, g.paint)
                 g.paint.color = roofC; g.canvas.drawOval(cx - 78f * s, gy - 148f * s, cx + 78f * s, gy - 108f * s, g.paint)
+                // 奶油顶上的糖屑与樱桃
+                val sp = intArrayOf(0xFFFFF8F0.toInt(), 0xFFFFD54A.toInt(), 0xFF7ADBC8.toInt(), 0xFFC77DFF.toInt(), 0xFFFFF8F0.toInt())
+                for (i in sp.indices) {
+                    val px = cx + (i - 2) * 26f * s + (i % 2) * 8f * s
+                    val py = gy - (132f - (i % 3) * 9f) * s
+                    rc(px - 1.8f * s, py - 4f * s, px + 1.8f * s, py + 4f * s, sp[i])
+                }
+                g.paint.color = 0xFFE84A4A.toInt(); g.canvas.drawCircle(cx, gy - 150f * s, 8f * s, g.paint)
+                g.paint.color = 0xFFFF9A9A.toInt(); g.canvas.drawCircle(cx - 2.5f * s, gy - 152.5f * s, 2.8f * s, g.paint)
                 g.door(cx - 30f * s); g.window(cx + 24f * s, gy - 72f * s, win)
             }
             2 -> {
                 rc(cx - 86f * s, gy - 176f * s, cx + 86f * s, gy, pal[0])
+                g.boxShade(cx - 86f * s, gy - 176f * s, cx + 86f * s, gy)
                 rc(cx - 86f * s, gy - 98f * s, cx + 86f * s, gy - 90f * s, 0xFFFFF8F0.toInt())
+                // 糖霜带往下淌的糖滴
+                for (i in 0..4) {
+                    val dx = cx - 70f * s + i * 35f * s
+                    rc(dx - 2.5f * s, gy - 90f * s, dx + 2.5f * s, gy - (82f - (i % 2) * 4f) * s, 0xFFFFF8F0.toInt())
+                }
                 g.pyramidRoof(cx, gy - 176f * s, 108f * s, 44f * s, roofC, roofD)
+                // 山墙薄荷糖盘
+                g.paint.color = 0xFFFFF8F0.toInt(); g.canvas.drawCircle(cx, gy - 136f * s, 13f * s, g.paint)
+                g.paint.style = Paint.Style.STROKE
+                g.paint.strokeWidth = 3.5f * s
+                g.paint.color = 0xFFFF8FBE.toInt()
+                g.canvas.drawCircle(cx, gy - 136f * s, 8.5f * s, g.paint)
+                g.canvas.drawCircle(cx, gy - 136f * s, 3f * s, g.paint)
+                g.paint.style = Paint.Style.FILL
                 g.door(cx); g.window(cx - 50f * s, gy - 52f * s, win); g.window(cx + 50f * s, gy - 52f * s, win)
             }
             else -> {
                 rc(cx - 78f * s, gy - 142f * s, cx + 78f * s, gy, pal[0])
+                g.boxShade(cx - 78f * s, gy - 142f * s, cx + 78f * s, gy)
                 g.paint.color = roofC
                 g.canvas.drawCircle(cx - 90f * s, gy - 168f * s, 22f * s, g.paint)
                 g.canvas.drawCircle(cx + 90f * s, gy - 168f * s, 22f * s, g.paint)
+                // 棒棒糖白芯
+                g.paint.color = 0xFFFFF8F0.toInt()
+                g.canvas.drawCircle(cx - 90f * s, gy - 168f * s, 9f * s, g.paint)
+                g.canvas.drawCircle(cx + 90f * s, gy - 168f * s, 9f * s, g.paint)
                 g.pyramidRoof(cx, gy - 142f * s, 92f * s, 36f * s, roofC, roofD)
+                // 墙角拐杖糖柱：白底 + 斜纹糖圈
+                for (side in intArrayOf(-1, 1)) {
+                    val px = cx + side * 62f * s
+                    rc(px - 5f * s, gy - 40f * s, px + 5f * s, gy, 0xFFFFF8F0.toInt())
+                    for (k in 0..2) rc(px - 5f * s, gy - (34f - k * 12f) * s, px + 5f * s, gy - (29f - k * 12f) * s, 0xFFFF6E8E.toInt())
+                }
                 g.door(cx); g.window(cx - 38f * s, gy - 86f * s, win); g.window(cx + 38f * s, gy - 86f * s, win)
             }
         }
@@ -305,6 +489,11 @@ object HomeWorldDraw {
         g.pyramidRoof(cx - 106f * s, gy - 205f * s, 56f * s, 42f * s, roofC, roofD)
         g.pyramidRoof(cx + 106f * s, gy - 205f * s, 56f * s, 42f * s, roofC, roofD)
         g.pyramidRoof(cx, gy - 150f * s, 96f * s, 40f * s, roofC, roofD)
+        // 主楼旗杆与迎风摆动的三角旗
+        rc(cx - 1.5f * s, gy - 214f * s, cx + 1.5f * s, gy - 188f * s, 0xFF6B4A2B.toInt())
+        val wave = sin(g.homePhase * 2.2f) * 3f * s
+        rc(cx + 1.5f * s, gy - 212f * s, cx + 15f * s + wave, gy - 206f * s, roofC)
+        rc(cx + 1.5f * s, gy - 206f * s, cx + 10f * s + wave * 0.6f, gy - 201f * s, roofC)
         rc(cx - 26f * s, gy - 64f * s, cx + 26f * s, gy, 0xFF6B4A2B.toInt())
         rc(cx - 60f * s, gy - 110f * s, cx - 48f * s, gy - 78f * s, pal[2])
         rc(cx + 48f * s, gy - 110f * s, cx + 60f * s, gy - 78f * s, pal[2])

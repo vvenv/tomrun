@@ -2664,7 +2664,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
 
         // 房屋主体（中心 cx，底部落在 gy）——造型因世界而异
         HomeWorldDraw.drawHouse(
-            world, house, cx, gy, housePal, roofC, roofD, winLight, homeWorldGfx(canvas, s, gy)
+            world, house, cx, gy, housePal, roofC, roofD, winLight, homeWorldGfx(canvas, s, gy, world)
         )
         drawHouseWorldTrim(canvas, world, house, cx, gy, s)
         canvas.restore()   // 结束房屋平移；装饰与热区回到未偏移坐标系
@@ -2967,21 +2967,139 @@ class HudView(context: Context, private val game: Game) : View(context) {
         }
     }
 
-    private fun door(canvas: Canvas, cx: Float, gy: Float, s: Float) {
+    /** 各世界门造型：木门 / 潜水舱门 / 云白拱门 / 黑曜石门 / 巧克力糖门 / 太空滑门 */
+    private fun door(canvas: Canvas, cx: Float, gy: Float, s: Float, world: Int) {
         btnPaint.style = Paint.Style.FILL
-        btnPaint.color = 0xFF6B4A2B.toInt()
-        canvas.drawRect(cx - 17f * s, gy - 54f * s, cx + 17f * s, gy, btnPaint)
-        btnPaint.color = 0xFFFFD75E.toInt()
-        canvas.drawRect(cx + 7f * s, gy - 30f * s, cx + 12f * s, gy - 25f * s, btnPaint)
+        btnPaint.shader = null
+        val aa = btnPaint.isAntiAlias
+        when (world) {
+            Game.UNI_WATER -> {
+                btnPaint.isAntiAlias = true
+                btnPaint.color = 0xFF3E7A8E.toInt()
+                canvas.drawOval(cx - 17f * s, gy - 66f * s, cx + 17f * s, gy - 30f * s, btnPaint)
+                canvas.drawRect(cx - 17f * s, gy - 48f * s, cx + 17f * s, gy, btnPaint)
+                btnPaint.color = 0xFF2E5A6E.toInt()
+                canvas.drawRect(cx - 17f * s, gy - 5f * s, cx + 17f * s, gy, btnPaint)
+                // 门上舷窗
+                btnPaint.color = 0xFF64998F.toInt()
+                canvas.drawCircle(cx, gy - 38f * s, 9.5f * s, btnPaint)
+                btnPaint.color = 0xFFBFF2E8.toInt()
+                canvas.drawCircle(cx, gy - 38f * s, 6.5f * s, btnPaint)
+            }
+            Game.UNI_SKY -> {
+                btnPaint.isAntiAlias = true
+                btnPaint.color = 0xFFF2C14E.toInt()
+                canvas.drawOval(cx - 17f * s, gy - 68f * s, cx + 17f * s, gy - 36f * s, btnPaint)
+                canvas.drawRect(cx - 17f * s, gy - 52f * s, cx + 17f * s, gy, btnPaint)
+                btnPaint.color = 0xFFF8F4E6.toInt()
+                canvas.drawOval(cx - 13f * s, gy - 64f * s, cx + 13f * s, gy - 38f * s, btnPaint)
+                canvas.drawRect(cx - 13f * s, gy - 50f * s, cx + 13f * s, gy, btnPaint)
+                btnPaint.color = 0xFFC9A570.toInt()
+                canvas.drawRect(cx + 5f * s, gy - 30f * s, cx + 10f * s, gy - 25f * s, btnPaint)
+            }
+            Game.UNI_LAVA -> {
+                btnPaint.color = 0xFF2E2426.toInt()
+                canvas.drawRect(cx - 17f * s, gy - 54f * s, cx + 17f * s, gy, btnPaint)
+                // 门缝里透出的岩浆光：随呼吸明暗
+                val glow = 0.55f + 0.45f * (0.5f + 0.5f * kotlin.math.sin(homePhase * 2.6f))
+                btnPaint.color = withAlpha(0xFFFF7A2A.toInt(), (glow * 255).toInt())
+                canvas.drawRect(cx - 1.5f * s, gy - 48f * s, cx + 1.5f * s, gy, btnPaint)
+                canvas.drawRect(cx - 14f * s, gy - 4f * s, cx + 14f * s, gy, btnPaint)
+                btnPaint.color = 0xFF4A3E42.toInt()
+                canvas.drawRect(cx - 17f * s, gy - 54f * s, cx + 17f * s, gy - 50f * s, btnPaint)
+            }
+            Game.UNI_CANDY -> {
+                btnPaint.isAntiAlias = true
+                btnPaint.color = 0xFFFFF8F0.toInt()
+                canvas.drawOval(cx - 17f * s, gy - 66f * s, cx + 17f * s, gy - 34f * s, btnPaint)
+                btnPaint.color = 0xFF6B4230.toInt()
+                canvas.drawOval(cx - 14f * s, gy - 62f * s, cx + 14f * s, gy - 36f * s, btnPaint)
+                canvas.drawRect(cx - 14f * s, gy - 48f * s, cx + 14f * s, gy, btnPaint)
+                btnPaint.color = 0xFF8A5A40.toInt()
+                canvas.drawRect(cx - 14f * s, gy - 26f * s, cx + 14f * s, gy - 23f * s, btnPaint)
+                btnPaint.color = 0xFFFF8FBE.toInt()
+                canvas.drawCircle(cx + 8f * s, gy - 28f * s, 3.5f * s, btnPaint)
+            }
+            Game.UNI_SPACE -> {
+                btnPaint.color = 0xFF474C60.toInt()
+                canvas.drawRect(cx - 17f * s, gy - 56f * s, cx + 17f * s, gy, btnPaint)
+                btnPaint.color = 0xFF2E3242.toInt()
+                canvas.drawRect(cx - 1.5f * s, gy - 52f * s, cx + 1.5f * s, gy, btnPaint)
+                // 门楣灯带：慢速呼吸的青光
+                val pulse = 0.5f + 0.5f * kotlin.math.sin(homePhase * 2f)
+                btnPaint.color = withAlpha(0xFF4DE8FF.toInt(), (120 + 120 * pulse).toInt())
+                canvas.drawRect(cx - 15f * s, gy - 56f * s, cx + 15f * s, gy - 52f * s, btnPaint)
+                btnPaint.color = 0xFF9AE8FF.toInt()
+                canvas.drawRect(cx + 6f * s, gy - 34f * s, cx + 12f * s, gy - 28f * s, btnPaint)
+            }
+            else -> {
+                btnPaint.color = 0xFF8A6B3F.toInt()
+                canvas.drawRect(cx - 20f * s, gy - 58f * s, cx + 20f * s, gy, btnPaint)
+                btnPaint.color = 0xFF6B4A2B.toInt()
+                canvas.drawRect(cx - 17f * s, gy - 54f * s, cx + 17f * s, gy, btnPaint)
+                // 门板拼缝 + 金门把 + 门前石阶
+                btnPaint.color = 0xFF5A3D22.toInt()
+                canvas.drawRect(cx - 1.5f * s, gy - 54f * s, cx + 1.5f * s, gy, btnPaint)
+                btnPaint.color = 0xFFFFD75E.toInt()
+                canvas.drawRect(cx + 7f * s, gy - 30f * s, cx + 12f * s, gy - 25f * s, btnPaint)
+                btnPaint.color = 0xFFC9B98F.toInt()
+                canvas.drawRect(cx - 22f * s, gy, cx + 22f * s, gy + 5f * s, btnPaint)
+            }
+        }
+        btnPaint.isAntiAlias = aa
     }
 
-    private fun window(canvas: Canvas, cx: Float, cy: Float, s: Float, light: Int = 0xFFFFF3B8.toInt()) {
+    /** 各世界窗造型：十字木窗 / 圆舷窗 / 金框云窗 / 铁框火窗 / 糖霜圆角窗 / 太空舷窗 */
+    private fun window(canvas: Canvas, cx: Float, cy: Float, s: Float, light: Int, world: Int) {
         btnPaint.style = Paint.Style.FILL
-        btnPaint.color = light
-        canvas.drawRect(cx - 15f * s, cy - 15f * s, cx + 15f * s, cy + 15f * s, btnPaint)
-        btnPaint.color = 0xFF8A6B3F.toInt()
-        canvas.drawRect(cx - 2f * s, cy - 15f * s, cx + 2f * s, cy + 15f * s, btnPaint)
-        canvas.drawRect(cx - 15f * s, cy - 2f * s, cx + 15f * s, cy + 2f * s, btnPaint)
+        btnPaint.shader = null
+        val aa = btnPaint.isAntiAlias
+        when (world) {
+            Game.UNI_WATER, Game.UNI_SPACE -> {
+                btnPaint.isAntiAlias = true
+                btnPaint.color = if (world == Game.UNI_WATER) 0xFF64998F.toInt() else 0xFF9AA2B8.toInt()
+                canvas.drawCircle(cx, cy, 16f * s, btnPaint)
+                btnPaint.color = if (world == Game.UNI_WATER) 0xFF456E66.toInt() else 0xFF6E7488.toInt()
+                canvas.drawCircle(cx, cy, 13f * s, btnPaint)
+                btnPaint.color = light
+                canvas.drawCircle(cx, cy, 11f * s, btnPaint)
+                btnPaint.color = 0x77FFFFFF
+                canvas.drawCircle(cx - 4f * s, cy - 4f * s, 3.6f * s, btnPaint)
+            }
+            Game.UNI_LAVA -> {
+                // 铁框火窗：窗外一圈岩浆光晕
+                btnPaint.color = withAlpha(0xFFFF7A2A.toInt(), 60)
+                canvas.drawRect(cx - 20f * s, cy - 20f * s, cx + 20f * s, cy + 20f * s, btnPaint)
+                btnPaint.color = 0xFF3A2C28.toInt()
+                canvas.drawRect(cx - 17f * s, cy - 17f * s, cx + 17f * s, cy + 17f * s, btnPaint)
+                btnPaint.color = light
+                canvas.drawRect(cx - 13f * s, cy - 13f * s, cx + 13f * s, cy + 13f * s, btnPaint)
+                btnPaint.color = 0xFF3A2C28.toInt()
+                canvas.drawRect(cx - 2f * s, cy - 13f * s, cx + 2f * s, cy + 13f * s, btnPaint)
+            }
+            Game.UNI_CANDY -> {
+                btnPaint.isAntiAlias = true
+                btnPaint.color = 0xFFFFF8F0.toInt()
+                canvas.drawRoundRect(cx - 18f * s, cy - 18f * s, cx + 18f * s, cy + 18f * s, 9f * s, 9f * s, btnPaint)
+                btnPaint.color = light
+                canvas.drawRoundRect(cx - 13f * s, cy - 13f * s, cx + 13f * s, cy + 13f * s, 6f * s, 6f * s, btnPaint)
+                btnPaint.color = 0x66FFFFFF
+                canvas.drawRect(cx - 10f * s, cy - 10f * s, cx - 2f * s, cy - 2f * s, btnPaint)
+            }
+            else -> {
+                val frame = if (world == Game.UNI_SKY) 0xFFC9A570.toInt() else 0xFF8A6B3F.toInt()
+                btnPaint.color = light
+                canvas.drawRect(cx - 15f * s, cy - 15f * s, cx + 15f * s, cy + 15f * s, btnPaint)
+                btnPaint.color = 0x4DFFFFFF
+                canvas.drawRect(cx - 15f * s, cy - 15f * s, cx, cy, btnPaint)
+                btnPaint.color = frame
+                canvas.drawRect(cx - 2f * s, cy - 15f * s, cx + 2f * s, cy + 15f * s, btnPaint)
+                canvas.drawRect(cx - 15f * s, cy - 2f * s, cx + 15f * s, cy + 2f * s, btnPaint)
+                // 窗台
+                canvas.drawRect(cx - 18f * s, cy + 15f * s, cx + 18f * s, cy + 19f * s, btnPaint)
+            }
+        }
+        btnPaint.isAntiAlias = aa
     }
 
     /**
@@ -3077,7 +3195,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         btnPaint.isAntiAlias = aa
     }
 
-    private fun homeWorldGfx(canvas: Canvas, s: Float, gy: Float, alpha: Int = 255): HomeWorldDraw.Gfx {
+    private fun homeWorldGfx(canvas: Canvas, s: Float, gy: Float, world: Int, alpha: Int = 255): HomeWorldDraw.Gfx {
         return HomeWorldDraw.Gfx(
             canvas, btnPaint, s, homePhase,
             rc = { l, t, r, b, color ->
@@ -3089,8 +3207,8 @@ class HudView(context: Context, private val game: Game) : View(context) {
             pyramidRoof = { rcx, bottomY, halfW, height, c, cd ->
                 pyramidRoof(canvas, rcx, bottomY, halfW, height, c, cd, s)
             },
-            door = { doorCx -> door(canvas, doorCx, gy, s) },
-            window = { wcx, wcy, light -> window(canvas, wcx, wcy, s, light) },
+            door = { doorCx -> door(canvas, doorCx, gy, s, world) },
+            window = { wcx, wcy, light -> window(canvas, wcx, wcy, s, light, world) },
             groundShadow = { scx, baseY, halfW -> groundShadow(canvas, scx, baseY, halfW, s) },
             withAlpha = { c, a -> withAlpha(c, a) }
         )
@@ -3107,7 +3225,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
             world, deco, drawCx, drawGy, half, alpha,
             HOME_FLOWERS[world], HOME_FLOWER_STEM[world], HOME_FENCE[world],
             HOME_POOL_WATER[world], HOME_FLAGS[world],
-            homeWorldGfx(canvas, s, drawGy, alpha),
+            homeWorldGfx(canvas, s, drawGy, world, alpha),
             0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f,
             pool.l, pool.r, pool.t, pool.b,
             0f, 0f
