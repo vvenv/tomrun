@@ -4153,6 +4153,37 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 }
             }
         }
+        // 世界装备：与跑酷一致——水下家戴潜水镜、星空家罩太空盔（画在帽子之后，玻璃罩住帽子）
+        val gearWorld = if (game.menuPanel == Game.PANEL_HOME) game.homeWorld else Game.UNI_MEADOW
+        fun gearAt(hL: Float, hT: Float) {
+            when (gearWorld) {
+                Game.UNI_WATER -> {
+                    rc(hL - 2f, hT + 8f, hL + 26f, hT + 10f, 0xFF2E3A4A.toInt())   // 绑带
+                    rc(hL + 3f, hT + 5f, hL + 12f, hT + 15f, 0xFF2E3A4A.toInt())   // 左镜框
+                    rc(hL + 14f, hT + 5f, hL + 23f, hT + 15f, 0xFF2E3A4A.toInt())  // 右镜框
+                    rc(hL + 5f, hT + 7f, hL + 10f, hT + 13f, 0xCC9FE8FF.toInt())   // 镜片
+                    rc(hL + 16f, hT + 7f, hL + 21f, hT + 13f, 0xCC9FE8FF.toInt())
+                }
+                Game.UNI_SPACE -> {
+                    val ccx = x + (hL + 12f) * dir * s
+                    val ccy = footY + (hT + 11f) * s
+                    val r = 19f * s
+                    val aa = btnPaint.isAntiAlias
+                    btnPaint.isAntiAlias = true
+                    btnPaint.style = Paint.Style.FILL
+                    btnPaint.color = 0x3E9FD8FF
+                    canvas.drawCircle(ccx, ccy, r, btnPaint)
+                    btnPaint.style = Paint.Style.STROKE
+                    btnPaint.strokeWidth = 2f * s
+                    btnPaint.color = 0xAAE8F4FF.toInt()
+                    canvas.drawCircle(ccx, ccy, r, btnPaint)
+                    btnPaint.style = Paint.Style.FILL
+                    btnPaint.color = 0x66FFFFFF
+                    canvas.drawCircle(ccx - r * 0.4f * dir, ccy - r * 0.4f, r * 0.22f, btnPaint)
+                    btnPaint.isAntiAlias = aa
+                }
+            }
+        }
         val scC = SCARF_CHIPS[scarf % SCARF_CHIPS.size]
         val t = homePhase
         when (pose) {
@@ -4184,6 +4215,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 rc(2f, -6f, 10f, 0f, paw)
                 if (scarf > 0) rc(-4f, -30f, 16f, -24f, scC)  // 颈圈
                 if (hat > 0) hatAt(-4f, -50f)
+                gearAt(-4f, -50f)
             }
             POSE_PET -> {
                 val lean = kotlin.math.sin(t * 5f) * 3f         // 被摸时微微蹭手
@@ -4200,6 +4232,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 rc(2f, -6f, 10f, 0f, paw)
                 if (scarf > 0) rc(-2f + lean, -28f, 18f + lean, -22f, scC)
                 if (hat > 0) hatAt(-2f + lean, -50f)
+                gearAt(-2f + lean, -50f)
             }
             POSE_SWIM -> {
                 val paddle = kotlin.math.sin(t * 12f)
@@ -4228,6 +4261,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 }
                 if (scarf > 0) rc(6f, -9f, 24f, -3f, scC) // 贴水面的围巾
                 if (hat > 0) hatAt(6f, -22f)
+                gearAt(6f, -22f)
             }
             else -> {
                 val walk = pose == POSE_WALK
@@ -4261,6 +4295,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
                     rc(-4f, -19f - bob + fl * 0.4f, 4f, -7f - bob + fl, scC)
                 }
                 if (hat > 0) hatAt(6f + headDx, -40f - bob + headDy)
+                gearAt(6f + headDx, -40f - bob + headDy)
                 if (walk) {
                     val sw = kotlin.math.sin(t * 9f) * 5f     // 前后爪交替
                     rc(-18f + sw, -6f, -10f + sw, 0f, paw)
