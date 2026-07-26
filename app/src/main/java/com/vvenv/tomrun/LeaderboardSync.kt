@@ -36,6 +36,9 @@ class LeaderboardSync(private val prefs: SharedPreferences) {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val busy = AtomicBoolean(false)
 
+    /** 待同步队列在主线程入队、worker 线程回写，读改写必须整体互斥 */
+    private val pendingLock = Any()
+
     private val remoteBoards = Array(Leaderboards.CATEGORY_COUNT) { ArrayList<Leaderboards.Entry>() }
 
     @Volatile var state = STATE_DISABLED
@@ -109,27 +112,41 @@ class LeaderboardSync(private val prefs: SharedPreferences) {
     }
 
     private fun flushPendingBlocking() {
-        val pending = loadPending().toMutableList()
-        if (pending.isEmpty()) return
+        if (synchronized(pendingLock) { loadPending().isEmpty() }) return
         setState(STATE_SYNCING, "")
-        val remain = ArrayList<PendingSubmit>()
-        var okAny = false
-        for (item in pending) {
-            try {
-                LeaderboardApi.submit(
-                    item.category, item.player, item.value, item.whenMs, item.detail, deviceId
-                )
-                okAny = true
-            } catch (_: Exception) {
-                remain.add(item)
+        var uploadedAny = false
+        while (true) {
+            // 每轮重新快照：网络耗时期间主线程可能又入队了新纪录
+            val batch = synchronized(pendingLock) { loadPending() }
+            if (batch.isEmpty()) break
+            val sent = ArrayList<PendingSubmit>()
+            var anyFail = false
+            for (item in batch) {
+                try {
+                    LeaderboardApi.submit(
+                        item.category, item.player, item.value, item.whenMs, item.detail, deviceId
+                    )
+                    sent.add(item)
+                    uploadedAny = true
+                } catch (_: Exception) {
+                    anyFail = true
+                }
             }
+            // 只移除本轮确认发送成功的条目，避免覆盖期间新入队的纪录
+            val remaining = synchronized(pendingLock) {
+                val current = loadPending().toMutableList()
+                for (s in sent) current.remove(s)
+                savePending(current)
+                current.size
+            }
+            if (anyFail) {
+                setState(STATE_ERROR, "待同步 $remaining 条")
+                return
+            }
+            if (remaining == 0) break
+            // 仍有剩余说明发送期间有新纪录入队，继续下一轮排空
         }
-        savePending(remain)
-        if (remain.isEmpty()) {
-            setState(STATE_OK, if (okAny) "已上传纪录" else "")
-        } else {
-            setState(STATE_ERROR, "待同步 ${remain.size} 条")
-        }
+        setState(STATE_OK, if (uploadedAny) "已上传纪录" else "")
     }
 
     private fun cacheRemote(category: Int, entries: List<Leaderboards.Entry>) {
@@ -141,9 +158,11 @@ class LeaderboardSync(private val prefs: SharedPreferences) {
     }
 
     private fun enqueuePending(item: PendingSubmit) {
-        val list = loadPending().toMutableList()
-        list.add(item)
-        savePending(list)
+        synchronized(pendingLock) {
+            val list = loadPending().toMutableList()
+            list.add(item)
+            savePending(list)
+        }
     }
 
     private fun loadPending(): List<PendingSubmit> {

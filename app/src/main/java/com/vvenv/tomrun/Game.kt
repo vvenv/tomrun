@@ -27,6 +27,7 @@ class Game {
         const val OBST_RAMP = 7
         const val P_BOOST = 8
         const val OBST_SPIKE = 9
+        const val P_RELIC = 10
         /** 地刺：远处就是平铺底板（不判定伤害），靠近到这个 z 才开始弹出 */
         const val SPIKE_TRIGGER_Z = -9f
         /** 从触发到完全弹起经过的 z 距离，值越小弹得越突然 */
@@ -271,6 +272,8 @@ class Game {
         // 文物图鉴集齐一次性大奖（随件数上调）
         const val MUSEUM_REWARD = 6000
         const val RELIC_HUD_MAX = 8
+        // 文物拾取爆闪时长（秒）
+        const val RELIC_POP_DUR = 0.55f
 
         // 平行宇宙
         const val UNI_MEADOW = 0
@@ -286,24 +289,6 @@ class Game {
         val UNI_JUMP = floatArrayOf(1f, 0.82f, 1.15f, 1f, 1f, 0.80f)
         const val PORTAL_FIRST = 320f
 
-        // 世界专属随机场景（隧道/黑洞等，纯氛围效果，不影响碰撞与车道）
-        val SCENE_NAMES = arrayOf("藤蔓隧道", "暗涌隧道", "云隙隧道", "熔岩隧道", "糖霜隧道", "黑洞漩涡")
-        val SCENE_BANNER_COLORS = intArrayOf(
-            0xFF3FA34D.toInt(), 0xFF2E8FCB.toInt(), 0xFFB9C6D9.toInt(),
-            0xFFFF6A1A.toInt(), 0xFFFF6FA8.toInt(), 0xFF8A4DFF.toInt()
-        )
-        val SCENE_PARTICLE_COLORS = arrayOf(
-            floatArrayOf(0.20f, 0.70f, 0.30f, 1f),
-            floatArrayOf(0.25f, 0.55f, 0.95f, 1f),
-            floatArrayOf(0.85f, 0.90f, 1.00f, 1f),
-            floatArrayOf(1.00f, 0.55f, 0.15f, 0.9f),
-            floatArrayOf(1.00f, 0.55f, 0.75f, 1f),
-            floatArrayOf(0.60f, 0.30f, 0.90f, 1f)
-        )
-        const val SCENE_GAP_MIN = 12f
-        const val SCENE_GAP_RANGE = 14f
-        const val SCENE_DUR_MIN = 6f
-        const val SCENE_DUR_RANGE = 3f
         // 宇宙图鉴集齐一次性大奖
         const val CODEX_REWARD = 1000
 
@@ -451,9 +436,9 @@ class Game {
         var spin = Random.nextFloat() * 360f
         /** 已被磁铁吸入，效果结束后仍继续飞向猫直到拾取 */
         var magneted = false
-        /** 文物金币：-1 表示普通金币，否则为 RELIC_NAMES 下标 */
+        /** 藏品实体：relicId 为 RELIC_NAMES 下标 */
         var relicId: Int = -1
-        val isRelic get() = relicId >= 0
+        val isRelic get() = kind == P_RELIC
     }
 
     class Zip(val lane: Int, var entryZ: Float, val length: Float) {
@@ -590,13 +575,6 @@ class Game {
     @Volatile var totalPortals = 0
     @Volatile var universesSeen = 1
 
-    // 世界专属随机场景（隧道/黑洞等）
-    @Volatile var sceneActive = false
-    @Volatile var sceneUni = UNI_MEADOW
-    @Volatile var sceneBlend = 0f
-    private var sceneTime = 0f
-    private var sceneDuration = 0f
-    private var sceneGap = SCENE_GAP_MIN + Random.nextFloat() * SCENE_GAP_RANGE
     private var seenMask = 1          // bit0 草原
     private var codexRewarded = false
     private var portalGap = PORTAL_FIRST
@@ -687,6 +665,13 @@ class Game {
     val relicHudScale = FloatArray(RELIC_HUD_MAX)
     val relicHudId = IntArray(RELIC_HUD_MAX)
     @Volatile var relicHudCount = 0
+
+    // 文物拾取爆闪特效：位置 + 稀有度 + 剩余时长（供渲染器画外扩光环）
+    @Volatile var relicPopX = 0f
+    @Volatile var relicPopY = 0f
+    @Volatile var relicPopZ = 0f
+    @Volatile var relicPopRarity = 0
+    @Volatile var relicPopAge = 0f
 
     private var prefs: SharedPreferences? = null
     private var sessionPickupCoins = 0  // 本局拾取计入累计统计
@@ -1468,6 +1453,7 @@ class Game {
         runWalletEarn = 0; sessionPickupCoins = 0
         runRelics = 0
         relicHudCount = 0
+        relicPopAge = 0f
         // 首件文物约 180 米后出现，之后每 280~520 米一件
         nextRelicAt = 180f + Random.nextFloat() * 120f
         shake = 0f; hapticPulse = 0; floatFlash = 0f; lastFloat = ""
@@ -1482,9 +1468,6 @@ class Game {
         portalFlash = 0f
         portalGap = PORTAL_FIRST + Random.nextFloat() * 120f
         runPortals = 0
-        sceneActive = false
-        sceneBlend = 0f
-        sceneGap = SCENE_GAP_MIN + Random.nextFloat() * SCENE_GAP_RANGE
         chaseActive = false
         paceSlowUntil = 0f
         nextChaseAt = CHASE_FIRST + Random.nextFloat() * 180f
@@ -1552,6 +1535,7 @@ class Game {
         if (shake > 0f) shake = (shake - dt * 5f).coerceAtLeast(0f)
         if (edgeBumpTime > 0f) edgeBumpTime = (edgeBumpTime - dt).coerceAtLeast(0f)
         if (portalFlash > 0f) portalFlash -= dt
+        if (relicPopAge > 0f) relicPopAge = (relicPopAge - dt).coerceAtLeast(0f)
         if (universeBlend < 1f) universeBlend = min(1f, universeBlend + dt / 1.5f)
         if (state == State.DEAD) {
             deadTime += dt
@@ -1680,9 +1664,6 @@ class Game {
             zipGap = 160f + Random.nextFloat() * 160f
         }
 
-        // 世界专属随机场景：隧道/黑洞等，纯氛围效果
-        tickScene(dt)
-
         // 传送门：随世界前移，穿过即切换平行宇宙
         if (portalActive) {
             portalZ += dz
@@ -1747,39 +1728,6 @@ class Game {
             weatherTimer = 25f + Random.nextFloat() * 20f
         }
         if (weatherBlend < 1f) weatherBlend = min(1f, weatherBlend + dt / 2.5f)
-    }
-
-    // ---------- 世界专属随机场景 ----------
-    /** 隧道/黑洞等，按当前宇宙随机触发一段纯视觉氛围场景，不改变碰撞与车道逻辑 */
-    private fun tickScene(dt: Float) {
-        if (sceneActive) {
-            sceneTime -= dt
-            sceneBlend = when {
-                sceneTime <= 0f -> 0f
-                sceneTime < 1f -> sceneTime
-                sceneDuration - sceneTime < 1f -> sceneDuration - sceneTime
-                else -> 1f
-            }.coerceIn(0f, 1f)
-            if (sceneTime <= 0f) {
-                sceneActive = false
-                sceneBlend = 0f
-                sceneGap = SCENE_GAP_MIN + Random.nextFloat() * SCENE_GAP_RANGE
-            }
-            return
-        }
-        // 传送中/刚换世界/追击中不触发，避免场景叠加太乱
-        if (portalActive || universeBlend < 1f || chaseActive) return
-        sceneGap -= dt
-        if (sceneGap <= 0f) {
-            sceneActive = true
-            sceneUni = universe
-            sceneDuration = SCENE_DUR_MIN + Random.nextFloat() * SCENE_DUR_RANGE
-            sceneTime = sceneDuration
-            sceneBlend = 0f
-            enqueueBanner("穿越${SCENE_NAMES[sceneUni]}！", SCENE_BANNER_COLORS[sceneUni], 2.2f)
-            shake = shake.coerceAtLeast(0.12f)
-            spawnBurst(catX, 1.3f, -6f, SCENE_PARTICLE_COLORS[sceneUni], 10)
-        }
     }
 
     // ---------- 平行宇宙 ----------
@@ -1854,6 +1802,7 @@ class Game {
         chaseActive = true
         nextChaseAt = distance + 400f + Random.nextFloat() * 320f
         clearObstaclesAhead((speed * 2.5f).coerceAtLeast(55f))
+        clearPickupsAhead((speed * 2.5f).coerceAtLeast(55f))
         invulnTime = invulnTime.coerceAtLeast(1.2f)
         triggerPaceSlow(2.4f)
         enqueueBanner("妖怪出没！$yokaiName 追来了！", yokaiColor, 3.0f)
@@ -1973,6 +1922,14 @@ class Game {
         }
     }
 
+    /** 妖怪追击：清掉前方道具与藏品，只留金币与障碍 */
+    private fun clearPickupsAhead(dist: Float) {
+        entities.removeAll {
+            it.z > -dist && (it.kind == P_MAGNET || it.kind == P_HELMET ||
+                it.kind == P_DOUBLE || it.kind == P_BOOST || it.kind == P_RELIC)
+        }
+    }
+
     /** 下滑索缓冲：落点附近不留障碍，避免刚落地反应不及 */
     private fun dismountGrace() {
         clearObstaclesAhead((speed * 1.7f).coerceAtLeast(40f))
@@ -2055,13 +2012,25 @@ class Game {
             }
         }
 
-        // 道具：随机 + 保底（约每 7 波）
-        val pity = wavesSincePower >= 7
-        if (pity || Random.nextFloat() < 0.15f) {
-            val kinds = intArrayOf(P_MAGNET, P_HELMET, P_DOUBLE, P_BOOST)
-            entities.add(Entity(kinds[Random.nextInt(kinds.size)], Random.nextInt(3), zBase - 10f, 1.2f))
-            wavesSincePower = 0
+        // 道具 / 藏品：随机 + 保底；妖怪追击期间只留金币与障碍
+        if (!chaseActive) {
+            val pity = wavesSincePower >= 7
+            if (pity || Random.nextFloat() < 0.15f) {
+                val kinds = intArrayOf(P_MAGNET, P_HELMET, P_DOUBLE, P_BOOST)
+                entities.add(Entity(kinds[Random.nextInt(kinds.size)], Random.nextInt(3), zBase - 10f, 1.2f))
+                wavesSincePower = 0
+            }
+            if (distance >= nextRelicAt) {
+                spawnRelic(zBase)
+            }
         }
+    }
+
+    private fun spawnRelic(zBase: Float) {
+        val e = Entity(P_RELIC, Random.nextInt(3), zBase - 10f, 1.2f)
+        e.relicId = pickRelicForSpawn()
+        entities.add(e)
+        nextRelicAt = distance + 280f + Random.nextFloat() * 240f
     }
 
     private fun spawnRampWave(zBase: Float) {
@@ -2125,12 +2094,7 @@ class Game {
 
     private fun makeCoin(lane: Int, z: Float, y: Float): Entity {
         waveCoinMinZ = min(waveCoinMinZ, z)
-        val e = Entity(COIN, lane, z, y)
-        if (distance >= nextRelicAt) {
-            e.relicId = pickRelicForSpawn()
-            nextRelicAt = distance + 280f + Random.nextFloat() * 240f
-        }
-        return e
+        return Entity(COIN, lane, z, y)
     }
 
     /** 先按稀有度掷骰（传说需 600 米后），再优先未收集的文物 */
@@ -2155,6 +2119,13 @@ class Game {
         RELIC_LEGEND -> 0xFFFFD426.toInt()
         RELIC_RARE -> 0xFF4DE8FF.toInt()
         else -> 0xFF7DEBA0.toInt()
+    }
+
+    /** 文物拾取迸发粒子色（按稀有度，与横幅/光晕同色系） */
+    private fun relicBurstColor(rarity: Int): FloatArray = when (rarity) {
+        RELIC_LEGEND -> floatArrayOf(1f, 0.83f, 0.20f, 1f)
+        RELIC_RARE -> floatArrayOf(0.35f, 0.90f, 1f, 1f)
+        else -> floatArrayOf(0.55f, 0.92f, 0.65f, 1f)
     }
 
     private fun recordMuseumLeaderboard(relicName: String) {
@@ -2186,7 +2157,12 @@ class Game {
         // 拾取时已 triggerPaceSlow，停留久一点刚好够读完一句。
         enqueueBanner(RELIC_FACTS[id], 0xFFAAD5FF.toInt(), 5.5f)
         pushFloat(RELIC_NAMES[id], color)
-        spawnBurst(e.x, e.y, e.z, floatArrayOf(0.78f, 0.45f, 1f, 1f), 6)
+        // 爆闪 + 分层迸发：让"收集到宝物"这一下有明确的正反馈
+        relicPopX = e.x; relicPopY = e.y; relicPopZ = e.z
+        relicPopRarity = rarity
+        relicPopAge = RELIC_POP_DUR
+        spawnBurst(e.x, e.y + 0.3f, e.z, floatArrayOf(1f, 0.95f, 0.72f, 1f), 14)  // 暖白火花
+        spawnBurst(e.x, e.y, e.z, relicBurstColor(rarity), 12)                     // 稀有度色迸发
         if (!relicCollected(id)) {
             markRelicCollected(id)
             relicsFound = countRelicsFound()
@@ -2232,10 +2208,10 @@ class Game {
                         collectCoin(e)
                     }
                 }
-                P_MAGNET, P_HELMET, P_DOUBLE, P_BOOST -> {
+                P_MAGNET, P_HELMET, P_DOUBLE, P_BOOST, P_RELIC -> {
                     if (abs(e.z) < 1.0f && abs(e.x - catX) < 1.1f && abs(e.y - catCenterY) < 1.3f) {
                         e.taken = true
-                        pickupPower(e)
+                        if (e.kind == P_RELIC) collectRelic(e) else pickupPower(e)
                     }
                 }
                 else -> {
@@ -2292,7 +2268,6 @@ class Game {
         if (comboMult == prevMult) emit(EV_COIN, HAPTIC_LIGHT)
         bumpQuest(Q_COINS, 1)
         bumpQuest(Q_COMBO, 0) // 用 sync 刷新
-        if (e.isRelic) collectRelic(e)
     }
 
     private fun multForCombo(c: Int): Int {
@@ -2622,14 +2597,7 @@ class Game {
         lastRunLeaderboardHits = leaderboards.recordRun(
             player = characterName,
             distance = distance.toInt(),
-            score = score,
-            coins = sessionPickupCoins,
-            runRelics = runRelics,
-            combo = bestComboRun,
-            wallet = runWalletEarn,
-            battles = runBattleWins,
-            portals = runPortals,
-            runSeconds = runTime.toInt()
+            score = score
         )
         persistAll()
     }

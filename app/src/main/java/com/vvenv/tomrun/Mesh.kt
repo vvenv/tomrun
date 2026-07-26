@@ -51,6 +51,22 @@ class Mesh(data: FloatArray) {
             return Mesh(out.toFloatArray())
         }
 
+        /**
+         * 全屏渐变背景四边形：位置直接落在 NDC（配 identity MVP），
+         * y ∈ [-1,1] 传给片元当竖直渐变坐标。法线未用，占位向上。
+         */
+        fun fullscreenQuad(): Mesh {
+            val v = floatArrayOf(
+                -1f, -1f, 0f, 0f, 1f, 0f,
+                1f, -1f, 0f, 0f, 1f, 0f,
+                1f, 1f, 0f, 0f, 1f, 0f,
+                -1f, -1f, 0f, 0f, 1f, 0f,
+                1f, 1f, 0f, 0f, 1f, 0f,
+                -1f, 1f, 0f, 0f, 1f, 0f
+            )
+            return Mesh(v)
+        }
+
         private class Face(val n: FloatArray, val corners: FloatArray)
     }
 }

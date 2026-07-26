@@ -20,39 +20,23 @@ class Leaderboards {
 
         const val RUN_DISTANCE = 0
         const val RUN_SCORE = 1
-        const val RUN_COINS = 2
-        const val RUN_RELICS = 3
-        const val HONOR_COUNT = 4
-        const val MUSEUM_COLLECT = 5
-        const val RUN_COMBO = 6
-        const val RUN_WALLET = 7
-        const val RUN_BATTLES = 8
-        const val RUN_PORTALS = 9
-        const val RUN_TIME = 10
-        const val CATEGORY_COUNT = 11
+        const val MUSEUM_COLLECT = 2
+        const val HONOR_COUNT = 3
+        const val CATEGORY_COUNT = 4
 
         private val PREF_KEYS = arrayOf(
-            "lbRunDist", "lbRunScore", "lbRunCoins", "lbRunRelics", "lbHonor",
-            "lbMuseum", "lbRunCombo", "lbRunWallet", "lbRunBattles", "lbRunPortals", "lbRunTime"
+            "lbRunDist", "lbRunScore", "lbMuseum", "lbHonor"
         )
 
         val TITLES = arrayOf(
-            "单场距离", "单场得分", "单场金币", "单场文物", "荣誉获得",
-            "藏品图鉴", "单场连击", "单场钱包", "单场猎妖", "单场穿越", "单场时长"
+            "单场距离", "单场得分", "藏品图鉴", "荣誉获得"
         )
 
         val SUBTITLES = arrayOf(
             "一局跑过的最远距离",
             "一局获得的最高得分",
-            "一局路上拾取的金币数",
-            "一局新发现的文物件数",
-            "累计解锁的荣誉级数",
             "图鉴中已收集的文物总数",
-            "一局内达到的最高连击",
-            "一局任务与奖励获得的钱包金币",
-            "一局击倒的妖怪次数",
-            "一局穿越传送门的次数",
-            "一局存活的时间（秒）"
+            "累计解锁的荣誉级数"
         )
 
         private const val SEP_ENTRY = '\u001e'
@@ -60,8 +44,7 @@ class Leaderboards {
 
         /** REST 路径片段，与 server/leaderboard_server.py 一致 */
         val CATEGORY_SLUGS = arrayOf(
-            "run_distance", "run_score", "run_coins", "run_relics", "honor_count",
-            "museum_collect", "run_combo", "run_wallet", "run_battles", "run_portals", "run_time"
+            "run_distance", "run_score", "museum_collect", "honor_count"
         )
     }
 
@@ -90,43 +73,16 @@ class Leaderboards {
 
     fun formatValue(category: Int, value: Int): String = when (category) {
         RUN_DISTANCE -> "${value} m"
-        RUN_TIME -> formatDuration(value)
         MUSEUM_COLLECT -> "${value}/${Game.RELIC_COUNT}"
         HONOR_COUNT -> "${value}/${Game.ACHIEVE_MAX}"
         else -> value.toString()
     }
 
-    /** 本局结算：各跑酷指标分别尝试入榜，返回入榜的类别下标列表 */
-    fun recordRun(
-        player: String,
-        distance: Int,
-        score: Int,
-        coins: Int,
-        runRelics: Int,
-        combo: Int,
-        wallet: Int,
-        battles: Int,
-        portals: Int,
-        runSeconds: Int
-    ): IntArray {
-        val hits = ArrayList<Int>(CATEGORY_COUNT)
+    /** 本局结算：距离与得分分别尝试入榜，返回入榜的类别下标列表 */
+    fun recordRun(player: String, distance: Int, score: Int): IntArray {
+        val hits = ArrayList<Int>(2)
         if (submit(RUN_DISTANCE, player, distance, runDetail(distance, score))) hits.add(RUN_DISTANCE)
         if (submit(RUN_SCORE, player, score, "${distance} m")) hits.add(RUN_SCORE)
-        if (coins > 0 && submit(RUN_COINS, player, coins, runDetail(distance, score))) hits.add(RUN_COINS)
-        if (runRelics > 0 && submit(RUN_RELICS, player, runRelics, runDetail(distance, score))) {
-            hits.add(RUN_RELICS)
-        }
-        if (combo > 0 && submit(RUN_COMBO, player, combo, runDetail(distance, score))) hits.add(RUN_COMBO)
-        if (wallet > 0 && submit(RUN_WALLET, player, wallet, runDetail(distance, score))) hits.add(RUN_WALLET)
-        if (battles > 0 && submit(RUN_BATTLES, player, battles, runDetail(distance, score))) {
-            hits.add(RUN_BATTLES)
-        }
-        if (portals > 0 && submit(RUN_PORTALS, player, portals, runDetail(distance, score))) {
-            hits.add(RUN_PORTALS)
-        }
-        if (runSeconds > 0 && submit(RUN_TIME, player, runSeconds, runDetail(distance, score))) {
-            hits.add(RUN_TIME)
-        }
         return hits.toIntArray()
     }
 
@@ -192,12 +148,5 @@ class Leaderboards {
         out.sortWith(compareByDescending<Entry> { it.value }.thenByDescending { it.whenMs })
         while (out.size > MAX_ENTRIES) out.removeAt(out.lastIndex)
         return out
-    }
-
-    private fun formatDuration(seconds: Int): String {
-        if (seconds < 60) return "${seconds}秒"
-        val m = seconds / 60
-        val s = seconds % 60
-        return if (s == 0) "${m}分" else "${m}分${s}秒"
     }
 }

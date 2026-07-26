@@ -25,15 +25,8 @@ from urllib.parse import parse_qs, urlparse
 CATEGORIES = {
     "run_distance": "单场距离",
     "run_score": "单场得分",
-    "run_coins": "单场金币",
-    "run_relics": "单场文物",
-    "honor_count": "荣誉获得",
     "museum_collect": "藏品图鉴",
-    "run_combo": "单场连击",
-    "run_wallet": "单场钱包",
-    "run_battles": "单场猎妖",
-    "run_portals": "单场穿越",
-    "run_time": "单场时长",
+    "honor_count": "荣誉获得",
 }
 
 

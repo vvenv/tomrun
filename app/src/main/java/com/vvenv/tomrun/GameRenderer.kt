@@ -29,6 +29,13 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
     private var uMode = 0
 
     private lateinit var cube: Mesh
+    private lateinit var skyQuad: Mesh
+    private val IDENTITY = FloatArray(16).also { Matrix.setIdentityM(it, 0) }
+
+    // 天空渐变 + 文物拾取特效的临时配色，避免每帧分配
+    private val skyZenith = FloatArray(3)
+    private val skyHorizon = FloatArray(3)
+    private val fxTmp = FloatArray(4)
 
     private val proj = FloatArray(16)
     private val view = FloatArray(16)
@@ -123,13 +130,20 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
             precision mediump float;
             uniform vec4 uColor;
             uniform vec3 uFogColor;
-            uniform int uMode;        // 0 常规光照 1 软阴影 2 无光照 3 纯自发光(无雾)
+            uniform int uMode;        // 0 常规光照 1 软阴影 2 无光照 3 纯自发光(无雾) 4 天空竖直渐变
             varying vec3 vNormal;
             varying vec3 vLocal;
             varying float vDist;
             void main() {
                 // 雾起始推远：障碍物需更早可读；高速时 55 起雾会像"忽然冒出"
                 float fog = smoothstep(95.0, 200.0, vDist) * 0.78;
+                if (uMode == 4) {
+                    // 天空竖直渐变：uFogColor=地平线暖光，uColor=天顶稍深，营造黄金时刻氛围
+                    float t = clamp(vLocal.y, 0.0, 1.0);
+                    t = t * t * (3.0 - 2.0 * t);
+                    gl_FragColor = vec4(mix(uFogColor, uColor.rgb, t), 1.0);
+                    return;
+                }
                 if (uMode == 1) {
                     float r = length(vLocal.xz) * 2.0;
                     float a = uColor.a * smoothstep(1.0, 0.30, r);
@@ -148,7 +162,10 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
                 vec3 n = normalize(vNormal);
                 vec3 l = normalize(vec3(0.35, 0.85, 0.45));
                 float d = max(dot(n, l), 0.0);
-                vec3 c = uColor.rgb * (0.52 + 0.14 * n.y + 0.44 * d);
+                // 黄金时刻打光：直射光偏落日金、环境光留一丝暖白，冷暖对比出温馨的立体感
+                vec3 sun = vec3(1.0, 0.90, 0.72);
+                vec3 amb = vec3(1.0, 0.99, 0.96);
+                vec3 c = uColor.rgb * ((0.50 + 0.14 * n.y) * amb + 0.46 * d * sun);
                 c = mix(c, uFogColor, fog);
                 gl_FragColor = vec4(c, uColor.a);
             }
@@ -183,6 +200,12 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         )
         private val RELIC_BASE = floatArrayOf(0.45f, 0.34f, 0.22f, 1f)
         private val RELIC_GLOW = floatArrayOf(1.0f, 0.95f, 0.70f, 1f)
+        // 文物在世界里的柔光晕（按稀有度）：让它像"可收集的宝物"，远处也一眼认出
+        private val RELIC_HALO = arrayOf(
+            floatArrayOf(1.0f, 0.85f, 0.55f, 0.30f), // 普通：暖铜光
+            floatArrayOf(0.55f, 0.95f, 1.0f, 0.34f), // 稀有：青玉光
+            floatArrayOf(1.0f, 0.90f, 0.45f, 0.40f)  // 传说：鎏金光
+        )
         // 文物外形：32 件文物真实器型差异很大，按大类给不同剪影，而不是一律套鼎的模子
         private const val RELIC_SHAPE_VESSEL = 0  // 鼎/爵/尊/壶：三足圆腹
         private const val RELIC_SHAPE_TABLET = 1  // 甲骨/竹简/字画：立起的扁平板
@@ -394,34 +417,6 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         private val PLANET_B = floatArrayOf(0.95f, 0.60f, 0.35f, 1f)
         private val STARDUST = floatArrayOf(0.85f, 0.90f, 1.0f, 0.7f)
 
-        // 世界专属随机场景（隧道/黑洞），索引与 Game.UNI_* 对应
-        private val TUNNEL_SKY = arrayOf(
-            floatArrayOf(0.05f, 0.13f, 0.07f), // 草原：藤蔓隧道
-            floatArrayOf(0.03f, 0.10f, 0.17f), // 水下：暗涌隧道
-            floatArrayOf(0.55f, 0.58f, 0.63f), // 天空：云隙隧道
-            floatArrayOf(0.20f, 0.05f, 0.03f), // 熔岩：熔岩隧道
-            floatArrayOf(0.22f, 0.06f, 0.17f), // 糖果：糖霜隧道
-            floatArrayOf(0.02f, 0.01f, 0.05f)  // 星空：黑洞漩涡
-        )
-        private val TUNNEL_WALL = arrayOf(
-            floatArrayOf(0.10f, 0.32f, 0.14f, 0.85f),
-            floatArrayOf(0.06f, 0.20f, 0.34f, 0.85f),
-            floatArrayOf(0.70f, 0.74f, 0.80f, 0.55f),
-            floatArrayOf(0.30f, 0.10f, 0.06f, 0.88f),
-            floatArrayOf(0.42f, 0.14f, 0.34f, 0.85f),
-            floatArrayOf(0.05f, 0.02f, 0.10f, 0.9f)
-        )
-        private val TUNNEL_GLOW = arrayOf(
-            floatArrayOf(0.35f, 0.95f, 0.45f, 0.9f),
-            floatArrayOf(0.40f, 0.80f, 1.00f, 0.9f),
-            floatArrayOf(1.00f, 1.00f, 1.00f, 0.8f),
-            floatArrayOf(1.00f, 0.55f, 0.15f, 0.9f),
-            floatArrayOf(1.00f, 0.60f, 0.85f, 0.9f),
-            floatArrayOf(0.65f, 0.35f, 1.00f, 0.9f)
-        )
-        private val BLACK_HOLE_CORE = floatArrayOf(0.02f, 0.0f, 0.05f, 0.92f)
-        private val BLACK_HOLE_RING = floatArrayOf(0.55f, 0.25f, 0.95f, 0.85f)
-
         private val MAGNET_RED = floatArrayOf(0.90f, 0.24f, 0.24f, 1f)
         private val MAGNET_TIP = floatArrayOf(0.92f, 0.92f, 0.95f, 1f)
         private val MAGNET_BLUE = floatArrayOf(0.25f, 0.65f, 1.0f, 1f)
@@ -474,6 +469,7 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         uMode = GLES20.glGetUniformLocation(program, "uMode")
 
         cube = Mesh.cube()
+        skyQuad = Mesh.fullscreenQuad()
 
         GLES20.glEnable(GLES20.GL_DEPTH_TEST)
         GLES20.glEnable(GLES20.GL_CULL_FACE)
@@ -525,14 +521,6 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         updateWeatherColors()
         // 天空与雾走同一份分级结果，否则远处雾色会和已分级的几何体对不上
         EyeComfort.grade(skyCol, gradedSky)
-        // 世界专属场景（隧道/黑洞）期间，天空整体压暗，衬托氛围
-        val sceneBlend = game.sceneBlend
-        if (sceneBlend > 0f) {
-            val sc = TUNNEL_SKY[game.sceneUni.coerceIn(0, TUNNEL_SKY.size - 1)]
-            gradedSky[0] += (sc[0] - gradedSky[0]) * sceneBlend
-            gradedSky[1] += (sc[1] - gradedSky[1]) * sceneBlend
-            gradedSky[2] += (sc[2] - gradedSky[2]) * sceneBlend
-        }
         GLES20.glClearColor(gradedSky[0], gradedSky[1], gradedSky[2], 1f)
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
         GLES20.glUseProgram(program)
@@ -565,15 +553,16 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         Matrix.multiplyMM(vp, 0, proj, 0, view, 0)
         publishRelicLabels()
 
+        drawSkyGradient()
         drawSky()
         drawTrack()
         drawScenery()
-        drawSceneTunnel()
         drawStreetLamps()
         drawEntities()
         drawPortal()
         drawYokai()
         drawParticles()
+        drawRelicPop()
         drawCat(dt)
         drawSpeedLines(dt)
         drawWeather(dt)
@@ -699,16 +688,9 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
     }
 
     private fun setSkyFog() {
-        var r = gradedSky[0] + 0.08f
-        var g = gradedSky[1] + 0.05f
-        var b = gradedSky[2] + 0.02f
-        val sceneBlend = game.sceneBlend
-        if (sceneBlend > 0f) {
-            val sc = TUNNEL_SKY[game.sceneUni.coerceIn(0, TUNNEL_SKY.size - 1)]
-            r += (sc[0] - r) * sceneBlend
-            g += (sc[1] - g) * sceneBlend
-            b += (sc[2] - b) * sceneBlend
-        }
+        val r = gradedSky[0] + 0.08f
+        val g = gradedSky[1] + 0.05f
+        val b = gradedSky[2] + 0.02f
         setFog(r, g, b)
     }
 
@@ -743,6 +725,38 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
     }
 
     private fun setFog(r: Float, g: Float, b: Float) = GLES20.glUniform3f(uFog, min(1f, r), min(1f, g), min(1f, b))
+
+    /**
+     * 天空竖直渐变背景：地平线一带偏暖提亮、天顶稍深留一点蓝，营造星露谷/Alto 那种
+     * 温暖的"黄金时刻"氛围。配色从已分级的 [gradedSky] 推导，昼夜/天气/宇宙自动跟随。
+     * 铺在所有几何之前，identity MVP 直接占满全屏，不写深度。
+     */
+    private fun drawSkyGradient() {
+        val r = gradedSky[0]; val g = gradedSky[1]; val b = gradedSky[2]
+        // 地平线：整体提亮 + 往暖里偏（加红/绿、压蓝）
+        skyHorizon[0] = min(1f, r * 1.06f + 0.10f)
+        skyHorizon[1] = min(1f, g * 1.02f + 0.05f)
+        skyHorizon[2] = b * 0.88f
+        // 天顶：略压暗、保留一丝蓝，拉出上深下亮的层次
+        skyZenith[0] = r * 0.90f
+        skyZenith[1] = g * 0.93f
+        skyZenith[2] = min(1f, b * 1.02f + 0.02f)
+
+        GLES20.glDisable(GLES20.GL_DEPTH_TEST)
+        GLES20.glDisable(GLES20.GL_CULL_FACE)
+        GLES20.glDepthMask(false)
+        GLES20.glUniformMatrix4fv(uMvp, 1, false, IDENTITY, 0)
+        GLES20.glUniformMatrix4fv(uModel, 1, false, IDENTITY, 0)
+        GLES20.glUniform4f(uColor, skyZenith[0], skyZenith[1], skyZenith[2], 1f)
+        GLES20.glUniform3f(uFog, skyHorizon[0], skyHorizon[1], skyHorizon[2])
+        GLES20.glUniform1i(uMode, 4)
+        skyQuad.draw(aPos, aNormal)
+        GLES20.glDepthMask(true)
+        GLES20.glEnable(GLES20.GL_CULL_FACE)
+        GLES20.glEnable(GLES20.GL_DEPTH_TEST)
+        // 渐变临时占用了 uFogColor，恢复成后续几何要用的雾色
+        setSkyFog()
+    }
 
     // ---------- 天空：太阳/月亮/星星/行星 + 远山 ----------
     private fun drawSky() {
@@ -836,193 +850,6 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
             else -> drawSceneryMeadow()
         }
         drawClouds()
-    }
-
-    // ---------- 世界专属随机场景：隧道 / 黑洞（纯视觉氛围，随 sceneBlend 淡入淡出） ----------
-    private fun drawSceneTunnel() {
-        val blend = game.sceneBlend
-        if (blend <= 0.02f) return
-        val uni = game.sceneUni.coerceIn(0, Game.UNIVERSE_COUNT - 1)
-        if (uni == Game.UNI_SPACE) {
-            drawBlackHole(blend)
-            return
-        }
-        val wallBase = TUNNEL_WALL[uni]
-        val glowBase = TUNNEL_GLOW[uni]
-        val glow = floatArrayOf(glowBase[0], glowBase[1], glowBase[2], glowBase[3] * blend)
-
-        // 关键：相机眼睛在 y≈6.8（竖屏）/4.35（横屏），洞顶必须**高过眼睛**才是"身处洞中"，
-        // 否则相机浮在洞顶之上，等于从外面俯视一条明沟。洞壁/洞顶/洞底整段封闭包住相机，
-        // 看不看得到外面交给各世界自己的 alpha（云隙隧道透亮、其它更实，见 TUNNEL_WALL）。
-        mMode = 0
-        val pulse = 0.94f + 0.06f * sin(scenePhase * 1.4f)
-        val wall = floatArrayOf(wallBase[0], wallBase[1], wallBase[2], wallBase[3] * blend * pulse)
-        val ceilY = 9.5f     // 洞顶底面 ≈ 9.1，高过相机眼睛，避免视角穿出洞外
-        val wallH = ceilY + 0.5f
-        drawBox(-6.4f, wallH / 2f - 0.5f, -106f, 0.9f, wallH, 228f, wall)
-        drawBox(6.4f, wallH / 2f - 0.5f, -106f, 0.9f, wallH, 228f, wall)
-        drawBox(0f, ceilY, -106f, 13.4f, 0.8f, 228f, wall)
-        // 洞顶再压一圈内衬，往下探一点，强调"头顶有盖"的封闭感
-        drawBox(0f, ceilY - 0.9f, -106f, 12.0f, 0.4f, 228f, wall)
-        val floorCol = floatArrayOf(wallBase[0] * 0.5f, wallBase[1] * 0.5f, wallBase[2] * 0.5f, 0.7f * blend)
-        drawBox(0f, 0.01f, -106f, 13.6f, 0.02f, 228f, floorCol)
-
-        // 洞壁内侧的发光纹路：贴着洞壁内表面（比墙的内边缘更靠中心），高低错落爬满整面墙
-        mMode = 2
-        scroll(4.5f, game.distance) { m, z ->
-            val gy = 0.5f + mod(m * 17, 80) / 10f
-            val side = if (mod(m, 2) == 0) -1f else 1f
-            drawBox(side * 5.85f, gy, z, 0.22f, 0.22f, 0.22f, glow)
-        }
-
-        // 各世界隧道的专属地貌 / 悬垂物 / 漂浮粒子：让"洞里"和"洞外"是两种环境
-        drawTunnelDetail(uni, blend)
-        mMode = 0
-    }
-
-    /**
-     * 隧道内的世界专属氛围。洞体几何是通用的，这里只往里塞各世界的辨识元素：
-     * 藤蔓垂枝、暗涌海草气泡、云隙光柱、熔岩钟乳火星、糖霜奶油柱。
-     * 结构件走 mMode=0（受光有体积感），漂浮 / 发光的小件走 mMode=2（平色透明）。
-     */
-    private fun drawTunnelDetail(uni: Int, blend: Float) {
-        when (uni) {
-            Game.UNI_MEADOW -> {
-                // 藤蔓隧道：洞顶垂下会摆动的藤蔓与叶片
-                mMode = 0
-                scroll(5.5f, game.distance) { m, z ->
-                    val bx = (mod(m * 53, 100) / 100f - 0.5f) * 10f
-                    val sway = sin(scenePhase * 1.2f + m) * 0.35f
-                    val len = 1.6f + mod(m * 29, 30) / 10f
-                    val vc = floatArrayOf(0.16f, 0.5f, 0.2f, blend)
-                    for (j in 0 until 3) {
-                        val yy = 9.0f - j * (len / 3f) - len / 6f
-                        drawBox(bx + sway * (j + 1) * 0.4f, yy, z, 0.12f, len / 3f, 0.12f, vc)
-                    }
-                    val lc = if (mod(m, 2) == 0) TREE_LEAF else TREE_LEAF2
-                    val leaf = floatArrayOf(lc[0], lc[1], lc[2], blend)
-                    drawBox(bx + sway * 1.6f, 9.0f - len, z, 0.42f, 0.24f, 0.14f, leaf)
-                }
-                // 飘浮荧光孢子
-                mMode = 2
-                scroll(3.0f, game.distance * 0.7f) { m, z ->
-                    val sx = (mod(m * 71, 100) / 100f - 0.5f) * 11f
-                    val sy = 1.0f + mod((scenePhase * 20f).toInt() + m * 13, 70) / 10f
-                    drawBox(sx, sy, z, 0.10f, 0.10f, 0.10f, floatArrayOf(0.75f, 1.0f, 0.55f, 0.5f * blend))
-                }
-            }
-            Game.UNI_WATER -> {
-                // 暗涌隧道：暗色海草 + 上浮气泡 + 顶部荡漾焦散光
-                mMode = 0
-                scroll(6f, game.distance) { m, z ->
-                    val side = if (mod(m, 2) == 0) -1f else 1f
-                    val kx = side * (4.6f + mod(m * 31, 20) / 10f)
-                    val kc = floatArrayOf(SEAWEED[0] * 0.7f, SEAWEED[1] * 0.7f, SEAWEED[2] * 0.85f, blend)
-                    for (j in 0..3) {
-                        val sway = sin(scenePhase * 1.8f + m + j * 0.7f) * 0.22f * j
-                        drawBox(kx + sway, 0.4f + j * 0.7f, z, 0.24f, 0.7f, 0.16f, kc)
-                    }
-                }
-                mMode = 2
-                scroll(3.3f, game.distance * 1.6f) { m, z ->
-                    val bx = (mod(m * 53, 100) / 100f - 0.5f) * 10f
-                    val cyc = mod((scenePhase * 60f).toInt() + m * 37, 42) / 10f
-                    val a = (0.42f * blend * (1f - cyc / 4.2f)).coerceIn(0f, 0.42f)
-                    drawBox(bx, 0.3f + cyc, z, 0.12f, 0.12f, 0.12f, floatArrayOf(0.78f, 0.94f, 1f, a))
-                }
-                scroll(4.0f, game.distance * 0.5f) { m, z ->
-                    val flick = 0.16f + 0.14f * abs(sin(scenePhase * 2f + m))
-                    val cx = (mod(m * 17, 100) / 100f - 0.5f) * 11f
-                    drawBox(cx, 8.3f, z, 2.6f, 0.08f, 0.08f, floatArrayOf(0.4f, 0.85f, 1f, flick * blend))
-                }
-            }
-            Game.UNI_SKY -> {
-                // 云隙隧道：半透明云团在洞里飘 + 斜射柔光柱（本身就透，能看到外面）
-                mMode = 2
-                scroll(6.5f, game.distance * 0.8f) { m, z ->
-                    val cx = (mod(m * 53, 100) / 100f - 0.5f) * 9f
-                    val cy = 2.5f + mod(m * 29, 50) / 10f
-                    val bob = sin(scenePhase * 0.7f + m) * 0.3f
-                    val cc = floatArrayOf(1f, 1f, 1f, 0.28f * blend)
-                    drawBox(cx, cy + bob, z, 2.2f, 0.9f, 0.9f, cc)
-                    drawBox(cx + 0.9f, cy + bob + 0.2f, z, 1.3f, 0.7f, 0.7f, cc)
-                }
-                scroll(9f, game.distance * 0.4f) { m, z ->
-                    val lx = (mod(m * 41, 100) / 100f - 0.5f) * 8f
-                    drawBox(lx, 5.0f, z, 0.7f, 9f, 0.7f, floatArrayOf(1f, 1f, 0.9f, 0.10f * blend))
-                }
-            }
-            Game.UNI_LAVA -> {
-                // 熔岩隧道：洞顶岩钟乳（尖端灼红）+ 墙面熔岩裂纹脉动 + 上升火星
-                mMode = 0
-                scroll(5f, game.distance) { m, z ->
-                    val bx = (mod(m * 53, 100) / 100f - 0.5f) * 10f
-                    val len = 1.2f + mod(m * 29, 25) / 10f
-                    drawBox(bx, 9.1f - len / 2f, z, 0.5f, len, 0.5f, floatArrayOf(0.22f, 0.08f, 0.05f, blend))
-                }
-                mMode = 2
-                val crackPulse = 0.6f + 0.4f * abs(sin(scenePhase * 2.4f))
-                scroll(5f, game.distance) { m, z ->
-                    val bx = (mod(m * 53, 100) / 100f - 0.5f) * 10f
-                    val len = 1.2f + mod(m * 29, 25) / 10f
-                    drawBox(bx, 9.1f - len, z, 0.3f, 0.32f, 0.3f, floatArrayOf(1f, 0.55f, 0.12f, 0.9f * blend))
-                }
-                scroll(3.5f, game.distance) { m, z ->
-                    val side = if (mod(m, 2) == 0) -1f else 1f
-                    val gy = 0.8f + mod(m * 17, 70) / 10f
-                    drawBox(side * 5.8f, gy, z, 0.14f, 0.9f, 0.14f, floatArrayOf(1f, 0.42f, 0.1f, crackPulse * blend))
-                }
-                scroll(2.8f, game.distance * 1.4f) { m, z ->
-                    val ex = (mod(m * 71, 100) / 100f - 0.5f) * 11f
-                    val cyc = mod((scenePhase * 70f).toInt() + m * 29, 90) / 10f
-                    val a = (0.85f * blend * (1f - cyc / 9f)).coerceIn(0f, 0.85f)
-                    drawBox(ex, 0.3f + cyc, z, 0.09f, 0.09f, 0.09f, floatArrayOf(1f, 0.6f, 0.2f, a))
-                }
-            }
-            Game.UNI_CANDY -> {
-                // 糖霜隧道：洞顶奶油糖霜柱（带滴珠）+ 墙面软糖 + 彩色糖针飘落
-                mMode = 0
-                scroll(5f, game.distance) { m, z ->
-                    val bx = (mod(m * 53, 100) / 100f - 0.5f) * 10f
-                    val len = 1.0f + mod(m * 29, 25) / 10f
-                    val fc = floatArrayOf(0.99f, 0.93f, 0.96f, blend)
-                    drawBox(bx, 9.1f - len / 2f, z, 0.6f, len, 0.6f, fc)
-                    drawBox(bx, 9.1f - len - 0.14f, z, 0.22f, 0.3f, 0.22f, fc)
-                    val side = if (mod(m, 2) == 0) -1f else 1f
-                    val gc = GUMDROP[mod(m, 3)]
-                    drawBox(side * 5.75f, 1.2f + mod(m * 17, 50) / 10f, z, 0.45f, 0.45f, 0.35f,
-                        floatArrayOf(gc[0], gc[1], gc[2], blend))
-                }
-                mMode = 2
-                scroll(2.4f, game.distance * 0.9f) { m, z ->
-                    val sx = (mod(m * 71, 100) / 100f - 0.5f) * 11f
-                    val sy = 1.0f + mod((scenePhase * 15f).toInt() + m * 13, 80) / 10f
-                    val lc = LOLLIPOP[mod(m, 3)]
-                    drawBox(sx, sy, z, 0.10f, 0.20f, 0.10f, floatArrayOf(lc[0], lc[1], lc[2], 0.7f * blend))
-                }
-            }
-        }
-    }
-
-    private fun drawBlackHole(blend: Float) {
-        mMode = 2
-        val core = floatArrayOf(BLACK_HOLE_CORE[0], BLACK_HOLE_CORE[1], BLACK_HOLE_CORE[2], BLACK_HOLE_CORE[3] * blend)
-        val ring = floatArrayOf(BLACK_HOLE_RING[0], BLACK_HOLE_RING[1], BLACK_HOLE_RING[2], BLACK_HOLE_RING[3] * blend)
-        val cx = 0f
-        val cy = 3.4f
-        val cz = -72f
-        drawBox(cx, cy, cz, 7.5f, 7.5f, 1f, core)
-        for (i in 0 until 3) {
-            val rr = 8.5f + i * 1.8f
-            val rot = scenePhase * (0.7f - i * 0.15f)
-            for (seg in 0 until 10) {
-                val a = rot + (Math.PI.toFloat() * 2f * seg / 10f)
-                val x = cx + cos(a) * rr
-                val y = cy + sin(a) * rr * 0.32f
-                drawBox(x, y, cz, 1.1f, 0.35f, 0.35f, ring)
-            }
-        }
-        mMode = 0
     }
 
     private fun drawSceneryMeadow() {
@@ -1479,40 +1306,43 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
                 val x = e.x
                 when (e.kind) {
                     Game.COIN -> {
-                        e.spin += if (e.isRelic) 1.4f else 3f
+                        e.spin += 3f
                         if (e.z < 1.5f && e.y < 2f) drawShadow(x, e.z, 0.5f)
-                        if (e.isRelic) {
-                            // 文物：木底座通用，器身按真实器型分大类剪影，避免 32 件都长得像同一个鼎
-                            val id = e.relicId.coerceIn(0, Game.RELIC_COUNT - 1)
-                            val rarity = Game.RELIC_RARITY[id]
-                            val body = RELIC_BODY[rarity.coerceIn(0, RELIC_BODY.size - 1)]
-                            val shape = RELIC_SHAPE[id.coerceIn(0, RELIC_SHAPE.size - 1)]
-                            pushModel(x, e.y + sin(e.spin * 0.05f) * 0.10f, e.z)
-                            Matrix.rotateM(model, 0, e.spin, 0f, 1f, 0f)
-                            drawPart(0f, -0.42f, 0f, 0.66f, 0.12f, 0.66f, RELIC_BASE)
-                            when (shape) {
-                                RELIC_SHAPE_TABLET -> drawRelicTablet(body)
-                                RELIC_SHAPE_DISC -> drawRelicDisc(body)
-                                RELIC_SHAPE_BLADE -> drawRelicBlade(body)
-                                RELIC_SHAPE_STATUE -> drawRelicStatue(body)
-                                RELIC_SHAPE_BELL -> drawRelicBell(body)
-                                RELIC_SHAPE_JADE -> drawRelicJade(body)
-                                else -> drawRelicVessel(body)
-                            }
-                            popModel()
-                        } else {
-                            // 金币：加法光晕 + 不透明亮金本体（避免半透明叠暗路变成土黄）
-                            val bob = sin(e.spin * 0.05f) * 0.10f
-                            pushModel(x, e.y + bob, e.z)
-                            Matrix.rotateM(model, 0, e.spin, 0f, 1f, 0f)
-                            // 贴近地面的金币缩小光晕，减少对矮障碍的遮挡
-                            val halo = if (e.y < 1.35f) 0.82f else 1.15f
-                            emitGlowHalo(0f, 0f, 0f, halo, halo, 0.55f, GOLD_GLOW)
-                            emitPart(0f, 0f, 0f, 0.82f, 0.82f, 0.14f, GOLD_RIM)
-                            emitPart(0f, 0f, 0f, 0.72f, 0.72f, 0.26f, GOLD)
-                            emitPart(0f, 0f, 0.04f, 0.42f, 0.42f, 0.28f, GOLD_CORE)
-                            popModel()
+                        val bob = sin(e.spin * 0.05f) * 0.10f
+                        pushModel(x, e.y + bob, e.z)
+                        Matrix.rotateM(model, 0, e.spin, 0f, 1f, 0f)
+                        // 贴近地面的金币缩小光晕，减少对矮障碍的遮挡
+                        val halo = if (e.y < 1.35f) 0.82f else 1.15f
+                        emitGlowHalo(0f, 0f, 0f, halo, halo, 0.55f, GOLD_GLOW)
+                        emitPart(0f, 0f, 0f, 0.82f, 0.82f, 0.14f, GOLD_RIM)
+                        emitPart(0f, 0f, 0f, 0.72f, 0.72f, 0.26f, GOLD)
+                        emitPart(0f, 0f, 0.04f, 0.42f, 0.42f, 0.28f, GOLD_CORE)
+                        popModel()
+                    }
+                    Game.P_RELIC -> {
+                        e.spin += 1.4f
+                        if (e.z < 1.5f && e.y < 2f) drawShadow(x, e.z, 0.5f)
+                        val id = e.relicId.coerceIn(0, Game.RELIC_COUNT - 1)
+                        val rarity = Game.RELIC_RARITY[id]
+                        val body = RELIC_BODY[rarity.coerceIn(0, RELIC_BODY.size - 1)]
+                        val shape = RELIC_SHAPE[id.coerceIn(0, RELIC_SHAPE.size - 1)]
+                        pushModel(x, e.y + sin(e.spin * 0.05f) * 0.10f, e.z)
+                        val halo = RELIC_HALO[rarity.coerceIn(0, RELIC_HALO.size - 1)]
+                        val pulse = 0.72f + 0.28f * sin(scenePhase * 3f + e.z * 0.3f)
+                        fxTmp[0] = halo[0]; fxTmp[1] = halo[1]; fxTmp[2] = halo[2]; fxTmp[3] = halo[3] * pulse
+                        emitGlowHalo(0f, 0.12f, 0f, 1.05f, 1.05f, 0.55f, fxTmp)
+                        Matrix.rotateM(model, 0, e.spin, 0f, 1f, 0f)
+                        drawPart(0f, -0.42f, 0f, 0.66f, 0.12f, 0.66f, RELIC_BASE)
+                        when (shape) {
+                            RELIC_SHAPE_TABLET -> drawRelicTablet(body)
+                            RELIC_SHAPE_DISC -> drawRelicDisc(body)
+                            RELIC_SHAPE_BLADE -> drawRelicBlade(body)
+                            RELIC_SHAPE_STATUE -> drawRelicStatue(body)
+                            RELIC_SHAPE_BELL -> drawRelicBell(body)
+                            RELIC_SHAPE_JADE -> drawRelicJade(body)
+                            else -> drawRelicVessel(body)
                         }
+                        popModel()
                     }
                     Game.P_MAGNET -> {
                         e.spin += 2f
@@ -1979,6 +1809,29 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
             }
             mMode = 0
         }
+    }
+
+    /**
+     * 文物拾取"爆闪"：外扩暖白光环 + 稀有度色内核，一起淡出。
+     * 收集类的正反馈核心——让"拿到宝物"这一下有明确的爽感。
+     */
+    private fun drawRelicPop() {
+        val age = game.relicPopAge
+        if (age <= 0f) return
+        val t = (1f - age / Game.RELIC_POP_DUR).coerceIn(0f, 1f)   // 0 触发 → 1 结束
+        val ease = 1f - (1f - t) * (1f - t)                        // 先快后慢地外扩
+        val fade = 1f - t
+        pushModel(game.relicPopX, game.relicPopY + 0.2f, game.relicPopZ)
+        // 外扩暖白光环
+        val ring = 0.5f + ease * 2.4f
+        fxTmp[0] = 1f; fxTmp[1] = 0.95f; fxTmp[2] = 0.78f; fxTmp[3] = fade * 0.85f
+        emitGlowHalo(0f, 0f, 0f, ring, ring, 0.5f, fxTmp)
+        // 稀有度色内核
+        val base = RELIC_HALO[game.relicPopRarity.coerceIn(0, RELIC_HALO.size - 1)]
+        val core = 0.4f + ease * 1.1f
+        fxTmp[0] = base[0]; fxTmp[1] = base[1]; fxTmp[2] = base[2]; fxTmp[3] = fade * 0.9f
+        emitGlowHalo(0f, 0f, 0f, core, core, 0.4f, fxTmp)
+        popModel()
     }
 
     private fun drawSpeedLines(dt: Float) {
