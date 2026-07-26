@@ -453,27 +453,75 @@ object HomeWorldDraw {
                 g.paint.color = pal[0]; g.canvas.drawRoundRect(cx - 68f * s, gy - 96f * s, cx + 68f * s, gy, 12f * s, 12f * s, g.paint)
                 g.paint.color = roofC; g.canvas.drawOval(cx - 52f * s, gy - 118f * s, cx + 52f * s, gy - 88f * s, g.paint)
                 rc(cx - 52f * s, gy - 88f * s, cx + 52f * s, gy - 80f * s, 0xFF4DE8FF.toInt())
+                // 舱体面板缝与四角铆钉
+                rc(cx - 30f * s, gy - 80f * s, cx - 27f * s, gy, pal[1])
+                rc(cx + 44f * s, gy - 80f * s, cx + 47f * s, gy, pal[1])
+                g.paint.color = pal[1]
+                for (dx in intArrayOf(-60, 60)) for (dy in intArrayOf(-88, -10)) {
+                    g.canvas.drawCircle(cx + dx * s, gy + dy * s, 2.4f * s, g.paint)
+                }
+                // 两侧交替闪烁的航行灯
+                val blinkA = sin(g.homePhase * 3f) > 0f
+                g.paint.color = if (blinkA) 0xFFFF5A5A.toInt() else 0x55FF5A5A
+                g.canvas.drawCircle(cx - 64f * s, gy - 48f * s, 3f * s, g.paint)
+                g.paint.color = if (!blinkA) 0xFF6EFF8A.toInt() else 0x556EFF8A
+                g.canvas.drawCircle(cx + 64f * s, gy - 48f * s, 3f * s, g.paint)
                 g.door(cx + 18f * s); g.window(cx - 28f * s, gy - 58f * s, win)
             }
             1 -> {
                 rc(cx - 92f * s, gy - 108f * s, cx + 92f * s, gy, pal[0])
+                g.boxShade(cx - 92f * s, gy - 108f * s, cx + 92f * s, gy)
+                rc(cx - 92f * s, gy - 56f * s, cx + 92f * s, gy - 53f * s, pal[1])
                 rc(cx - 118f * s, gy - 88f * s, cx - 96f * s, gy - 72f * s, pal[2])
                 rc(cx + 96f * s, gy - 88f * s, cx + 118f * s, gy - 72f * s, pal[2])
                 g.pyramidRoof(cx, gy - 108f * s, 104f * s, 40f * s, roofC, roofD)
+                // 屋角雷达碟：斜立的天线锅 + 中心接收点
+                rc(cx + 56f * s, gy - 126f * s, cx + 60f * s, gy - 106f * s, pal[2])
+                g.paint.color = pal[2]
+                g.canvas.save(); g.canvas.rotate(-24f, cx + 58f * s, gy - 128f * s)
+                g.canvas.drawOval(cx + 42f * s, gy - 136f * s, cx + 74f * s, gy - 120f * s, g.paint)
+                g.canvas.restore()
+                g.paint.color = 0xFF4DE8FF.toInt()
+                g.canvas.drawCircle(cx + 58f * s, gy - 130f * s, 2.6f * s, g.paint)
                 g.door(cx - 40f * s); g.window(cx + 30f * s, gy - 64f * s, win)
             }
             2 -> {
                 rc(cx - 88f * s, gy - 168f * s, cx + 88f * s, gy, pal[0])
+                g.boxShade(cx - 88f * s, gy - 168f * s, cx + 88f * s, gy)
                 rc(cx - 88f * s, gy - 96f * s, cx + 88f * s, gy - 88f * s, 0xFF4DE8FF.toInt())
+                rc(cx - 60f * s, gy - 168f * s, cx - 57f * s, gy - 96f * s, pal[1])
+                rc(cx + 57f * s, gy - 168f * s, cx + 60f * s, gy - 96f * s, pal[1])
                 g.paint.color = roofC; g.canvas.drawOval(cx - 36f * s, gy - 186f * s, cx + 36f * s, gy - 158f * s, g.paint)
+                // 灯带上方一排交替闪烁的航标灯
+                for (i in -2..2) {
+                    val on = sin(g.homePhase * 3.2f + i * 1.1f) > 0f
+                    g.paint.color = if (on) 0xFF9FE8FF.toInt() else 0x559FE8FF
+                    g.canvas.drawCircle(cx + i * 34f * s, gy - 102f * s, 2.6f * s, g.paint)
+                }
                 g.door(cx); g.window(cx - 46f * s, gy - 54f * s, win); g.window(cx + 46f * s, gy - 54f * s, win)
             }
             else -> {
                 rc(cx - 72f * s, gy - 156f * s, cx + 72f * s, gy, pal[0])
+                g.boxShade(cx - 72f * s, gy - 156f * s, cx + 72f * s, gy)
                 rc(cx - 108f * s, gy - 204f * s, cx - 68f * s, gy, pal[1])
                 rc(cx + 68f * s, gy - 204f * s, cx + 108f * s, gy, pal[1])
+                // 侧塔霓虹窗缝
+                for (dy in intArrayOf(-186, -152, -118)) {
+                    rc(cx - 96f * s, gy + dy * s, cx - 80f * s, gy + (dy + 4) * s, 0xFF4DE8FF.toInt())
+                    rc(cx + 80f * s, gy + dy * s, cx + 96f * s, gy + (dy + 4) * s, 0xFF4DE8FF.toInt())
+                }
                 g.paint.color = roofC; g.canvas.drawCircle(cx, gy - 178f * s, 14f * s, g.paint)
                 rc(cx - 4f * s, gy - 210f * s, cx + 4f * s, gy - 178f * s, pal[2])
+                // 指挥塔信标：扩散的光环脉冲 + 天线顶闪灯
+                val ring = (g.homePhase * 0.7f) % 1f
+                g.paint.style = Paint.Style.STROKE
+                g.paint.strokeWidth = 2.5f * s
+                g.paint.color = g.withAlpha(0xFF4DE8FF.toInt(), ((1f - ring) * 170).toInt())
+                g.canvas.drawCircle(cx, gy - 178f * s, (16f + ring * 18f) * s, g.paint)
+                g.paint.style = Paint.Style.FILL
+                val blink = sin(g.homePhase * 4f) > 0.2f
+                g.paint.color = if (blink) 0xFFFF5A5A.toInt() else 0x66FF5A5A
+                g.canvas.drawCircle(cx, gy - 212f * s, 3.2f * s, g.paint)
                 g.door(cx); g.window(cx - 40f * s, gy - 96f * s, win); g.window(cx + 40f * s, gy - 96f * s, win)
             }
         }
