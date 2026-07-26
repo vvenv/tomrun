@@ -147,6 +147,10 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private var petCount = 0
     private val yardCatHit = RectF()
     private val yardTelescopeHit = RectF()
+    private val hitHomeEnergy = RectF()
+    private val hitHomeReward = RectF()
+    private val homeDragHits = HashMap<String, RectF>()
+    private val dragHitScratch = RectF()
     private val yardSceneHit = RectF()
     private val butterflyHit = RectF()
     private var yardSceneCx = 0f
@@ -172,6 +176,19 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private var strokeCoinsGiven = 0
     private var strokeCoinCooldown = 0f
     private val yardFloaters = ArrayList<YardFloater>()
+    private var homeDragId: String? = null
+    private var homeDragActive = false
+    private var homeDragStartFingerX = 0f
+    private var homeDragStartFingerY = 0f
+    private var homeDragStartSceneX = 0f
+    private var homeDragStartSceneY = 0f
+    private val homeDragStartOff = FloatArray(2)
+    private val homeDragOrder = arrayOf(
+        "buy", "arrowL", "arrowR", "tabHat", "tabScarf", "tabTrail", "tabColor",
+        "leave", "wallet", "name", "energy", "reward",
+        "telescope", "museum", "honor", "roof", "house",
+        "pool", "perch", "swing", "mailbox", "garden", "fence"
+    )
     private val yardSingleTapRunnable = Runnable {
         handleYardSingleTap(yardPendingTapX, yardPendingTapY)
     }
@@ -357,6 +374,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         private const val YARD_EVENT_COINS = 0
         private const val YARD_DOUBLE_TAP_MS = 360L
         private const val YARD_LONG_PRESS_MS = 520L
+        private const val YARD_DRAG_SLOP = 12f
         private const val STROKE_MAX_COINS = 4
         private const val STROKE_COIN_INTERVAL = 0.82f
         private const val STROKE_COOLDOWN = 48f
@@ -394,17 +412,40 @@ class HudView(context: Context, private val game: Game) : View(context) {
             MotionEvent.ACTION_DOWN -> {
                 downX = event.x; downY = event.y; consumed = false
                 yardLongPressTriggered = false
+                homeDragId = null
+                homeDragActive = false
                 if (isYardInteractive()) {
                     yardFingerDown = true
                     yardFingerX = event.x
                     yardFingerY = event.y
                     yardFingerDownTime = SystemClock.uptimeMillis()
                 }
+                if (isHomeDraggable()) {
+                    val id = hitHomeDraggable(event.x, event.y)
+                    if (id != null) {
+                        homeDragId = id
+                        beginHomeDrag(id, event.x, event.y)
+                    }
+                }
             }
             MotionEvent.ACTION_MOVE -> {
                 if (yardFingerDown) {
                     yardFingerX = event.x
                     yardFingerY = event.y
+                }
+                if (homeDragId != null) {
+                    val slop = YARD_DRAG_SLOP * yardSceneS.coerceAtLeast(0.5f)
+                    if (!homeDragActive &&
+                        kotlin.math.hypot(event.x - downX, event.y - downY) > slop
+                    ) {
+                        homeDragActive = true
+                        consumed = true
+                        removeCallbacks(yardSingleTapRunnable)
+                    }
+                    if (homeDragActive) {
+                        updateHomeDrag(event.x, event.y)
+                        consumed = true
+                    }
                 }
                 if (!consumed && game.state == Game.State.RUNNING && !game.paused) {
                     val dx = event.x - downX
@@ -425,6 +466,19 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (homeDragActive) {
+                    game.saveHomeLayout()
+                    showToast("位置已保存")
+                    homeDragId = null
+                    homeDragActive = false
+                    consumed = true
+                } else if (homeDragId != null) {
+                    if (!consumed && event.actionMasked == MotionEvent.ACTION_UP) {
+                        dispatchHomeDragTap(homeDragId!!, event.x, event.y)
+                        consumed = true
+                    }
+                    homeDragId = null
+                }
                 if (strokeActive) {
                     endStrokeCat()
                     consumed = true
@@ -447,9 +501,11 @@ class HudView(context: Context, private val game: Game) : View(context) {
         return true
     }
 
-    private fun isYardInteractive(): Boolean =
+    private fun isHomeDraggable(): Boolean =
         (game.state == Game.State.READY || game.state == Game.State.DEAD) &&
-            game.menuPanel == Game.PANEL_HOME && !showStargazing
+            game.menuPanel == Game.PANEL_HOME && !showStargazing && homeSubView == HOME_SUB_SCENE
+
+    private fun isYardInteractive(): Boolean = isHomeDraggable()
 
     private fun handleTap(x: Float, y: Float) {
         if (game.state == Game.State.RUNNING) {
@@ -1360,7 +1416,10 @@ class HudView(context: Context, private val game: Game) : View(context) {
 
     // ---------- 家（装扮；藏品 / 荣誉浮窗） ----------
     private fun drawHome(canvas: Canvas, w: Float, h: Float, s: Float, sdx: Float, sdy: Float) {
-        LayoutConfig.select(h > w)   // 横竖屏各用独立一套布局
+        val portrait = h > w
+        LayoutConfig.select(portrait)   // 横竖屏各用独立一套布局
+        game.selectHomeLayoutOrientation(portrait)
+        homeDragHits.clear()
         val isCatTab = game.isCatHomeTab()
         val house = if (game.homeTab == Game.HOME_TAB_HOUSE) game.homeBrowseHouse else game.houseStyle
         val roof = if (game.homeTab == Game.HOME_TAB_ROOF) game.homeBrowseRoof else game.roofStyle
@@ -1407,8 +1466,10 @@ class HudView(context: Context, private val game: Game) : View(context) {
         if (homeSubView == HOME_SUB_SCENE) {
             layoutLeaveHomeButton(w, h, s)
             drawLeaveHomeBtn(canvas, btnLeaveHome, s)
+            putDragHit("leave", btnLeaveHome)
             layoutHomeWalletPlate(w, h, s)
             drawHomeWalletPlate(canvas, homeWalletPlate, s, sdx, sdy)
+            putDragHit("wallet", homeWalletPlate)
         } else {
             btnLeaveHome.setEmpty()
         }
@@ -1418,6 +1479,27 @@ class HudView(context: Context, private val game: Game) : View(context) {
             HOME_SUB_HONOR -> drawHonorOverlay(canvas, w, h, s, sdx, sdy)
         }
         if (showStargazing) drawStargazeOverlay(canvas, w, h, s, sdx, sdy)
+        drawHomeDragHighlight(canvas, s)
+    }
+
+    private fun drawHomeDragHighlight(canvas: Canvas, s: Float) {
+        if (!homeDragActive) return
+        val id = homeDragId ?: return
+        val hit = homeDragHits[id] ?: return
+        if (hit.isEmpty) return
+        btnPaint.style = Paint.Style.STROKE
+        btnPaint.strokeWidth = 3f * s
+        btnPaint.color = 0xAAFFD426.toInt()
+        canvas.drawRect(hit, btnPaint)
+        btnPaint.style = Paint.Style.FILL
+    }
+
+    private fun putDragHit(id: String, rect: RectF) {
+        if (rect.isEmpty) {
+            homeDragHits.remove(id)
+            return
+        }
+        homeDragHits.getOrPut(id) { RectF() }.set(rect)
     }
 
     /** 家页面顶栏：木牌铭牌 + 金币芯片 + 能量格，贴合小屋像素风 */
@@ -1434,7 +1516,11 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val plaqueH = titleSize + 28f * s
         val rewardLine = game.homeLevelDesc()
         val rewardSize = fittedTextSize(rewardLine, 18f * s, w * 0.86f, 14f * s)
-        val hint = if (isCatTab) "点场景元素装扮家与猫" else "点房屋/屋顶/庭院/猫来装扮"
+        val hint = if (homeEditing) {
+            if (isCatTab) "点场景元素装扮家与猫" else "点房屋/屋顶/庭院/猫来装扮"
+        } else {
+            "拖动任意元素可自由摆放"
+        }
         val fullHintSize = fittedTextSize(hint, 16f * s, w * 0.86f, 12f * s)
         val hintSize = if (showHint) fullHintSize else 0f
         val lv = game.homeLevel()
@@ -1468,7 +1554,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val plaqueB = y + plaqueH
         val plaqueCy = (plaqueT + plaqueB) * 0.5f
         // 顶栏文字元素：位置微调 + 字号缩放
-        val ndx = LayoutConfig.cur.nameDX * s; val ndy = LayoutConfig.cur.nameDY * s
+        val ndx = game.homeNameDX() * s; val ndy = game.homeNameDY() * s
         val nameSc = LayoutConfig.cur.nameS
         val nameCx = (plaqueL + plaqueR) * 0.5f + ndx; val nameCy = plaqueCy + ndy
         val nhw = (plaqueR - plaqueL) * 0.5f * nameSc; val nhh = (plaqueB - plaqueT) * 0.5f * nameSc
@@ -1483,10 +1569,18 @@ class HudView(context: Context, private val game: Game) : View(context) {
         canvas.restore()
         y = plaqueB + afterPlaque
 
+        putDragHit("name", hitHomeTitle)
+
         // 第 2 行：家能量等级格（整行独占高度）
         val energyCy = y + energyH * 0.5f
-        val enCx = w / 2f + LayoutConfig.cur.energyDX * s; val enCy = energyCy + LayoutConfig.cur.energyDY * s
-        canvas.save(); canvas.scale(LayoutConfig.cur.energyS, LayoutConfig.cur.energyS, enCx, enCy)
+        val enCx = w / 2f + game.homeEnergyDX() * s; val enCy = energyCy + game.homeEnergyDY() * s
+        val enSc = LayoutConfig.cur.energyS
+        hitHomeEnergy.set(
+            enCx - 96f * s * enSc, enCy - 16f * s * enSc,
+            enCx + 96f * s * enSc, enCy + 16f * s * enSc
+        )
+        putDragHit("energy", hitHomeEnergy)
+        canvas.save(); canvas.scale(enSc, enSc, enCx, enCy)
         drawHomeEnergyMeter(canvas, enCx, enCy, s, lv, sdx, sdy)
         canvas.restore()
         y += energyH + afterEnergy
@@ -1497,8 +1591,14 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val rewardTop = y
         val rewardBottom = y + rewardH
         val rewardCy = (rewardTop + rewardBottom) * 0.5f
-        val rdx = LayoutConfig.cur.rewardDX * s; val rdy = LayoutConfig.cur.rewardDY * s
-        canvas.save(); canvas.scale(LayoutConfig.cur.rewardS, LayoutConfig.cur.rewardS, w / 2f + rdx, rewardCy + rdy)
+        val rdx = game.homeRewardDX() * s; val rdy = game.homeRewardDY() * s
+        val rewardSc = LayoutConfig.cur.rewardS
+        hitHomeReward.set(
+            w / 2f - rewardChipW / 2f + rdx, rewardTop + rdy,
+            w / 2f + rewardChipW / 2f + rdx, rewardBottom + rdy
+        )
+        putDragHit("reward", hitHomeReward)
+        canvas.save(); canvas.scale(rewardSc, rewardSc, w / 2f + rdx, rewardCy + rdy)
         PixelUi.drawRect(
             canvas, btnPaint, w / 2f - rewardChipW / 2f + rdx, rewardTop + rdy,
             w / 2f + rewardChipW / 2f + rdx, rewardBottom + rdy,
@@ -1533,9 +1633,10 @@ class HudView(context: Context, private val game: Game) : View(context) {
         )
     }
 
-    /** 若该 UI 按钮在编辑器里被移动过，用 LayoutConfig 的覆盖矩形替换默认公式结果 */
+    /** 若该 UI 按钮在编辑器里被移动过，用 LayoutConfig 的覆盖矩形替换默认公式结果；再叠玩家偏移 */
     private fun applyUiOverride(id: String, w: Float, h: Float, s: Float, out: RectF) {
         LayoutConfig.uiOverride(id)?.let { out.set(it.resolve(w, h, s)) }
+        out.offset(game.homeUiDX(id), game.homeUiDY(id))
     }
 
     private fun drawHomeWalletPlate(canvas: Canvas, r: RectF, s: Float, sdx: Float, sdy: Float) {
@@ -1755,6 +1856,13 @@ class HudView(context: Context, private val game: Game) : View(context) {
             drawBtn(canvas, btnHomeBuy, action, s)
         } else {
             btnHomeBuy.setEmpty()
+        }
+        putDragHit("arrowL", btnHomeL)
+        putDragHit("arrowR", btnHomeR)
+        if (!btnHomeBuy.isEmpty) putDragHit("buy", btnHomeBuy)
+        if (game.isCatHomeTab()) {
+            val tabIds = arrayOf("tabColor", "tabTrail", "tabScarf", "tabHat")
+            for (i in tabIds.indices) putDragHit(tabIds[i], btnHomeTabs[i])
         }
     }
 
@@ -2000,13 +2108,13 @@ class HudView(context: Context, private val game: Game) : View(context) {
         rc(0f, farGy, w, gy, 0xFF97CE6E.toInt())
         rc(0f, farGy, w, farGy + 4f * s, 0xFF74B052.toInt())
         val farX = min(half - 78f * s, 196f * s).coerceAtLeast(150f * s)
-        val museumX = cx - farX + LayoutConfig.cur.museumDX * s
-        val museumBase = farGy + LayoutConfig.cur.museumDY * s
+        val museumX = cx - farX + game.homeMuseumDX() * s
+        val museumBase = farGy + game.homeMuseumDY() * s
         canvas.save(); canvas.scale(LayoutConfig.cur.museumS, LayoutConfig.cur.museumS, museumX, museumBase)
         drawMuseumBuilding(canvas, museumX, museumBase, landmarkU, s)
         canvas.restore()
-        val honorX = cx + farX + LayoutConfig.cur.honorDX * s
-        val honorBase = farGy + LayoutConfig.cur.honorDY * s
+        val honorX = cx + farX + game.homeHonorDX() * s
+        val honorBase = farGy + game.homeHonorDY() * s
         canvas.save(); canvas.scale(LayoutConfig.cur.honorS, LayoutConfig.cur.honorS, honorX, honorBase)
         drawHonorWall(canvas, honorX, honorBase, landmarkU, s)
         canvas.restore()
@@ -2015,8 +2123,8 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val roofD = PixelUi.darken(roofC)
 
         // 房屋整体微调偏移（LayoutConfig）：平移绘制，热区随后同步偏移
-        val houseDx = LayoutConfig.cur.houseDX * s
-        val houseDy = LayoutConfig.cur.houseDY * s
+        val houseDx = game.homeHouseDX() * s
+        val houseDy = game.homeHouseDY() * s
         canvas.save()
         canvas.translate(houseDx, houseDy)
         canvas.scale(LayoutConfig.cur.houseS, LayoutConfig.cur.houseS, cx, gy)
@@ -2102,6 +2210,8 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val hgy = gy + houseDy
         scaleRectAround(hcx, hgy, hcx - 118f * s, top + houseDy, hcx + 118f * s, hgy - 108f * s, houseSc, hitRoof)
         scaleRectAround(hcx, hgy, hcx - 108f * s, hgy - 108f * s, hcx + 108f * s, hgy, houseSc, hitHouse)
+        putDragHit("house", hitHouse)
+        putDragHit("roof", hitRoof)
         hitYardDeco.set(cx - half, gy - 12f * s, cx + half, bottom)
         hitCosmeticColor.setEmpty()
         hitCosmeticTrail.setEmpty()
@@ -2138,10 +2248,11 @@ class HudView(context: Context, private val game: Game) : View(context) {
         if (handMarkerLife > 0f) drawHandMarker(canvas, cx, gy, s)
         drawYardFloaters(canvas, s)
         if (game.canUseTelescope()) {
-            val tx = cx + LayoutConfig.cur.telescopeX * s
-            val footY = gy + LayoutConfig.cur.telescopeY * s
+            val tx = cx + game.yardTelescopeX() * s
+            val footY = gy + game.yardTelescopeY() * s
             val tsc = LayoutConfig.cur.telescopeS
             scaleRectAround(tx, footY, tx - 24f * s, footY - 36f * s, tx + 42f * s, footY + 32f * s, tsc, yardTelescopeHit)
+            putDragHit("telescope", yardTelescopeHit)
         } else {
             yardTelescopeHit.setEmpty()
         }
@@ -2203,6 +2314,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         landmarkPulseFrame(canvas, mx - 54f * u, friezeT, mx + 54f * u, friezeB, s)
 
         scaleRectAround(mx, base, mx - 60f * u, friezeT - 30f * u, mx + 60f * u, base + 6f * s, LayoutConfig.cur.museumS, hitMuseum)
+        putDragHit("museum", hitMuseum)
     }
 
     /** 奖牌盘面：lv 0 为未解锁的灰位，1/2/3/4 对应铜 / 银 / 金 / 钻 */
@@ -2324,6 +2436,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         landmarkPulseFrame(canvas, hx - 50f * u, signT, hx + 50f * u, signB, s)
 
         scaleRectAround(hx, base, hx - 76f * u, signT, hx + 76f * u, base + 6f * s, LayoutConfig.cur.honorS, hitHonorWall)
+        putDragHit("honor", hitHonorWall)
     }
 
     /** 装扮物品在庭院中的可视化：围巾晾绳（配色/光迹/帽子仅在猫身上或跑酷中体现） */
@@ -2390,14 +2503,14 @@ class HudView(context: Context, private val game: Game) : View(context) {
             btnPaint.color = withAlpha(color, alpha)
             canvas.drawRect(l, t, r, b, btnPaint)
         }
-        // 每个道具：Y 偏移 + 缩放（绕自身底部锚点），实现「位置 + 大小」可配
+        // 每个道具：LayoutConfig 基线 + 玩家偏移，Y 偏移 + 缩放（绕自身底部锚点）
         val decoAx = cx + when (deco) {
-            0 -> LayoutConfig.cur.gardenX; 2 -> LayoutConfig.cur.mailboxX; 3 -> LayoutConfig.cur.swingX
-            4 -> LayoutConfig.cur.perchX; 6 -> LayoutConfig.cur.telescopeX; else -> 0f
+            0 -> game.yardGardenX(); 2 -> game.yardMailboxX(); 3 -> game.yardSwingX()
+            4 -> game.yardPerchX(); 6 -> game.yardTelescopeX(); else -> 0f
         } * s
         val decoDy = when (deco) {
-            0 -> LayoutConfig.cur.gardenY; 1 -> LayoutConfig.cur.fenceY; 2 -> LayoutConfig.cur.mailboxY
-            3 -> LayoutConfig.cur.swingY; 4 -> LayoutConfig.cur.perchY; 6 -> LayoutConfig.cur.telescopeY; else -> 0f
+            0 -> game.yardGardenY(); 1 -> game.yardFenceY(); 2 -> game.yardMailboxY()
+            3 -> game.yardSwingY(); 4 -> game.yardPerchY(); 6 -> game.yardTelescopeY(); else -> 0f
         } * s
         val decoSc = when (deco) {
             0 -> LayoutConfig.cur.gardenS; 1 -> LayoutConfig.cur.fenceS; 2 -> LayoutConfig.cur.mailboxS
@@ -2408,7 +2521,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         canvas.scale(decoSc, decoSc, if (deco == 1) cx else decoAx, gy)
         when (deco) {
             0 -> { // 花坛
-                val fx = cx + LayoutConfig.cur.gardenX * s
+                val fx = cx + game.yardGardenX() * s
                 if (alpha == 255) groundShadow(canvas, fx, gy + 32f * s, 44f * s, s)
                 rc(fx - 40f * s, gy + 16f * s, fx + 40f * s, gy + 32f * s, 0xFF97622F.toInt())
                 for (i in 0..2) {
@@ -2417,6 +2530,8 @@ class HudView(context: Context, private val game: Game) : View(context) {
                     val fc = intArrayOf(0xFFF25A5A.toInt(), 0xFFFFD75E.toInt(), 0xFFF5A8C1.toInt())[i]
                     rc(px - 6f * s, gy - 8f * s, px + 6f * s, gy + 4f * s, fc)
                 }
+                scaleRectAround(fx, gy, fx - 44f * s, gy - 12f * s, fx + 44f * s, gy + 36f * s, decoSc, dragHitScratch)
+                putDragHit("garden", dragHitScratch)
             }
             1 -> { // 木栅栏（Y 偏移与缩放由外层统一处理）
                 var px = cx - half + 20f * s
@@ -2425,16 +2540,20 @@ class HudView(context: Context, private val game: Game) : View(context) {
                     px += 34f * s
                 }
                 rc(cx - half + 12f * s, gy + 44f * s, cx + half - 12f * s, gy + 50f * s, 0xFFC9A570.toInt())
+                dragHitScratch.set(cx - half, gy + 28f * s, cx + half, gy + 70f * s)
+                putDragHit("fence", dragHitScratch)
             }
             2 -> { // 信箱
-                val mx = cx + LayoutConfig.cur.mailboxX * s
+                val mx = cx + game.yardMailboxX() * s
                 if (alpha == 255) groundShadow(canvas, mx, gy, 18f * s, s)
                 rc(mx - 3f * s, gy - 34f * s, mx + 3f * s, gy, 0xFF97622F.toInt())
                 rc(mx - 16f * s, gy - 52f * s, mx + 16f * s, gy - 32f * s, 0xFFF25A5A.toInt())
                 rc(mx + 12f * s, gy - 62f * s, mx + 16f * s, gy - 50f * s, 0xFFFFD75E.toInt())
+                scaleRectAround(mx, gy, mx - 20f * s, gy - 66f * s, mx + 20f * s, gy + 8f * s, decoSc, dragHitScratch)
+                putDragHit("mailbox", dragHitScratch)
             }
             3 -> { // 秋千（座位摇摆）
-                val sx = cx + LayoutConfig.cur.swingX * s
+                val sx = cx + game.yardSwingX() * s
                 if (alpha == 255) groundShadow(canvas, sx, gy, 40f * s, s)
                 rc(sx - 34f * s, gy - 84f * s, sx - 28f * s, gy, 0xFF97622F.toInt())
                 rc(sx + 28f * s, gy - 84f * s, sx + 34f * s, gy, 0xFF97622F.toInt())
@@ -2443,17 +2562,21 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 rc(sx - 14f * s + sway, gy - 82f * s, sx - 11f * s + sway * 1.2f, gy - 34f * s, 0xFFB9B9B9.toInt())
                 rc(sx + 11f * s + sway, gy - 82f * s, sx + 14f * s + sway * 1.2f, gy - 34f * s, 0xFFB9B9B9.toInt())
                 rc(sx - 18f * s + sway * 1.2f, gy - 34f * s, sx + 18f * s + sway * 1.2f, gy - 26f * s, 0xFFFFD75E.toInt())
+                scaleRectAround(sx, gy, sx - 42f * s, gy - 94f * s, sx + 42f * s, gy + 8f * s, decoSc, dragHitScratch)
+                putDragHit("swing", dragHitScratch)
             }
             4 -> { // 猫爬架
-                val tx = cx + LayoutConfig.cur.perchX * s
+                val tx = cx + game.yardPerchX() * s
                 if (alpha == 255) groundShadow(canvas, tx, gy, 22f * s, s)
                 rc(tx - 4f * s, gy - 96f * s, tx + 4f * s, gy, 0xFFC9A570.toInt())
                 rc(tx - 30f * s, gy - 64f * s, tx + 10f * s, gy - 54f * s, 0xFF8594B3.toInt())
                 rc(tx - 10f * s, gy - 102f * s, tx + 30f * s, gy - 92f * s, 0xFFF5A8C1.toInt())
                 rc(tx + 12f * s, gy - 92f * s, tx + 20f * s, gy - 78f * s, 0xFFB9B9B9.toInt())
+                scaleRectAround(tx, gy, tx - 34f * s, gy - 106f * s, tx + 34f * s, gy + 8f * s, decoSc, dragHitScratch)
+                putDragHit("perch", dragHitScratch)
             }
             5 -> { // 小泳池：圆角水池 + 暖木池沿 + 上浅下深水面 + 反光涟漪
-                val pool = LayoutConfig.cur.pool
+                val pool = game.yardPool()
                 val pl = cx + pool.l * s; val pr = cx + pool.r * s
                 val pt = gy + pool.t * s; val pb = gy + pool.b * s
                 val aa = btnPaint.isAntiAlias
@@ -2490,9 +2613,11 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 canvas.drawRect(wl + 16f * s + rip, wt + 16f * s, wl + 58f * s + rip, wt + 19f * s, btnPaint)
                 canvas.drawRect(wr - 58f * s - rip, wb - 12f * s, wr - 16f * s - rip, wb - 9f * s, btnPaint)
                 btnPaint.isAntiAlias = aa
+                dragHitScratch.set(pl - 6f * s, pt - 6f * s, pr + 6f * s, pb + 6f * s)
+                putDragHit("pool", dragHitScratch)
             }
             6 -> { // 望远镜：三脚架托住镜筒，支架跟随镜筒
-                val tx = cx + LayoutConfig.cur.telescopeX * s
+                val tx = cx + game.yardTelescopeX() * s
                 val topY = gy - 26f * s                       // 支架顶（云台高度）
                 if (alpha == 255) groundShadow(canvas, tx, gy, 22f * s, s)
                 // 三脚：中柱 + 左右斜撑，都从云台指向地面
@@ -2671,6 +2796,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
             if (f.life <= 0f) yardFloaters.removeAt(fi)
             fi--
         }
+        if (homeDragActive) return
         if (yardFingerDown && yardCatHit.contains(yardFingerX, yardFingerY)) {
             val hold = SystemClock.uptimeMillis() - yardFingerDownTime
             if (!strokeActive && !yardLongPressTriggered && hold >= YARD_LONG_PRESS_MS) {
@@ -2690,6 +2816,146 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private fun screenToSceneX(screenX: Float): Float {
         val bound = yardSceneHalf / yardSceneS
         return ((screenX - yardSceneCx) / yardSceneS).coerceIn(-bound + 28f, bound - 28f)
+    }
+
+    private fun screenToSceneY(screenY: Float): Float =
+        (screenY - yardSceneGy) / yardSceneS
+
+    private fun hitHomeDraggable(x: Float, y: Float): String? {
+        for (id in homeDragOrder) {
+            if (!canHomeDrag(id)) continue
+            homeDragHits[id]?.let { if (it.contains(x, y)) return id }
+        }
+        return null
+    }
+
+    private fun canHomeDrag(id: String): Boolean = when (id) {
+        "garden" -> game.ownsDeco(0)
+        "fence" -> game.ownsDeco(1)
+        "mailbox" -> game.ownsDeco(2)
+        "swing" -> game.ownsDeco(3)
+        "perch" -> game.ownsDeco(4)
+        "pool" -> game.ownsDeco(5)
+        "telescope" -> game.ownsDeco(6)
+        "buy", "arrowL", "arrowR" -> homeEditing
+        "tabColor", "tabTrail", "tabScarf", "tabHat" -> homeEditing && game.isCatHomeTab()
+        else -> true
+    }
+
+    private fun beginHomeDrag(id: String, screenX: Float, screenY: Float) {
+        homeDragStartFingerX = screenX
+        homeDragStartFingerY = screenY
+        homeDragStartSceneX = screenToSceneX(screenX)
+        homeDragStartSceneY = screenToSceneY(screenY)
+        val po = game.homeLayout()
+        when (id) {
+            "garden" -> { homeDragStartOff[0] = po.gardenX; homeDragStartOff[1] = po.gardenY }
+            "fence" -> homeDragStartOff[1] = po.fenceY
+            "mailbox" -> { homeDragStartOff[0] = po.mailboxX; homeDragStartOff[1] = po.mailboxY }
+            "swing" -> { homeDragStartOff[0] = po.swingX; homeDragStartOff[1] = po.swingY }
+            "perch" -> { homeDragStartOff[0] = po.perchX; homeDragStartOff[1] = po.perchY }
+            "pool" -> { homeDragStartOff[0] = po.poolDX; homeDragStartOff[1] = po.poolDY }
+            "telescope" -> { homeDragStartOff[0] = po.telescopeX; homeDragStartOff[1] = po.telescopeY }
+            "house" -> { homeDragStartOff[0] = po.houseDX; homeDragStartOff[1] = po.houseDY }
+            "museum" -> { homeDragStartOff[0] = po.museumDX; homeDragStartOff[1] = po.museumDY }
+            "honor" -> { homeDragStartOff[0] = po.honorDX; homeDragStartOff[1] = po.honorDY }
+            "roof" -> { homeDragStartOff[0] = po.houseDX; homeDragStartOff[1] = po.houseDY }
+            "name" -> { homeDragStartOff[0] = po.nameDX; homeDragStartOff[1] = po.nameDY }
+            "energy" -> { homeDragStartOff[0] = po.energyDX; homeDragStartOff[1] = po.energyDY }
+            "reward" -> { homeDragStartOff[0] = po.rewardDX; homeDragStartOff[1] = po.rewardDY }
+            else -> {
+                homeDragStartOff[0] = game.homeUiDX(id)
+                homeDragStartOff[1] = game.homeUiDY(id)
+            }
+        }
+    }
+
+    private fun updateHomeDrag(screenX: Float, screenY: Float) {
+        val id = homeDragId ?: return
+        val po = game.homeLayout()
+        val bound = (yardSceneHalf / yardSceneS).coerceAtLeast(80f)
+        val sceneDx = screenToSceneX(screenX) - homeDragStartSceneX
+        val sceneDy = screenToSceneY(screenY) - homeDragStartSceneY
+        val pixDx = screenX - homeDragStartFingerX
+        val pixDy = screenY - homeDragStartFingerY
+        when (id) {
+            "garden" -> {
+                po.gardenX = (homeDragStartOff[0] + sceneDx).coerceIn(-bound, bound)
+                po.gardenY = (homeDragStartOff[1] + sceneDy).coerceIn(-220f, 220f)
+            }
+            "fence" -> po.fenceY = (homeDragStartOff[1] + sceneDy).coerceIn(-220f, 220f)
+            "mailbox" -> {
+                po.mailboxX = (homeDragStartOff[0] + sceneDx).coerceIn(-bound, bound)
+                po.mailboxY = (homeDragStartOff[1] + sceneDy).coerceIn(-220f, 220f)
+            }
+            "swing" -> {
+                po.swingX = (homeDragStartOff[0] + sceneDx).coerceIn(-bound, bound)
+                po.swingY = (homeDragStartOff[1] + sceneDy).coerceIn(-220f, 220f)
+            }
+            "perch" -> {
+                po.perchX = (homeDragStartOff[0] + sceneDx).coerceIn(-bound, bound)
+                po.perchY = (homeDragStartOff[1] + sceneDy).coerceIn(-220f, 220f)
+            }
+            "pool" -> {
+                po.poolDX = (homeDragStartOff[0] + sceneDx).coerceIn(-bound, bound)
+                po.poolDY = (homeDragStartOff[1] + sceneDy).coerceIn(-220f, 220f)
+            }
+            "telescope" -> {
+                po.telescopeX = (homeDragStartOff[0] + sceneDx).coerceIn(-bound, bound)
+                po.telescopeY = (homeDragStartOff[1] + sceneDy).coerceIn(-220f, 220f)
+            }
+            "house", "roof" -> {
+                po.houseDX = (homeDragStartOff[0] + sceneDx).coerceIn(-bound, bound)
+                po.houseDY = (homeDragStartOff[1] + sceneDy).coerceIn(-220f, 220f)
+            }
+            "museum" -> {
+                po.museumDX = (homeDragStartOff[0] + sceneDx).coerceIn(-bound, bound)
+                po.museumDY = (homeDragStartOff[1] + sceneDy).coerceIn(-220f, 220f)
+            }
+            "honor" -> {
+                po.honorDX = (homeDragStartOff[0] + sceneDx).coerceIn(-bound, bound)
+                po.honorDY = (homeDragStartOff[1] + sceneDy).coerceIn(-220f, 220f)
+            }
+            "name" -> {
+                po.nameDX = (homeDragStartOff[0] + sceneDx).coerceIn(-bound, bound)
+                po.nameDY = (homeDragStartOff[1] + sceneDy).coerceIn(-220f, 220f)
+            }
+            "energy" -> {
+                po.energyDX = (homeDragStartOff[0] + sceneDx).coerceIn(-bound, bound)
+                po.energyDY = (homeDragStartOff[1] + sceneDy).coerceIn(-220f, 220f)
+            }
+            "reward" -> {
+                po.rewardDX = (homeDragStartOff[0] + sceneDx).coerceIn(-bound, bound)
+                po.rewardDY = (homeDragStartOff[1] + sceneDy).coerceIn(-220f, 220f)
+            }
+            else -> {
+                po.uiDX[id] = homeDragStartOff[0] + pixDx
+                po.uiDY[id] = homeDragStartOff[1] + pixDy
+            }
+        }
+    }
+
+    private fun dispatchHomeDragTap(id: String, x: Float, y: Float) {
+        when (id) {
+            "telescope" -> if (game.canUseTelescope()) openStargazing()
+            "museum" -> {
+                museumPage = 0; museumDetailId = -1; homeSubView = HOME_SUB_COLLECTION
+            }
+            "honor" -> { honorPage = 0; homeSubView = HOME_SUB_HONOR }
+            "house" -> selectHomeCategory(Game.HOME_TAB_HOUSE)
+            "roof" -> selectHomeCategory(Game.HOME_TAB_ROOF)
+            "garden", "fence", "mailbox", "swing", "perch", "pool" -> selectHomeCategory(Game.HOME_TAB_DECO)
+            "name" -> showRenameDialog(firstTime = false)
+            "leave" -> leaveHomePage()
+            "tabColor" -> if (homeEditing) game.switchHomeTab(Game.HOME_TAB_COLOR)
+            "tabTrail" -> if (homeEditing) game.switchHomeTab(Game.HOME_TAB_TRAIL)
+            "tabScarf" -> if (homeEditing) game.switchHomeTab(Game.HOME_TAB_SCARF)
+            "tabHat" -> if (homeEditing) game.switchHomeTab(Game.HOME_TAB_HAT)
+            "arrowL" -> if (homeEditing) game.browseHome(-1)
+            "arrowR" -> if (homeEditing) game.browseHome(1)
+            "buy" -> if (homeEditing) showToast(game.buyOrEquipHome())
+            "energy", "reward", "wallet" -> { }
+        }
     }
 
     /** 双击庭院：小猫追向手指落点 */
@@ -2890,11 +3156,11 @@ class HudView(context: Context, private val game: Game) : View(context) {
             else -> {
                 catDeco = pick
                 catTarget = when (pick) {
-                    0 -> LayoutConfig.cur.gardenX + 36f    // 花坛旁
-                    2 -> LayoutConfig.cur.mailboxX - 32f   // 信箱旁
-                    3 -> LayoutConfig.cur.swingX           // 秋千下
-                    4 -> LayoutConfig.cur.perchX - 32f     // 爬架起跳点
-                    else -> LayoutConfig.cur.pool.edge     // 泳池左沿
+                    0 -> game.yardGardenX() + 36f    // 花坛旁
+                    2 -> game.yardMailboxX() - 32f   // 信箱旁
+                    3 -> game.yardSwingX()           // 秋千下
+                    4 -> game.yardPerchX() - 32f     // 爬架起跳点
+                    else -> game.yardPool().edge     // 泳池左沿
                 }
                 // 窄屏时目标在场景外就改为散步
                 if (abs(catTarget) > bound - 30f) {
@@ -2949,8 +3215,8 @@ class HudView(context: Context, private val game: Game) : View(context) {
             when (catDeco) {
                 0 -> pose = POSE_SNIFF
                 2 -> pose = POSE_LOOKUP
-                5 -> { // 跳进泳池游泳：跃入 → 来回划水 → 爬回岸边（坐标随 POOL_* 常量走）
-                    val pool = LayoutConfig.cur.pool
+                5 -> { // 跳进泳池游泳：跃入 → 来回划水 → 爬回岸边
+                    val pool = game.yardPool()
                     val edgeX = pool.edge
                     val left = pool.cx - pool.swimHalf
                     val right = pool.cx + pool.swimHalf
@@ -2986,33 +3252,34 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 }
                 3 -> { // 坐上秋千跟着荡
                     val sway = kotlin.math.sin(homePhase * 1.6f) * 10f * s
-                    x = cx + LayoutConfig.cur.swingX * s + sway * 1.2f
+                    x = cx + game.yardSwingX() * s + sway * 1.2f
                     footY = gy - 34f * s
                     pose = POSE_SIT
                 }
                 4 -> { // 猫爬架：与 drawDeco 的平台位置对齐
+                    val perchX = game.yardPerchX()
                     val lowY = gy - 64f * s
                     val topY = gy - 102f * s
                     when (catStage) {
                         0 -> {
                             val t = (catStageT / 0.45f).coerceIn(0f, 1f)
-                            x = cx + (126f + 22f * t) * s
+                            x = cx + (perchX - 32f + 22f * t) * s
                             footY = gy + (lowY - gy) * t -
                                 kotlin.math.sin(t * Math.PI.toFloat()) * 18f * s
                             pose = POSE_JUMP
                         }
-                        1 -> { x = cx + 148f * s; footY = lowY; pose = POSE_STAND }
+                        1 -> { x = cx + (perchX - 10f) * s; footY = lowY; pose = POSE_STAND }
                         2 -> {
                             val t = (catStageT / 0.45f).coerceIn(0f, 1f)
-                            x = cx + (148f + 20f * t) * s
+                            x = cx + (perchX - 10f + 20f * t) * s
                             footY = lowY + (topY - lowY) * t -
                                 kotlin.math.sin(t * Math.PI.toFloat()) * 16f * s
                             pose = POSE_JUMP
                         }
-                        3 -> { x = cx + 168f * s; footY = topY; pose = POSE_SIT }
+                        3 -> { x = cx + (perchX + 10f) * s; footY = topY; pose = POSE_SIT }
                         else -> {
                             val t = (catStageT / 0.5f).coerceIn(0f, 1f)
-                            x = cx + (168f + 40f * t) * s
+                            x = cx + (perchX + 10f + 40f * t) * s
                             footY = topY + (gy - topY) * t * t
                             pose = POSE_JUMP
                         }

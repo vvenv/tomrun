@@ -602,6 +602,11 @@ class Game {
     @Volatile var hasChosenCharacterName = false
         private set
 
+    /** 玩家自定义家园布局偏移（横竖屏各一套） */
+    private val homeLayoutPortrait = PlayerHomeLayout.Set()
+    private val homeLayoutLandscape = PlayerHomeLayout.Set()
+    private var homeLayoutPortraitActive = true
+
     // 菜单
     @Volatile var menuPanel = PANEL_MAIN
     @Volatile var shopBrowseColor = 0
@@ -769,6 +774,7 @@ class Game {
         if (!ownsRoof(roofStyle)) roofStyle = 0
         homeBrowseHouse = houseStyle
         homeBrowseRoof = roofStyle
+        loadHomePlayerLayout(p.getString("homePlayerLayout", null) ?: p.getString("yardPlayerLayout", null))
         telescopeLevel = p.getInt("telescopeLevel", 0).coerceIn(0, TELESCOPE_MAX_LEVEL)
         stargazeReadMask = p.getInt("stargazeReadMask", 0)
         stargazeDayKey = p.getString("stargazeDayKey", "") ?: ""
@@ -927,6 +933,66 @@ class Game {
     fun ownsHouse(i: Int) = (ownedHouses and (1 shl i)) != 0
     fun ownsRoof(i: Int) = (ownedRoofs and (1 shl i)) != 0
     fun ownsDeco(i: Int) = (ownedDecos and (1 shl i)) != 0
+
+    fun selectHomeLayoutOrientation(portrait: Boolean) {
+        homeLayoutPortraitActive = portrait
+    }
+
+    fun homeLayout(): PlayerHomeLayout.Set =
+        if (homeLayoutPortraitActive) homeLayoutPortrait else homeLayoutLandscape
+
+    fun yardGardenX() = LayoutConfig.cur.gardenX + homeLayout().gardenX
+    fun yardGardenY() = LayoutConfig.cur.gardenY + homeLayout().gardenY
+    fun yardFenceY() = LayoutConfig.cur.fenceY + homeLayout().fenceY
+    fun yardMailboxX() = LayoutConfig.cur.mailboxX + homeLayout().mailboxX
+    fun yardMailboxY() = LayoutConfig.cur.mailboxY + homeLayout().mailboxY
+    fun yardSwingX() = LayoutConfig.cur.swingX + homeLayout().swingX
+    fun yardSwingY() = LayoutConfig.cur.swingY + homeLayout().swingY
+    fun yardPerchX() = LayoutConfig.cur.perchX + homeLayout().perchX
+    fun yardPerchY() = LayoutConfig.cur.perchY + homeLayout().perchY
+    fun yardTelescopeX() = LayoutConfig.cur.telescopeX + homeLayout().telescopeX
+    fun yardTelescopeY() = LayoutConfig.cur.telescopeY + homeLayout().telescopeY
+    fun homeHouseDX() = LayoutConfig.cur.houseDX + homeLayout().houseDX
+    fun homeHouseDY() = LayoutConfig.cur.houseDY + homeLayout().houseDY
+    fun homeMuseumDX() = LayoutConfig.cur.museumDX + homeLayout().museumDX
+    fun homeMuseumDY() = LayoutConfig.cur.museumDY + homeLayout().museumDY
+    fun homeHonorDX() = LayoutConfig.cur.honorDX + homeLayout().honorDX
+    fun homeHonorDY() = LayoutConfig.cur.honorDY + homeLayout().honorDY
+    fun homeNameDX() = LayoutConfig.cur.nameDX + homeLayout().nameDX
+    fun homeNameDY() = LayoutConfig.cur.nameDY + homeLayout().nameDY
+    fun homeEnergyDX() = LayoutConfig.cur.energyDX + homeLayout().energyDX
+    fun homeEnergyDY() = LayoutConfig.cur.energyDY + homeLayout().energyDY
+    fun homeRewardDX() = LayoutConfig.cur.rewardDX + homeLayout().rewardDX
+    fun homeRewardDY() = LayoutConfig.cur.rewardDY + homeLayout().rewardDY
+    fun homeUiDX(id: String) = homeLayout().uiDX[id] ?: 0f
+    fun homeUiDY(id: String) = homeLayout().uiDY[id] ?: 0f
+
+    fun yardPool(): LayoutConfig.Pool {
+        val p = LayoutConfig.cur.pool
+        val po = homeLayout()
+        return LayoutConfig.Pool(p.l + po.poolDX, p.r + po.poolDX, p.t + po.poolDY, p.b + po.poolDY)
+    }
+
+    fun saveHomeLayout() = persistHomeLayout()
+
+    private fun loadHomePlayerLayout(json: String?) {
+        if (json.isNullOrBlank()) return
+        runCatching {
+            val root = org.json.JSONObject(json)
+            PlayerHomeLayout.fromJson(root.optJSONObject("portrait"), homeLayoutPortrait)
+            PlayerHomeLayout.fromJson(root.optJSONObject("landscape"), homeLayoutLandscape)
+        }
+    }
+
+    private fun persistHomeLayout() {
+        val root = org.json.JSONObject()
+            .put("portrait", PlayerHomeLayout.toJson(homeLayoutPortrait))
+            .put("landscape", PlayerHomeLayout.toJson(homeLayoutLandscape))
+        prefs?.edit()
+            ?.putString("homePlayerLayout", root.toString())
+            ?.putString("yardPlayerLayout", root.toString())
+            ?.apply()
+    }
     fun seenUniverse(i: Int) = (seenMask and (1 shl i)) != 0
     fun codexComplete() = universesSeen >= UNIVERSE_COUNT
     fun relicCollected(i: Int): Boolean {
@@ -2526,6 +2592,7 @@ class Game {
             ?.putString("stargazeDayKey", stargazeDayKey)
             ?.putBoolean("stargazeDailyNewDone", stargazeDailyNewDone)
             ?.apply()
+        persistHomeLayout()
     }
 
     private fun persistAll() {
@@ -2573,6 +2640,7 @@ class Game {
             .putString("characterName", characterName)
         for (i in 0 until ACHIEVE_CATS) ed.putInt("achieveLv$i", achieveLevels[i])
         ed.apply()
+        persistHomeLayout()
         leaderboards.save(p)
     }
 
