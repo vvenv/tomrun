@@ -155,7 +155,7 @@ function yardDefaults() {
     swing:     { label: "秋千",   ox: -280, oy: 0, scale: 1 },
     perch:     { label: "猫爬架", ox: 158,  oy: 0, scale: 1 },
     mailbox:   { label: "信箱",   ox: 210,  oy: 0, scale: 1 },
-    cat:       { label: "猫(位置=预览)", ox: 0, oy: 0, scale: 1 },
+    cat:       { label: "猫(仅缩放)", ox: 0, oy: 0, lockPos: true, scale: 1 },
     fence:     { label: "栅栏(仅纵向)", ox: 0, oy: 0, lockX: true, scale: 1, wide: true },
     pool:      { label: "泳池",   ox: 0,    oy: 72, w: 264, h: 120, box: true, sizable: true },
   };
@@ -410,6 +410,7 @@ function setAnchor(id, ax, ay) {
   if (SCENE.includes(id)) { const b = sceneBase(id); scene[id].dx = snapU((ax - b.x) / S); scene[id].dy = snapU((ay - b.y) / S); scheduleSave(); return; }
   if (TEXT.includes(id)) { const b = textBase(id); text[id].dx = snapU((ax - (b.x + b.w / 2)) / S); text[id].dy = snapU((ay - (b.y + b.h / 2)) / S); scheduleSave(); return; }
   const it = yard[id];
+  if (it.lockPos) return;
   if (id === "fence") { it.oy = snapU((ay - 50 * S - GY) / S); scheduleSave(); return; }
   if (!it.lockX) it.ox = snapU((ax - CX) / S);
   it.oy = snapU((ay - GY) / S); scheduleSave();
@@ -507,7 +508,9 @@ function onDown(e) {
   const id = pick(p); sel = id;
   if (id) {
     if (isBox(id)) { const r = rectOf(id); drag = { id, mode: "move", dx: p.x - r.x, dy: p.y - r.y, w: r.w, h: r.h }; }
-    else { const a = anchorOf(id); drag = { id, mode: "amove", ax: p.x - a.x, ay: p.y - a.y }; }
+    else if (SCENE.includes(id) || TEXT.includes(id) || !yard[id]?.lockPos) {
+      const a = anchorOf(id); drag = { id, mode: "amove", ax: p.x - a.x, ay: p.y - a.y };
+    }
     cv.classList.add("dragging");
   }
   render(); e.preventDefault();
@@ -542,7 +545,9 @@ window.addEventListener("keydown", e => {
   if (e.key === "ArrowLeft") dx = -step; if (e.key === "ArrowRight") dx = step;
   if (e.key === "ArrowUp") dy = -step; if (e.key === "ArrowDown") dy = step;
   if (isBox(sel)) { const r = rectOf(sel); r.x += dx; r.y += dy; applyRect(sel, r, false); }
-  else { const a = anchorOf(sel); setAnchor(sel, a.x + dx, a.y + dy); }
+  else if (SCENE.includes(sel) || TEXT.includes(sel) || !yard[sel]?.lockPos) {
+    const a = anchorOf(sel); setAnchor(sel, a.x + dx, a.y + dy);
+  }
   render(); e.preventDefault();
 });
 
@@ -559,6 +564,7 @@ function coordOf(id) {
   if (TEXT.includes(id)) return `Δ${text[id].dx},${text[id].dy} ×${(text[id].scale || 1).toFixed(2)}`;
   const it = yard[id];
   if (it.box) return `L${it.ox} T${it.oy} ${it.w}×${it.h}`;
+  if (it.lockPos) return `×${(it.scale || 1).toFixed(2)}`;
   return (it.lockX ? `y${it.oy}` : `${it.ox},${it.oy}`) + ` ×${(it.scale || 1).toFixed(2)}`;
 }
 
@@ -619,7 +625,7 @@ function propSpec(id) {
   }
   const fields = [];
   if (!it.lockX) fields.push({ k: "ox", label: "X", min: -500, max: 500, step: 1, val: it.ox, unit: "s" });
-  fields.push({ k: "oy", label: "Y", min: -300, max: 400, step: 1, val: it.oy, unit: "s" });
+  if (!it.lockPos) fields.push({ k: "oy", label: "Y", min: -300, max: 400, step: 1, val: it.oy, unit: "s" });
   fields.push({ k: "scale", label: "缩放", min: 0.3, max: 4, step: 0.05, val: it.scale || 1, unit: "×" });
   return fields;
 }
@@ -660,7 +666,7 @@ function applyProp(id, key, raw) {
     return;
   }
   if (key === "ox" && !it.lockX) it.ox = snapU(v);
-  else if (key === "oy") it.oy = snapU(v);
+  else if (key === "oy" && !it.lockPos) it.oy = snapU(v);
   else if (key === "scale") setScaleOf(id, v);
   else return;
   if (key !== "scale") scheduleSave();

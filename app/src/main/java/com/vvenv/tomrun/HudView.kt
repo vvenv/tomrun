@@ -1909,6 +1909,11 @@ class HudView(context: Context, private val game: Game) : View(context) {
     }
 
     /** 接地软阴影：压扁的半透明椭圆，把物体「钉」在草地上，制造立体纵深 */
+    /** 绕锚点缩放矩形，用于布局缩放与点击热区对齐 */
+    private fun scaleRectAround(px: Float, py: Float, l: Float, t: Float, r: Float, b: Float, sc: Float, out: RectF) {
+        out.set(px + (l - px) * sc, py + (t - py) * sc, px + (r - px) * sc, py + (b - py) * sc)
+    }
+
     private fun groundShadow(canvas: Canvas, cx: Float, baseY: Float, halfW: Float, s: Float) {
         val aa = btnPaint.isAntiAlias
         btnPaint.isAntiAlias = true
@@ -2095,8 +2100,11 @@ class HudView(context: Context, private val game: Game) : View(context) {
 
         // 可点击热区（装扮购置）
         hitSky.set(0f, top, w, farGy)
-        hitRoof.set(cx - 118f * s + houseDx, top + houseDy, cx + 118f * s + houseDx, gy - 108f * s + houseDy)
-        hitHouse.set(cx - 108f * s + houseDx, gy - 108f * s + houseDy, cx + 108f * s + houseDx, gy + houseDy)
+        val houseSc = LayoutConfig.cur.houseS
+        val hcx = cx + houseDx
+        val hgy = gy + houseDy
+        scaleRectAround(hcx, hgy, hcx - 118f * s, top + houseDy, hcx + 118f * s, hgy - 108f * s, houseSc, hitRoof)
+        scaleRectAround(hcx, hgy, hcx - 108f * s, hgy - 108f * s, hcx + 108f * s, hgy, houseSc, hitHouse)
         hitYardDeco.set(cx - half, gy - 12f * s, cx + half, bottom)
         hitCosmeticColor.set(cx - 166f * s, gy - 20f * s, cx - 130f * s, gy + 32f * s)
         hitCosmeticTrail.set(cx - half + 20f * s, gy + 28f * s, cx - half + 210f * s, gy + 54f * s)
@@ -2136,8 +2144,9 @@ class HudView(context: Context, private val game: Game) : View(context) {
         drawYardFloaters(canvas, s)
         if (game.canUseTelescope()) {
             val tx = cx + LayoutConfig.cur.telescopeX * s
-            val ty = LayoutConfig.cur.telescopeY * s
-            yardTelescopeHit.set(tx - 24f * s, gy - 36f * s + ty, tx + 42f * s, gy + 32f * s + ty)
+            val footY = gy + LayoutConfig.cur.telescopeY * s
+            val tsc = LayoutConfig.cur.telescopeS
+            scaleRectAround(tx, footY, tx - 24f * s, footY - 36f * s, tx + 42f * s, footY + 32f * s, tsc, yardTelescopeHit)
         } else {
             yardTelescopeHit.setEmpty()
         }
@@ -2198,7 +2207,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         pixText(canvas, label, mx, centeredBaselineY((friezeT + friezeB) * 0.5f, size), size, 0xFF5C3D0A.toInt(), 0f, 0f)
         landmarkPulseFrame(canvas, mx - 54f * u, friezeT, mx + 54f * u, friezeB, s)
 
-        hitMuseum.set(mx - 60f * u, friezeT - 30f * u, mx + 60f * u, base + 6f * s)
+        scaleRectAround(mx, base, mx - 60f * u, friezeT - 30f * u, mx + 60f * u, base + 6f * s, LayoutConfig.cur.museumS, hitMuseum)
     }
 
     /** 奖牌盘面：lv 0 为未解锁的灰位，1/2/3/4 对应铜 / 银 / 金 / 钻 */
@@ -2319,7 +2328,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         pixText(canvas, label, hx, centeredBaselineY((signT + signB) * 0.5f, size), size, 0xFFFFF6E8.toInt(), 0f, 0f)
         landmarkPulseFrame(canvas, hx - 50f * u, signT, hx + 50f * u, signB, s)
 
-        hitHonorWall.set(hx - 76f * u, signT, hx + 76f * u, base + 6f * s)
+        scaleRectAround(hx, base, hx - 76f * u, signT, hx + 76f * u, base + 6f * s, LayoutConfig.cur.honorS, hitHonorWall)
     }
 
     /** 装扮物品在庭院中的可视化：配色花盆 / 光迹小径 / 围巾晾绳 / 帽子稻草人 */
@@ -3067,11 +3076,11 @@ class HudView(context: Context, private val game: Game) : View(context) {
         drawPixelCat(canvas, x, footY, s, catDir, pose, colorIdx, scarf, hat)
         canvas.restore()
         if (catState == CAT_PET) drawPetHearts(canvas, x, footY, s)
-        // 点击热区：覆盖当前姿势下的猫身
+        // 点击热区：覆盖当前姿势下的猫身（随 catS 缩放）
         val hitW = if (pose == POSE_NAP) 44f else 36f
         val hitH = if (pose == POSE_NAP) 28f else if (pose == POSE_PET) 52f else 46f
         val hitTop = if (pose == POSE_NAP) 18f else hitH
-        yardCatHit.set(x - hitW * s, footY - hitTop * s, x + hitW * s, footY + 6f * s)
+        scaleRectAround(x, footY, x - hitW * s, footY - hitTop * s, x + hitW * s, footY + 6f * s, catSc, yardCatHit)
     }
 
     private fun drawPetHearts(canvas: Canvas, x: Float, footY: Float, s: Float) {
