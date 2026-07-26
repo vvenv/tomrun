@@ -188,7 +188,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private val homeDragStartOff = FloatArray(2)
     /** 庭院装饰优先于猫/房屋等大热区，避免秋千被猫遮挡后无法再拖 */
     private val homeYardDragOrder = arrayOf(
-        "telescope", "garden", "mailbox", "swing", "perch", "pool", "fence"
+        "garden", "mailbox", "swing", "perch", "telescope", "pool", "fence"
     )
     private val homeDragOrder = arrayOf(
         "buy", "arrowL", "arrowR", "tabHat", "tabScarf", "tabTrail", "tabColor",
@@ -1736,12 +1736,16 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val rewardCy = (rewardTop + rewardBottom) * 0.5f
         val rdx = game.homeRewardDX() * s; val rdy = game.homeRewardDY() * s
         val rewardSc = LayoutConfig.cur.rewardS
-        hitHomeReward.set(
+        val rewardCx = w / 2f + rdx
+        val rewardCyScaled = rewardCy + rdy
+        scaleRectAround(
+            rewardCx, rewardCyScaled,
             w / 2f - rewardChipW / 2f + rdx, rewardTop + rdy,
-            w / 2f + rewardChipW / 2f + rdx, rewardBottom + rdy
+            w / 2f + rewardChipW / 2f + rdx, rewardBottom + rdy,
+            rewardSc, hitHomeReward
         )
         putDragHit("reward", hitHomeReward)
-        canvas.save(); canvas.scale(rewardSc, rewardSc, w / 2f + rdx, rewardCy + rdy)
+        canvas.save(); canvas.scale(rewardSc, rewardSc, rewardCx, rewardCyScaled)
         PixelUi.drawRect(
             canvas, btnPaint, w / 2f - rewardChipW / 2f + rdx, rewardTop + rdy,
             w / 2f + rewardChipW / 2f + rdx, rewardBottom + rdy,
@@ -2286,38 +2290,57 @@ class HudView(context: Context, private val game: Game) : View(context) {
         return kotlin.math.round(d / step) * step
     }
 
-    /** 庭院道具拖放热区（屏幕坐标，须在 canvas.restore 之后调用） */
+    /** 装饰锚点：屏幕坐标接地点 + 缩放，与 drawDeco 单点缩放绘制一致 */
+    private data class DecoAnchor(val pivotX: Float, val footY: Float, val sc: Float, val pivotIsCx: Boolean = false)
+
+    private fun decoAnchor(deco: Int, cx: Float, gy: Float, s: Float): DecoAnchor? = when (deco) {
+        0 -> DecoAnchor(cx + game.yardGardenX() * s, gy + game.yardGardenY() * s, LayoutConfig.cur.gardenS)
+        1 -> DecoAnchor(cx, gy + game.yardFenceY() * s, LayoutConfig.cur.fenceS, pivotIsCx = true)
+        2 -> DecoAnchor(cx + game.yardMailboxX() * s, gy + game.yardMailboxY() * s, LayoutConfig.cur.mailboxS)
+        3 -> DecoAnchor(cx + game.yardSwingX() * s, gy + game.yardSwingY() * s, LayoutConfig.cur.swingS)
+        4 -> DecoAnchor(cx + game.yardPerchX() * s, gy + game.yardPerchY() * s, LayoutConfig.cur.perchS)
+        6 -> DecoAnchor(cx + game.yardTelescopeX() * s, gy + game.yardTelescopeY() * s, LayoutConfig.cur.telescopeS)
+        else -> null
+    }
+
+    /** 庭院道具拖放热区（屏幕坐标；仅已购装饰注册，避免预览 ghost 挡住真物件） */
+    private fun registerOwnedDecoDragHits(world: Int, cx: Float, gy: Float, half: Float, s: Float) {
+        for (deco in Game.DECO_NAMES.indices) {
+            if (!HomeWorldContent.decoAvailable(world, deco) || !game.ownsDeco(deco)) continue
+            registerDecoDragHit(world, deco, cx, gy, half, s)
+        }
+    }
+
     private fun registerDecoDragHit(world: Int, deco: Int, cx: Float, gy: Float, half: Float, s: Float) {
         if (!HomeWorldContent.decoAvailable(world, deco)) return
+        val pad = 4f * s
         fun yardHit(id: String, ax: Float, footY: Float, sc: Float, l: Float, t: Float, r: Float, b: Float) {
-            scaleRectAround(ax, footY, ax + l, footY + t, ax + r, footY + b, sc, dragHitScratch)
+            scaleRectAround(
+                ax, footY,
+                ax + (l * s - pad), footY + (t * s - pad),
+                ax + (r * s + pad), footY + (b * s + pad),
+                sc, dragHitScratch
+            )
             putDragHit(id, dragHitScratch)
         }
         when (deco) {
-            0 -> {
-                val ax = cx + game.yardGardenX() * s
-                val fy = gy + game.yardGardenY() * s
-                yardHit("garden", ax, fy, LayoutConfig.cur.gardenS, -44f * s, -12f * s, 44f * s, 36f * s)
-            }
             1 -> {
-                val fy = gy + game.yardFenceY() * s
-                scaleRectAround(cx, fy, cx - half, fy + 28f * s, cx + half, fy + 70f * s, LayoutConfig.cur.fenceS, dragHitScratch)
+                val a = decoAnchor(1, cx, gy, s) ?: return
+                val b = HomeWorldDraw.decoDragBounds(world, deco, half)
+                // 栅栏横向 half 为屏幕像素，纵向为场景单位
+                scaleRectAround(
+                    a.pivotX, a.footY,
+                    a.pivotX + b[0] - pad, a.footY + (b[1] * s - pad),
+                    a.pivotX + b[2] + pad, a.footY + (b[3] * s + pad),
+                    a.sc, dragHitScratch
+                )
                 putDragHit("fence", dragHitScratch)
             }
-            2 -> {
-                val ax = cx + game.yardMailboxX() * s
-                val fy = gy + game.yardMailboxY() * s
-                yardHit("mailbox", ax, fy, LayoutConfig.cur.mailboxS, -20f * s, -66f * s, 20f * s, 8f * s)
-            }
-            3 -> {
-                val ax = cx + game.yardSwingX() * s
-                val fy = gy + game.yardSwingY() * s
-                yardHit("swing", ax, fy, LayoutConfig.cur.swingS, -50f * s, -98f * s, 50f * s, 10f * s)
-            }
-            4 -> {
-                val ax = cx + game.yardPerchX() * s
-                val fy = gy + game.yardPerchY() * s
-                yardHit("perch", ax, fy, LayoutConfig.cur.perchS, -34f * s, -106f * s, 34f * s, 8f * s)
+            0, 2, 3, 4, 6 -> {
+                val a = decoAnchor(deco, cx, gy, s) ?: return
+                val b = HomeWorldDraw.decoDragBounds(world, deco, half)
+                yardHit(ownedDecoDragId[deco], a.pivotX, a.footY, a.sc, b[0], b[1], b[2], b[3])
+                if (deco == 6) yardTelescopeHit.set(dragHitScratch)
             }
             5 -> {
                 val pool = game.yardPool()
@@ -2654,6 +2677,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
             val alpha = if (owned) 255 else 110
             drawDeco(canvas, world, i, cx, gy, half, s, alpha)
         }
+        registerOwnedDecoDragHits(world, cx, gy, half, s)
 
         drawCosmeticYardDeco(
             canvas, cx, gy, half, s, yardColor, yardTrail, yardScarf, yardHat, cosmeticGhost,
@@ -2706,15 +2730,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         drawYardCat(canvas, cx, gy, s, yardColor, yardScarf, yardHat)
         if (handMarkerLife > 0f) drawHandMarker(canvas, cx, gy, s)
         drawYardFloaters(canvas, s)
-        if (game.canUseTelescope()) {
-            val tx = cx + game.yardTelescopeX() * s
-            val footY = gy + game.yardTelescopeY() * s
-            val tsc = LayoutConfig.cur.telescopeS
-            scaleRectAround(tx, footY, tx - 24f * s, footY - 36f * s, tx + 42f * s, footY + 32f * s, tsc, yardTelescopeHit)
-            putDragHit("telescope", yardTelescopeHit)
-        } else {
-            yardTelescopeHit.setEmpty()
-        }
+        if (!game.ownsDeco(6)) yardTelescopeHit.setEmpty()
     }
 
     /** 地标牌匾上的金色描边：与铭牌同一套呼吸节奏，暗示可点 */
@@ -3081,36 +3097,22 @@ class HudView(context: Context, private val game: Game) : View(context) {
     }
 
     private fun drawDeco(canvas: Canvas, world: Int, deco: Int, cx: Float, gy: Float, half: Float, s: Float, alpha: Int) {
-        val decoAx = cx + when (deco) {
-            0 -> game.yardGardenX(); 2 -> game.yardMailboxX(); 3 -> game.yardSwingX()
-            4 -> game.yardPerchX(); 6 -> game.yardTelescopeX(); else -> 0f
-        } * s
-        val decoDy = when (deco) {
-            0 -> game.yardGardenY(); 1 -> game.yardFenceY(); 2 -> game.yardMailboxY()
-            3 -> game.yardSwingY(); 4 -> game.yardPerchY(); 6 -> game.yardTelescopeY(); else -> 0f
-        } * s
-        val decoSc = when (deco) {
-            0 -> LayoutConfig.cur.gardenS; 1 -> LayoutConfig.cur.fenceS; 2 -> LayoutConfig.cur.mailboxS
-            3 -> LayoutConfig.cur.swingS; 4 -> LayoutConfig.cur.perchS; 6 -> LayoutConfig.cur.telescopeS; else -> 1f
-        }
-        canvas.save()
-        canvas.translate(0f, decoDy)
-        canvas.scale(decoSc, decoSc, if (deco == 1) cx else decoAx, gy)
         val pool = game.yardPool()
+        val anchor = decoAnchor(deco, cx, gy, s)
+        canvas.save()
+        if (anchor != null) canvas.scale(anchor.sc, anchor.sc, anchor.pivotX, anchor.footY)
+        val drawCx = if (anchor?.pivotIsCx == true) cx else anchor?.pivotX ?: cx
+        val drawGy = anchor?.footY ?: gy
         HomeWorldDraw.drawDeco(
-            world, deco, cx, gy, half, alpha,
+            world, deco, drawCx, drawGy, half, alpha,
             HOME_FLOWERS[world], HOME_FLOWER_STEM[world], HOME_FENCE[world],
             HOME_POOL_WATER[world], HOME_FLAGS[world],
-            homeWorldGfx(canvas, s, gy, alpha),
-            game.yardGardenX(), game.yardGardenY(), game.yardFenceY(),
-            game.yardMailboxX(), game.yardMailboxY(),
-            game.yardSwingX(), game.yardSwingY(),
-            game.yardPerchX(), game.yardPerchY(),
+            homeWorldGfx(canvas, s, drawGy, alpha),
+            0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f,
             pool.l, pool.r, pool.t, pool.b,
-            game.yardTelescopeX(), game.yardTelescopeY()
+            0f, 0f
         )
         canvas.restore()
-        registerDecoDragHit(world, deco, cx, gy, half, s)
     }
 
     // ---------- 庭院猫 ----------

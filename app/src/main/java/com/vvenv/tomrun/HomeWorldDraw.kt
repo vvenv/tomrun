@@ -39,6 +39,29 @@ object HomeWorldDraw {
         }
     }
 
+    /**
+     * 装饰拖放热区（场景单位，相对接地点锚点；左右/上下为 fx/fy 偏移，未乘 s）。
+     * 略大于像素造型，避免布局编辑器里大偏移时点对不上。
+     */
+    fun decoDragBounds(world: Int, deco: Int, half: Float): FloatArray = when (deco) {
+        0 -> when (world) {
+            Game.UNI_SKY -> floatArrayOf(-48f, -24f, 48f, 34f)
+            Game.UNI_SPACE -> floatArrayOf(-42f, -20f, 42f, 36f)
+            else -> floatArrayOf(-44f, -18f, 44f, 38f)
+        }
+        1 -> floatArrayOf(-half, 22f, half, 76f)
+        2 -> when (world) {
+            Game.UNI_SKY -> floatArrayOf(-22f, -62f, 22f, 8f)
+            Game.UNI_WATER -> floatArrayOf(-18f, -52f, 18f, 8f)
+            else -> floatArrayOf(-20f, -66f, 20f, 8f)
+        }
+        3 -> floatArrayOf(-56f, -102f, 56f, 12f)
+        4 -> floatArrayOf(-36f, -110f, 36f, 8f)
+        5 -> floatArrayOf(0f, 0f, 0f, 0f) // 泳池由 HudView 用 pool 矩形
+        6 -> floatArrayOf(-52f, -58f, 56f, 14f)
+        else -> floatArrayOf(-40f, -40f, 40f, 40f)
+    }
+
     fun drawDeco(
         world: Int, deco: Int, cx: Float, gy: Float, half: Float, alpha: Int,
         flowers: IntArray, stem: Int, fence: IntArray, poolWater: IntArray, flags: IntArray,
