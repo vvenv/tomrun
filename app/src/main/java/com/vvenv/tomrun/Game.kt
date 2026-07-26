@@ -583,8 +583,16 @@ class Game {
     // 小屋
     /** 当前所在的家所属世界：草原家默认解锁，其余世界的家在跑酷中穿越到过即解锁 */
     @Volatile var homeWorld = UNI_MEADOW
-    @Volatile var houseStyle = 0
-    @Volatile var roofStyle = 0
+    private val houseStyles = IntArray(UNIVERSE_COUNT) { 0 }
+    private val roofStyles = IntArray(UNIVERSE_COUNT) { 0 }
+    /** 当前世界的房屋款式（各世界独立） */
+    var houseStyle: Int
+        get() = houseStyles[homeWorld.coerceIn(0, UNIVERSE_COUNT - 1)]
+        set(v) { houseStyles[homeWorld.coerceIn(0, UNIVERSE_COUNT - 1)] = v.coerceIn(0, HOUSE_NAMES.size - 1) }
+    /** 当前世界的屋顶款式（各世界独立） */
+    var roofStyle: Int
+        get() = roofStyles[homeWorld.coerceIn(0, UNIVERSE_COUNT - 1)]
+        set(v) { roofStyles[homeWorld.coerceIn(0, UNIVERSE_COUNT - 1)] = v.coerceIn(0, ROOF_NAMES.size - 1) }
     private var ownedHouses = 1       // bit0 免费小木屋
     private var ownedRoofs = 1
     private var ownedDecos = 0
@@ -770,15 +778,12 @@ class Game {
         ownedHouses = p.getInt("ownedHouses", 1) or 1
         ownedRoofs = p.getInt("ownedRoofs", 1) or 1
         ownedDecos = p.getInt("ownedDecos", 0)
-        houseStyle = p.getInt("houseStyle", 0).coerceIn(0, HOUSE_NAMES.size - 1)
-        roofStyle = p.getInt("roofStyle", 0).coerceIn(0, ROOF_NAMES.size - 1)
-        if (!ownsHouse(houseStyle)) houseStyle = 0
-        if (!ownsRoof(roofStyle)) roofStyle = 0
-        homeBrowseHouse = houseStyle
-        homeBrowseRoof = roofStyle
+        loadPerWorldHouseStyles(p)
         loadHomePlayerLayout(p.getString("homePlayerLayout", null) ?: p.getString("yardPlayerLayout", null))
         homeWorld = p.getInt("homeWorld", UNI_MEADOW).coerceIn(0, UNIVERSE_COUNT - 1)
         if (!homeWorldUnlocked(homeWorld)) homeWorld = UNI_MEADOW
+        homeBrowseHouse = houseStyle
+        homeBrowseRoof = roofStyle
         telescopeLevel = p.getInt("telescopeLevel", 0).coerceIn(0, TELESCOPE_MAX_LEVEL)
         stargazeReadMask = p.getInt("stargazeReadMask", 0)
         stargazeDayKey = p.getString("stargazeDayKey", "") ?: ""
@@ -964,6 +969,8 @@ class Game {
             w = (w + dir + UNIVERSE_COUNT) % UNIVERSE_COUNT
             if (homeWorldUnlocked(w) && w != homeWorld) {
                 homeWorld = w
+                homeBrowseHouse = houseStyles[w]
+                homeBrowseRoof = roofStyles[w]
                 prefs?.edit()?.putInt("homeWorld", w)?.apply()
                 emit(EV_PORTAL, HAPTIC_LIGHT)
                 return UNIVERSE_NAMES[w]
@@ -1248,6 +1255,10 @@ class Game {
     @Synchronized fun switchHomeTab(tab: Int) {
         if (state == State.RUNNING) return
         homeTab = tab.coerceIn(HOME_TAB_HOUSE, HOME_TAB_HAT)
+        when (homeTab) {
+            HOME_TAB_HOUSE -> homeBrowseHouse = houseStyle
+            HOME_TAB_ROOF -> homeBrowseRoof = roofStyle
+        }
     }
 
     @Synchronized fun browseHome(delta: Int) {
@@ -1279,7 +1290,7 @@ class Game {
                 if (ownsHouse(i)) {
                     houseStyle = i
                     persistHome()
-                    return "已入住 ${HOUSE_NAMES[i]}"
+                    return "已在${UNIVERSE_NAMES[homeWorld]}入住 ${HOUSE_NAMES[i]}"
                 }
                 val price = HOUSE_PRICES[i]
                 if (wallet < price) return "金币不足（需 $price）"
@@ -1289,14 +1300,14 @@ class Game {
                 persistHome()
                 emit(EV_BUY, HAPTIC_MED)
                 tryUnlockAchievements(persist = true)
-                return "乔迁新居：${HOUSE_NAMES[i]}！"
+                return "乔迁新居：${UNIVERSE_NAMES[homeWorld]} · ${HOUSE_NAMES[i]}！"
             }
             HOME_TAB_ROOF -> {
                 val i = homeBrowseRoof
                 if (ownsRoof(i)) {
                     roofStyle = i
                     persistHome()
-                    return "已换上 ${ROOF_NAMES[i]}"
+                    return "已在${UNIVERSE_NAMES[homeWorld]}换上 ${ROOF_NAMES[i]}"
                 }
                 val price = ROOF_PRICES[i]
                 if (wallet < price) return "金币不足（需 $price）"
@@ -1306,7 +1317,7 @@ class Game {
                 persistHome()
                 emit(EV_BUY, HAPTIC_MED)
                 tryUnlockAchievements(persist = true)
-                return "购买成功：${ROOF_NAMES[i]}"
+                return "购买成功：${UNIVERSE_NAMES[homeWorld]} · ${ROOF_NAMES[i]}"
             }
             HOME_TAB_DECO -> {
                 val i = homeBrowseDeco
@@ -2634,14 +2645,50 @@ class Game {
             ?.apply()
     }
 
+    private fun loadPerWorldHouseStyles(p: android.content.SharedPreferences) {
+        val legacyHouse = p.getInt("houseStyle", 0).coerceIn(0, HOUSE_NAMES.size - 1)
+        val legacyRoof = p.getInt("roofStyle", 0).coerceIn(0, ROOF_NAMES.size - 1)
+        val savedHouses = p.getString("houseStyles", null)
+        val savedRoofs = p.getString("roofStyles", null)
+        if (savedHouses != null) {
+            savedHouses.split(',').forEachIndexed { i, v ->
+                if (i < UNIVERSE_COUNT) {
+                    houseStyles[i] = v.toIntOrNull()?.coerceIn(0, HOUSE_NAMES.size - 1) ?: 0
+                }
+            }
+        } else {
+            houseStyles.fill(legacyHouse)
+        }
+        if (savedRoofs != null) {
+            savedRoofs.split(',').forEachIndexed { i, v ->
+                if (i < UNIVERSE_COUNT) {
+                    roofStyles[i] = v.toIntOrNull()?.coerceIn(0, ROOF_NAMES.size - 1) ?: 0
+                }
+            }
+        } else {
+            roofStyles.fill(legacyRoof)
+        }
+        for (i in 0 until UNIVERSE_COUNT) {
+            if (!ownsHouse(houseStyles[i])) houseStyles[i] = 0
+            if (!ownsRoof(roofStyles[i])) roofStyles[i] = 0
+        }
+    }
+
+    private fun persistPerWorldHouseStyles(ed: android.content.SharedPreferences.Editor) {
+        ed.putString("houseStyles", houseStyles.joinToString(","))
+            .putString("roofStyles", roofStyles.joinToString(","))
+            // 旧版只读草原家，继续写入便于回退
+            .putInt("houseStyle", houseStyles[UNI_MEADOW])
+            .putInt("roofStyle", roofStyles[UNI_MEADOW])
+    }
+
     private fun persistHome() {
         prefs?.edit()
             ?.putInt("wallet", wallet)
             ?.putInt("ownedHouses", ownedHouses)
             ?.putInt("ownedRoofs", ownedRoofs)
             ?.putInt("ownedDecos", ownedDecos)
-            ?.putInt("houseStyle", houseStyle)
-            ?.putInt("roofStyle", roofStyle)
+            ?.also { persistPerWorldHouseStyles(it) }
             ?.putInt("telescopeLevel", telescopeLevel)
             ?.putInt("stargazeReadMask", stargazeReadMask)
             ?.putString("stargazeDayKey", stargazeDayKey)
@@ -2686,8 +2733,7 @@ class Game {
             .putInt("ownedHouses", ownedHouses)
             .putInt("ownedRoofs", ownedRoofs)
             .putInt("ownedDecos", ownedDecos)
-            .putInt("houseStyle", houseStyle)
-            .putInt("roofStyle", roofStyle)
+            .also { persistPerWorldHouseStyles(it) }
             .putInt("telescopeLevel", telescopeLevel)
             .putInt("stargazeReadMask", stargazeReadMask)
             .putString("stargazeDayKey", stargazeDayKey)

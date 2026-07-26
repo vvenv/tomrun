@@ -186,12 +186,21 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private var homeDragStartSceneX = 0f
     private var homeDragStartSceneY = 0f
     private val homeDragStartOff = FloatArray(2)
+    /** 庭院装饰优先于猫/房屋等大热区，避免秋千被猫遮挡后无法再拖 */
+    private val homeYardDragOrder = arrayOf(
+        "telescope", "garden", "mailbox", "swing", "perch", "pool", "fence"
+    )
     private val homeDragOrder = arrayOf(
         "buy", "arrowL", "arrowR", "tabHat", "tabScarf", "tabTrail", "tabColor",
         "worldL", "worldR",
         "leave", "wallet", "name", "energy", "reward",
-        "cat", "scarf", "telescope", "museum", "honor", "house",
-        "pool", "perch", "swing", "mailbox", "garden", "fence"
+        "cat", "scarf", "museum", "honor", "house"
+    )
+    /** 家园 UI 文字（商店栏名称/价格/状态、提示语、名牌等） */
+    private val homeUiTextDragOrder = arrayOf(
+        "shopName", "shopPrice", "shopStatus",
+        "editHint", "homeHint", "worldLabel", "worldUnlockHint",
+        "museumLabel", "honorLabel"
     )
     private val ownedDecoDragId = arrayOf(
         "garden", "fence", "mailbox", "swing", "perch", "pool", "telescope"
@@ -270,6 +279,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         private const val RELIC_NOTE_SECS = 7f
         private const val RELIC_NOTE_TITLE = 0xFFE8DCC0.toInt()
         private const val RELIC_NOTE_BODY = 0xFFBFC8CE.toInt()
+        private const val HOME_DRAG_SNAP_PX = 10f
 
         private val COLOR_CHIPS = intArrayOf(
             0xFF8594B3.toInt(), 0xFFF29E42.toInt(), 0xFF4D4D59.toInt(), 0xFFF5A8C1.toInt()
@@ -1584,7 +1594,10 @@ class HudView(context: Context, private val game: Game) : View(context) {
         if (homeEditing) {
             drawHomeShopStrip(canvas, w, h, s, sdx, sdy)
             val hint = if (isCatTab) "点选猫装扮分类 · 点天空收起" else "点天空收起"
-            pixText(canvas, hint, w / 2f, h * 0.52f, 20f * s, 0x99FFFFFF.toInt(), sdx, sdy)
+            drawDraggableUiText(
+                canvas, "editHint", hint, w / 2f, h * 0.52f,
+                20f * s, 0x99FFFFFF.toInt(), sdx, sdy
+            )
         }
 
         if (homeSubView == HOME_SUB_SCENE) {
@@ -1743,7 +1756,10 @@ class HudView(context: Context, private val game: Game) : View(context) {
         y = rewardBottom + afterReward
 
         if (showHint) {
-            pixText(canvas, hint, w / 2f, y + hintSize * 0.75f, hintSize, 0x88FFFFFF.toInt(), sdx, sdy)
+            drawDraggableUiText(
+                canvas, "homeHint", hint, w / 2f, y + hintSize * 0.75f,
+                hintSize, 0x88FFFFFF.toInt(), sdx, sdy
+            )
         }
     }
 
@@ -1767,6 +1783,39 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private fun applyUiOverride(id: String, w: Float, h: Float, s: Float, out: RectF) {
         LayoutConfig.uiOverride(id)?.let { out.set(it.resolve(w, h, s)) }
         out.offset(game.homeUiDX(id), game.homeUiDY(id))
+    }
+
+  /** 绘制可拖放的家园 UI 文字，并注册热区（偏移存 uiDX/uiDY） */
+    private fun drawDraggableUiText(
+        canvas: Canvas,
+        id: String,
+        text: String,
+        baseX: Float,
+        baseY: Float,
+        size: Float,
+        color: Int,
+        sdx: Float,
+        sdy: Float,
+        align: Paint.Align = Paint.Align.CENTER,
+        padH: Float = 10f,
+        padV: Float = 8f
+    ) {
+        val dx = game.homeUiDX(id)
+        val dy = game.homeUiDY(id)
+        val x = baseX + dx
+        val y = baseY + dy
+        textPaint.textAlign = align
+        textPaint.textSize = size
+        val tw = textPaint.measureText(text)
+        val th = size
+        val (left, right) = when (align) {
+            Paint.Align.LEFT -> x to x + tw
+            Paint.Align.RIGHT -> x - tw to x
+            else -> x - tw / 2f to x + tw / 2f
+        }
+        dragHitScratch.set(left - padH, y - th - padV, right + padH, y + padV)
+        putDragHit(id, dragHitScratch)
+        pixText(canvas, text, x, y, size, color, sdx, sdy)
     }
 
     private fun drawHomeWalletPlate(canvas: Canvas, r: RectF, s: Float, sdx: Float, sdy: Float) {
@@ -1880,24 +1929,30 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val plateH = if (portrait) 68f * s else 56f * s
         val chipH = if (portrait) 40f * s else 36f * s
         val cy = h - bottomPad - plateH - 12f * s - chipH * 0.5f
+        val cx = w / 2f
         val label = "${Game.UNIVERSE_NAMES[world]}的家"
         val labelSize = fittedTextSize(label, 18f * s, w * 0.30f, 13f * s)
         textPaint.textAlign = Paint.Align.CENTER
         textPaint.textSize = labelSize
         val chipW = textPaint.measureText(label) + 30f * s
-        val cx = w / 2f
+        val wdx = game.homeUiDX("worldLabel")
+        val wdy = game.homeUiDY("worldLabel")
+        val cx2 = cx + wdx
+        val cy2 = cy + wdy
         val accent = UNI_HUD[world]
         PixelUi.drawRect(
-            canvas, btnPaint, cx - chipW / 2f, cy - chipH / 2f, cx + chipW / 2f, cy + chipH / 2f,
+            canvas, btnPaint, cx2 - chipW / 2f, cy2 - chipH / 2f, cx2 + chipW / 2f, cy2 + chipH / 2f,
             0xCC101820.toInt(), s, bevel = PixelUi.Bevel.INSET,
             edge = withAlpha(accent, 0xAA), edgeW = max(1f, 1.5f * s)
         )
-        pixText(canvas, label, cx, centeredBaselineY(cy, labelSize), labelSize, 0xFFF4F8FF.toInt(), sdx, sdy)
+        pixText(canvas, label, cx2, centeredBaselineY(cy2, labelSize), labelSize, 0xFFF4F8FF.toInt(), sdx, sdy)
+        dragHitScratch.set(cx2 - chipW / 2f, cy2 - chipH / 2f, cx2 + chipW / 2f, cy2 + chipH / 2f)
+        putDragHit("worldLabel", dragHitScratch)
         if (multi) {
             val a = chipH
             val gap = 8f * s
-            btnHomeWorldL.set(cx - chipW / 2f - gap - a, cy - a / 2f, cx - chipW / 2f - gap, cy + a / 2f)
-            btnHomeWorldR.set(cx + chipW / 2f + gap, cy - a / 2f, cx + chipW / 2f + gap + a, cy + a / 2f)
+            btnHomeWorldL.set(cx2 - chipW / 2f - gap - a, cy2 - a / 2f, cx2 - chipW / 2f - gap, cy2 + a / 2f)
+            btnHomeWorldR.set(cx2 + chipW / 2f + gap, cy2 - a / 2f, cx2 + chipW / 2f + gap + a, cy2 + a / 2f)
             applyUiOverride("worldL", w, h, s, btnHomeWorldL)
             applyUiOverride("worldR", w, h, s, btnHomeWorldR)
             drawBtn(canvas, btnHomeWorldL, "<", s)
@@ -1905,9 +1960,9 @@ class HudView(context: Context, private val game: Game) : View(context) {
         } else {
             btnHomeWorldL.setEmpty()
             btnHomeWorldR.setEmpty()
-            pixText(
-                canvas, "穿越传送门可解锁新世界的家", cx, cy - chipH / 2f - 8f * s,
-                12f * s, 0x88FFFFFF.toInt(), sdx, sdy
+            drawDraggableUiText(
+                canvas, "worldUnlockHint", "穿越传送门可解锁新世界的家",
+                cx, cy - chipH / 2f - 8f * s, 12f * s, 0x88FFFFFF.toInt(), sdx, sdy
             )
         }
         putDragHit("worldL", btnHomeWorldL)
@@ -2021,9 +2076,34 @@ class HudView(context: Context, private val game: Game) : View(context) {
         drawBtn(canvas, btnHomeL, "<", s)
         drawBtn(canvas, btnHomeR, ">", s)
         val (name, price, status, action) = homeBrowseRow()
-        val info = if (status.isEmpty()) "$name  价格 $price" else "$name  $status"
-        val infoSize = fittedTextSize(info, 24f * s, w * 0.54f, 18f * s)
-        pixText(canvas, info, w / 2f, by + 6f * s, infoSize, Color.WHITE, sdx, sdy)
+        val rowY = by + 6f * s
+        val nameSize = fittedTextSize(name, 24f * s, w * 0.28f, 18f * s)
+        val priceStr = "价格 $price"
+        val showPrice = status.isEmpty()
+        val showStatus = status.isNotEmpty()
+        textPaint.textSize = nameSize
+        val nw = textPaint.measureText(name)
+        val pw = if (showPrice) textPaint.measureText(priceStr) else 0f
+        val sw = if (showStatus) textPaint.measureText(status) else 0f
+        val gap = 10f * s
+        val totalW = nw + (if (showPrice) gap + pw else 0f) + (if (showStatus) gap + sw else 0f)
+        val startX = w / 2f - totalW / 2f
+        drawDraggableUiText(
+            canvas, "shopName", name, startX, rowY, nameSize, Color.WHITE, sdx, sdy,
+            align = Paint.Align.LEFT, padH = 8f * s, padV = 6f * s
+        )
+        if (showPrice) {
+            drawDraggableUiText(
+                canvas, "shopPrice", priceStr, startX + nw + gap, rowY, nameSize, Color.WHITE, sdx, sdy,
+                align = Paint.Align.LEFT, padH = 8f * s, padV = 6f * s
+            )
+        }
+        if (showStatus) {
+            drawDraggableUiText(
+                canvas, "shopStatus", status, startX + nw + gap, rowY, nameSize, Color.WHITE, sdx, sdy,
+                align = Paint.Align.LEFT, padH = 8f * s, padV = 6f * s
+            )
+        }
 
         if (action.isNotEmpty()) {
             val buyH = if (portrait) 52f * s else 44f * s
@@ -2051,7 +2131,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
             HomeRow(
                 Game.HOUSE_NAMES[i], Game.HOUSE_PRICES[i],
                 when {
-                    game.houseStyle == i -> "居住中"
+                    game.houseStyle == i -> "${Game.UNIVERSE_NAMES[game.homeWorld]}居住中"
                     game.ownsHouse(i) -> "已拥有"
                     else -> ""
                 },
@@ -2063,7 +2143,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
             HomeRow(
                 Game.ROOF_NAMES[i], Game.ROOF_PRICES[i],
                 when {
-                    game.roofStyle == i -> "使用中"
+                    game.roofStyle == i -> "${Game.UNIVERSE_NAMES[game.homeWorld]}使用中"
                     game.ownsRoof(i) -> "已拥有"
                     else -> ""
                 },
@@ -2196,6 +2276,57 @@ class HudView(context: Context, private val game: Game) : View(context) {
     /** 绕锚点缩放矩形，用于布局缩放与点击热区对齐 */
     private fun scaleRectAround(px: Float, py: Float, l: Float, t: Float, r: Float, b: Float, sc: Float, out: RectF) {
         out.set(px + (l - px) * sc, py + (t - py) * sc, px + (r - px) * sc, py + (b - py) * sc)
+    }
+
+    private fun snapDragPx(v: Float): Float =
+        kotlin.math.round(v / HOME_DRAG_SNAP_PX) * HOME_DRAG_SNAP_PX
+
+    private fun snapDragSceneDelta(d: Float): Float {
+        val step = HOME_DRAG_SNAP_PX / yardSceneS.coerceAtLeast(0.5f)
+        return kotlin.math.round(d / step) * step
+    }
+
+    /** 庭院道具拖放热区（屏幕坐标，须在 canvas.restore 之后调用） */
+    private fun registerDecoDragHit(deco: Int, cx: Float, gy: Float, half: Float, s: Float) {
+        fun yardHit(id: String, ax: Float, footY: Float, sc: Float, l: Float, t: Float, r: Float, b: Float) {
+            scaleRectAround(ax, footY, ax + l, footY + t, ax + r, footY + b, sc, dragHitScratch)
+            putDragHit(id, dragHitScratch)
+        }
+        when (deco) {
+            0 -> {
+                val ax = cx + game.yardGardenX() * s
+                val fy = gy + game.yardGardenY() * s
+                yardHit("garden", ax, fy, LayoutConfig.cur.gardenS, -44f * s, -12f * s, 44f * s, 36f * s)
+            }
+            1 -> {
+                val fy = gy + game.yardFenceY() * s
+                scaleRectAround(cx, fy, cx - half, fy + 28f * s, cx + half, fy + 70f * s, LayoutConfig.cur.fenceS, dragHitScratch)
+                putDragHit("fence", dragHitScratch)
+            }
+            2 -> {
+                val ax = cx + game.yardMailboxX() * s
+                val fy = gy + game.yardMailboxY() * s
+                yardHit("mailbox", ax, fy, LayoutConfig.cur.mailboxS, -20f * s, -66f * s, 20f * s, 8f * s)
+            }
+            3 -> {
+                val ax = cx + game.yardSwingX() * s
+                val fy = gy + game.yardSwingY() * s
+                yardHit("swing", ax, fy, LayoutConfig.cur.swingS, -50f * s, -98f * s, 50f * s, 10f * s)
+            }
+            4 -> {
+                val ax = cx + game.yardPerchX() * s
+                val fy = gy + game.yardPerchY() * s
+                yardHit("perch", ax, fy, LayoutConfig.cur.perchS, -34f * s, -106f * s, 34f * s, 8f * s)
+            }
+            5 -> {
+                val pool = game.yardPool()
+                dragHitScratch.set(
+                    cx + pool.l * s - 6f * s, gy + pool.t * s - 6f * s,
+                    cx + pool.r * s + 6f * s, gy + pool.b * s + 6f * s
+                )
+                putDragHit("pool", dragHitScratch)
+            }
+        }
     }
 
     private fun groundShadow(canvas: Canvas, cx: Float, baseY: Float, halfW: Float, s: Float) {
@@ -2690,8 +2821,11 @@ class HudView(context: Context, private val game: Game) : View(context) {
 
         val label = "藏品 ${game.relicsFound}/${Game.RELIC_COUNT}"
         val size = fittedTextSize(label, min(15f * s, 17f * u), 100f * u, 12f * s)
-        textPaint.textAlign = Paint.Align.CENTER
-        pixText(canvas, label, mx, centeredBaselineY((friezeT + friezeB) * 0.5f, size), size, 0xFF5C3D0A.toInt(), 0f, 0f)
+        val labelY = centeredBaselineY((friezeT + friezeB) * 0.5f, size)
+        drawDraggableUiText(
+            canvas, "museumLabel", label, mx, labelY, size, 0xFF5C3D0A.toInt(), 0f, 0f,
+            padH = 6f * s, padV = 4f * s
+        )
         landmarkPulseFrame(canvas, mx - 54f * u, friezeT, mx + 54f * u, friezeB, s)
 
         scaleRectAround(mx, base, mx - 60f * u, friezeT - 30f * u, mx + 60f * u, base + 6f * s, LayoutConfig.cur.museumS, hitMuseum)
@@ -2812,8 +2946,11 @@ class HudView(context: Context, private val game: Game) : View(context) {
         rc(hx - 50f * u, signT, hx + 50f * u, signT + 4f * u, 0xFF97622F.toInt())
         val label = "荣誉 ${game.achieveCount}/${Game.ACHIEVE_MAX}"
         val size = fittedTextSize(label, min(15f * s, 17f * u), 92f * u, 12f * s)
-        textPaint.textAlign = Paint.Align.CENTER
-        pixText(canvas, label, hx, centeredBaselineY((signT + signB) * 0.5f, size), size, 0xFFFFF6E8.toInt(), 0f, 0f)
+        val labelY = centeredBaselineY((signT + signB) * 0.5f, size)
+        drawDraggableUiText(
+            canvas, "honorLabel", label, hx, labelY, size, 0xFFFFF6E8.toInt(), 0f, 0f,
+            padH = 6f * s, padV = 4f * s
+        )
         landmarkPulseFrame(canvas, hx - 50f * u, signT, hx + 50f * u, signB, s)
 
         scaleRectAround(hx, base, hx - 76f * u, signT, hx + 76f * u, base + 6f * s, LayoutConfig.cur.honorS, hitHonorWall)
@@ -3010,8 +3147,6 @@ class HudView(context: Context, private val game: Game) : View(context) {
                     rc(px - 2f * s, gy + 2f * s, px + 2f * s, gy + 16f * s, HOME_FLOWER_STEM[world])
                     rc(px - 6f * s, gy - 8f * s, px + 6f * s, gy + 4f * s, HOME_FLOWERS[world][i])
                 }
-                scaleRectAround(fx, gy, fx - 44f * s, gy - 12f * s, fx + 44f * s, gy + 36f * s, decoSc, dragHitScratch)
-                putDragHit("garden", dragHitScratch)
             }
             1 -> { // 木栅栏（Y 偏移与缩放由外层统一处理）
                 var px = cx - half + 20f * s
@@ -3020,8 +3155,6 @@ class HudView(context: Context, private val game: Game) : View(context) {
                     px += 34f * s
                 }
                 rc(cx - half + 12f * s, gy + 44f * s, cx + half - 12f * s, gy + 50f * s, HOME_FENCE[world][1])
-                dragHitScratch.set(cx - half, gy + 28f * s, cx + half, gy + 70f * s)
-                putDragHit("fence", dragHitScratch)
             }
             2 -> { // 信箱
                 val mx = cx + game.yardMailboxX() * s
@@ -3029,8 +3162,6 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 rc(mx - 3f * s, gy - 34f * s, mx + 3f * s, gy, 0xFF97622F.toInt())
                 rc(mx - 16f * s, gy - 52f * s, mx + 16f * s, gy - 32f * s, 0xFFF25A5A.toInt())
                 rc(mx + 12f * s, gy - 62f * s, mx + 16f * s, gy - 50f * s, 0xFFFFD75E.toInt())
-                scaleRectAround(mx, gy, mx - 20f * s, gy - 66f * s, mx + 20f * s, gy + 8f * s, decoSc, dragHitScratch)
-                putDragHit("mailbox", dragHitScratch)
             }
             3 -> { // 秋千（座位摇摆）
                 val sx = cx + game.yardSwingX() * s
@@ -3042,8 +3173,6 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 rc(sx - 14f * s + sway, gy - 82f * s, sx - 11f * s + sway * 1.2f, gy - 34f * s, 0xFFB9B9B9.toInt())
                 rc(sx + 11f * s + sway, gy - 82f * s, sx + 14f * s + sway * 1.2f, gy - 34f * s, 0xFFB9B9B9.toInt())
                 rc(sx - 18f * s + sway * 1.2f, gy - 34f * s, sx + 18f * s + sway * 1.2f, gy - 26f * s, 0xFFFFD75E.toInt())
-                scaleRectAround(sx, gy, sx - 42f * s, gy - 94f * s, sx + 42f * s, gy + 8f * s, decoSc, dragHitScratch)
-                putDragHit("swing", dragHitScratch)
             }
             4 -> { // 猫爬架
                 val tx = cx + game.yardPerchX() * s
@@ -3052,8 +3181,6 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 rc(tx - 30f * s, gy - 64f * s, tx + 10f * s, gy - 54f * s, 0xFF8594B3.toInt())
                 rc(tx - 10f * s, gy - 102f * s, tx + 30f * s, gy - 92f * s, 0xFFF5A8C1.toInt())
                 rc(tx + 12f * s, gy - 92f * s, tx + 20f * s, gy - 78f * s, 0xFFB9B9B9.toInt())
-                scaleRectAround(tx, gy, tx - 34f * s, gy - 106f * s, tx + 34f * s, gy + 8f * s, decoSc, dragHitScratch)
-                putDragHit("perch", dragHitScratch)
             }
             5 -> { // 小泳池：圆角水池 + 暖木池沿 + 上浅下深水面 + 反光涟漪
                 val pool = game.yardPool()
@@ -3096,8 +3223,6 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 canvas.drawRect(wl + 16f * s + rip, wt + 16f * s, wl + 58f * s + rip, wt + 19f * s, btnPaint)
                 canvas.drawRect(wr - 58f * s - rip, wb - 12f * s, wr - 16f * s - rip, wb - 9f * s, btnPaint)
                 btnPaint.isAntiAlias = aa
-                dragHitScratch.set(pl - 6f * s, pt - 6f * s, pr + 6f * s, pb + 6f * s)
-                putDragHit("pool", dragHitScratch)
             }
             6 -> { // 望远镜：三脚架托住镜筒，支架跟随镜筒
                 val tx = cx + game.yardTelescopeX() * s
@@ -3133,6 +3258,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
             }
         }
         canvas.restore()
+        registerDecoDragHit(deco, cx, gy, half, s)
     }
 
     // ---------- 庭院猫 ----------
@@ -3305,7 +3431,15 @@ class HudView(context: Context, private val game: Game) : View(context) {
         (screenY - yardSceneGy) / yardSceneS
 
     private fun hitHomeDraggable(x: Float, y: Float): String? {
+        for (id in homeYardDragOrder) {
+            if (!canHomeDrag(id)) continue
+            homeDragHits[id]?.let { if (it.contains(x, y)) return id }
+        }
         for (id in homeDragOrder) {
+            if (!canHomeDrag(id)) continue
+            homeDragHits[id]?.let { if (it.contains(x, y)) return id }
+        }
+        for (id in homeUiTextDragOrder) {
             if (!canHomeDrag(id)) continue
             homeDragHits[id]?.let { if (it.contains(x, y)) return id }
         }
@@ -3322,6 +3456,10 @@ class HudView(context: Context, private val game: Game) : View(context) {
         "telescope" -> game.ownsDeco(6)
         "scarf" -> homeEditing && game.homeTab == Game.HOME_TAB_SCARF
         "buy", "arrowL", "arrowR" -> homeEditing
+        "shopName", "shopPrice", "shopStatus", "editHint" -> homeEditing
+        "homeHint", "worldLabel" -> !homeEditing
+        "worldUnlockHint" -> !homeEditing && game.homeWorldsUnlockedCount() <= 1
+        "museumLabel", "honorLabel" -> true
         "worldL", "worldR" -> !homeEditing && game.homeWorldsUnlockedCount() > 1
         "tabColor", "tabTrail", "tabScarf", "tabHat" -> homeEditing && game.isCatHomeTab()
         else -> true
@@ -3360,10 +3498,10 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val id = homeDragId ?: return
         val po = game.homeLayout()
         val bound = (yardSceneHalf / yardSceneS).coerceAtLeast(80f)
-        val sceneDx = screenToSceneX(screenX) - homeDragStartSceneX
-        val sceneDy = screenToSceneY(screenY) - homeDragStartSceneY
-        val pixDx = screenX - homeDragStartFingerX
-        val pixDy = screenY - homeDragStartFingerY
+        val sceneDx = snapDragSceneDelta(screenToSceneX(screenX) - homeDragStartSceneX)
+        val sceneDy = snapDragSceneDelta(screenToSceneY(screenY) - homeDragStartSceneY)
+        val pixDx = snapDragPx(screenX - homeDragStartFingerX)
+        val pixDy = snapDragPx(screenY - homeDragStartFingerY)
         when (id) {
             "garden" -> {
                 po.gardenX = (homeDragStartOff[0] + sceneDx).coerceIn(-bound, bound)
@@ -3456,7 +3594,9 @@ class HudView(context: Context, private val game: Game) : View(context) {
             "worldL" -> switchHomeWorldWithToast(-1)
             "worldR" -> switchHomeWorldWithToast(1)
             "buy" -> if (homeEditing) showToast(game.buyOrEquipHome())
-            "energy", "reward", "wallet" -> { }
+            "energy", "reward", "wallet",
+            "shopName", "shopPrice", "shopStatus", "editHint", "homeHint",
+            "worldLabel", "worldUnlockHint", "museumLabel", "honorLabel" -> { }
         }
     }
 
