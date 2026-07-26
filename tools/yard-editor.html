@@ -35,6 +35,12 @@
   .seg button { border: 0; border-radius: 0; }
   .seg button.on { background: #4a72c0; color: #fff; }
   input[type=number] { width: 66px; background: #1c2027; border: 1px solid #3a4453; color: #e6e8ec; border-radius: 6px; padding: 5px 6px; }
+  .props { margin-top: 10px; padding-top: 10px; border-top: 1px solid #333a45; }
+  .props .fld { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .props label { color: #9aa2ad; font-size: 12px; min-width: 2.2em; }
+  .props .sep { color: #4a5563; margin: 0 2px; }
+  button.reset-one { font-size: 12px; padding: 5px 10px; color: #f0b86a; border-color: #6b5530; }
+  button.reset-one:hover { background: #3d3428; }
   ul.list { list-style: none; margin: 6px 0 0; padding: 0; max-height: 150px; overflow: auto; }
   ul.list li { display: flex; justify-content: space-between; gap: 8px; padding: 4px 8px; border-radius: 6px; cursor: pointer; }
   ul.list li:hover { background: #2f3540; }
@@ -56,7 +62,7 @@
   <div id="panel">
     <div>
       <h1>家页面布局编辑器</h1>
-      <p class="sub">与游戏同一套换算。<b>横竖屏配置完全隔离</b>——切换屏幕即编辑该朝向的独立一套。拖动改位置，拖角/边改大小，改动实时写回 App。</p>
+      <p class="sub">与游戏同一套换算。<b>横竖屏配置完全隔离</b>——切换屏幕即编辑该朝向的独立一套。拖动改位置，拖角/边改大小；选中后可在下方数值框精调，或点「恢复此项默认」单独还原。</p>
     </div>
 
     <div class="card">
@@ -74,7 +80,7 @@
         <label class="chk"><input type="checkbox" id="snap" checked> 吸附</label>
         <input type="number" id="snapStep" value="10" min="1" step="1"> 单位
         <label class="chk"><input type="checkbox" id="grid"> 网格</label>
-        <button id="reset">恢复游戏值</button>
+        <button id="reset">全部恢复默认</button>
       </div>
       <div class="row"><span class="hint">选中后方向键 <kbd>←↑↓→</kbd> 移动（<kbd>Shift</kbd> ×10）；拖角/边缩放</span></div>
     </div>
@@ -83,6 +89,12 @@
       <div class="row" style="justify-content:space-between">
         <strong id="selName">未选中</strong>
         <span class="coord" id="selCoord"></span>
+      </div>
+      <div id="selProps" class="props" hidden>
+        <div class="row fld" id="propFields"></div>
+        <div class="row" style="margin-top:8px;justify-content:flex-end">
+          <button type="button" class="reset-one" id="resetOne">恢复此项默认</button>
+        </div>
       </div>
       <div class="grp">庭院道具 · <span class="oriTag">竖屏</span>（cx/gy 偏移）</div>
       <ul class="list" id="listYard"></ul>
@@ -549,6 +561,137 @@ function coordOf(id) {
   if (it.box) return `L${it.ox} T${it.oy} ${it.w}×${it.h}`;
   return (it.lockX ? `y${it.oy}` : `${it.ox},${it.oy}`) + ` ×${(it.scale || 1).toFixed(2)}`;
 }
+
+// ------- 单项恢复默认（仅当前朝向） -------
+function defaultOf(id) {
+  if (UI.includes(id)) return { kind: "ui", rect: uiDefaults(W, H, S, mode === "portrait")[id] };
+  if (SCENE.includes(id)) return { kind: "scene", data: { ...sceneDefaults()[id] } };
+  if (TEXT.includes(id)) return { kind: "text", data: { ...textDefaults()[id] } };
+  return { kind: "yard", data: { ...yardDefaults()[id] } };
+}
+function resetOneElement(id) {
+  if (!id) return;
+  const d = defaultOf(id);
+  if (d.kind === "ui") delete store[mode].ui[id];
+  else if (d.kind === "scene") scene[id] = d.data;
+  else if (d.kind === "text") text[id] = d.data;
+  else yard[id] = d.data;
+  scheduleSave();
+  render();
+}
+
+// ------- 选中项数值编辑（位置 + 大小） -------
+let propBusy = false, lastPropSig = "";
+function propSpec(id) {
+  if (UI.includes(id)) {
+    const r = uiRect(id);
+    return [
+      { k: "x", label: "X%", min: -20, max: 120, step: 0.1, val: +(r.x / W * 100).toFixed(2), unit: "%" },
+      { k: "y", label: "Y%", min: -20, max: 120, step: 0.1, val: +(r.y / H * 100).toFixed(2), unit: "%" },
+      { k: "w", label: "宽", min: 8, max: 800, step: 1, val: Math.round(r.w / S), unit: "s" },
+      { k: "h", label: "高", min: 8, max: 400, step: 1, val: Math.round(r.h / S), unit: "s" },
+    ];
+  }
+  if (SCENE.includes(id)) {
+    const d = scene[id];
+    return [
+      { k: "dx", label: "ΔX", min: -600, max: 600, step: 1, val: d.dx, unit: "s" },
+      { k: "dy", label: "ΔY", min: -600, max: 600, step: 1, val: d.dy, unit: "s" },
+      { k: "scale", label: "缩放", min: 0.3, max: 4, step: 0.05, val: d.scale || 1, unit: "×" },
+    ];
+  }
+  if (TEXT.includes(id)) {
+    const d = text[id];
+    return [
+      { k: "dx", label: "ΔX", min: -600, max: 600, step: 1, val: d.dx, unit: "s" },
+      { k: "dy", label: "ΔY", min: -600, max: 600, step: 1, val: d.dy, unit: "s" },
+      { k: "scale", label: "缩放", min: 0.3, max: 4, step: 0.05, val: d.scale || 1, unit: "×" },
+    ];
+  }
+  const it = yard[id];
+  if (it.box) {
+    return [
+      { k: "ox", label: "左", min: -500, max: 500, step: 1, val: it.ox, unit: "s" },
+      { k: "oy", label: "上", min: -300, max: 400, step: 1, val: it.oy, unit: "s" },
+      { k: "w", label: "宽", min: 40, max: 600, step: 1, val: it.w, unit: "s" },
+      { k: "h", label: "高", min: 20, max: 400, step: 1, val: it.h, unit: "s" },
+    ];
+  }
+  const fields = [];
+  if (!it.lockX) fields.push({ k: "ox", label: "X", min: -500, max: 500, step: 1, val: it.ox, unit: "s" });
+  fields.push({ k: "oy", label: "Y", min: -300, max: 400, step: 1, val: it.oy, unit: "s" });
+  fields.push({ k: "scale", label: "缩放", min: 0.3, max: 4, step: 0.05, val: it.scale || 1, unit: "×" });
+  return fields;
+}
+function applyProp(id, key, raw) {
+  const v = +raw; if (!Number.isFinite(v)) return;
+  if (UI.includes(id)) {
+    const r = uiRect(id);
+    if (key === "x") r.x = v / 100 * W;
+    else if (key === "y") r.y = v / 100 * H;
+    else if (key === "w") r.w = v * S;
+    else if (key === "h") r.h = v * S;
+    applyRect(id, r, key === "w" || key === "h");
+    return;
+  }
+  if (SCENE.includes(id)) {
+    if (key === "dx") scene[id].dx = snapU(v);
+    else if (key === "dy") scene[id].dy = snapU(v);
+    else if (key === "scale") setScaleOf(id, v);
+    else return;
+    if (key !== "scale") scheduleSave();
+    return;
+  }
+  if (TEXT.includes(id)) {
+    if (key === "dx") text[id].dx = snapU(v);
+    else if (key === "dy") text[id].dy = snapU(v);
+    else if (key === "scale") setScaleOf(id, v);
+    else return;
+    if (key !== "scale") scheduleSave();
+    return;
+  }
+  const it = yard[id];
+  if (it.box) {
+    if (key === "ox") it.ox = snapU(v);
+    else if (key === "oy") it.oy = snapU(v);
+    else if (key === "w") it.w = Math.max(40, snapU(v));
+    else if (key === "h") it.h = Math.max(20, snapU(v));
+    scheduleSave();
+    return;
+  }
+  if (key === "ox" && !it.lockX) it.ox = snapU(v);
+  else if (key === "oy") it.oy = snapU(v);
+  else if (key === "scale") setScaleOf(id, v);
+  else return;
+  if (key !== "scale") scheduleSave();
+}
+function syncPropPanel() {
+  const wrap = document.getElementById("selProps");
+  const box = document.getElementById("propFields");
+  if (!sel) { wrap.hidden = true; box.innerHTML = ""; lastPropSig = ""; return; }
+  wrap.hidden = false;
+  const specs = propSpec(sel);
+  const sig = sel + "|" + specs.map(f => f.k).join(",");
+  if (sig !== lastPropSig) {
+    lastPropSig = sig;
+    propBusy = true;
+    box.innerHTML = specs.map(f =>
+      `<label>${f.label}</label><input type="number" data-k="${f.k}" value="${f.val}" min="${f.min}" max="${f.max}" step="${f.step}"><span class="hint">${f.unit}</span>`
+    ).join('<span class="sep">·</span>');
+    for (const inp of box.querySelectorAll("input")) {
+      inp.onchange = () => { if (!propBusy) { applyProp(sel, inp.dataset.k, inp.value); render(); } };
+      inp.oninput = () => { if (!propBusy) { applyProp(sel, inp.dataset.k, inp.value); render(); } };
+    }
+    propBusy = false;
+  } else {
+    propBusy = true;
+    for (const f of specs) {
+      const inp = box.querySelector(`input[data-k="${f.k}"]`);
+      if (inp && document.activeElement !== inp) inp.value = f.val;
+    }
+    propBusy = false;
+  }
+}
 function fillList(ulId, ids) {
   const ul = document.getElementById(ulId); ul.innerHTML = "";
   for (const id of ids) {
@@ -562,6 +705,7 @@ function syncPanel() {
   fillList("listYard", YARD); fillList("listScene", SCENE); fillList("listText", TEXT); fillList("listUi", UI);
   document.getElementById("selName").textContent = sel ? labelOf(sel) : "未选中";
   document.getElementById("selCoord").textContent = sel ? coordOf(sel) : "";
+  syncPropPanel();
   document.getElementById("out").value = exportKotlin();
 }
 function uiLine(id, ori) {
@@ -605,6 +749,7 @@ document.getElementById("mode").addEventListener("click", e => {
 document.getElementById("snap").onchange = render;
 document.getElementById("grid").onchange = e => { showGrid = e.target.checked; render(); };
 document.getElementById("reset").onclick = () => { store = { portrait: freshOri(), landscape: freshOri() }; bindMode(); sel = null; render(); scheduleSave(); };
+document.getElementById("resetOne").onclick = () => resetOneElement(sel);
 document.getElementById("copy").onclick = () => {
   const t = document.getElementById("out"); t.select(); navigator.clipboard?.writeText(t.value);
   const b = document.getElementById("copy"); b.textContent = "已复制 ✓"; setTimeout(() => b.textContent = "复制", 1200);
