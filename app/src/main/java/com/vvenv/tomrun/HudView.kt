@@ -574,7 +574,6 @@ class HudView(context: Context, private val game: Game) : View(context) {
                     hitRoof.contains(x, y) -> selectHomeCategory(Game.HOME_TAB_ROOF)
                     hitYardDeco.contains(x, y) -> selectHomeCategory(Game.HOME_TAB_DECO)
                     hitCosmeticScarf.contains(x, y) -> selectHomeCategory(Game.HOME_TAB_SCARF)
-                    hitCosmeticHat.contains(x, y) -> selectHomeCategory(Game.HOME_TAB_HAT)
                     yardCatHit.contains(x, y) -> selectHomeCategory(Game.HOME_TAB_COLOR)
                     hitSky.contains(x, y) -> homeEditing = false
                     yardSceneHit.contains(x, y) -> scheduleYardSceneTap(x, y)
@@ -2107,7 +2106,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         hitCosmeticColor.setEmpty()
         hitCosmeticTrail.setEmpty()
         hitCosmeticScarf.set(cx + 26f * s, gy - 72f * s, cx + 118f * s, gy + 10f * s)
-        hitCosmeticHat.set(cx + 182f * s, gy - 90f * s, cx + 210f * s, gy + 4f * s)
+        hitCosmeticHat.setEmpty()
 
         if (highlightEditing) {
             val pulse = if (kotlin.math.sin(homePhase * 4f) > 0f) 0x44FFD426 else 0x22FFD426
@@ -2118,9 +2117,8 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 Game.HOME_TAB_HOUSE -> hitHouse
                 Game.HOME_TAB_ROOF -> hitRoof
                 Game.HOME_TAB_DECO -> hitYardDeco
-                Game.HOME_TAB_COLOR, Game.HOME_TAB_TRAIL -> null
+                Game.HOME_TAB_COLOR, Game.HOME_TAB_TRAIL, Game.HOME_TAB_HAT -> null
                 Game.HOME_TAB_SCARF -> hitCosmeticScarf
-                Game.HOME_TAB_HAT -> hitCosmeticHat
                 else -> null
             }
             active?.let { canvas.drawRect(it, btnPaint) }
@@ -2328,7 +2326,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         scaleRectAround(hx, base, hx - 76f * u, signT, hx + 76f * u, base + 6f * s, LayoutConfig.cur.honorS, hitHonorWall)
     }
 
-    /** 装扮物品在庭院中的可视化：围巾晾绳 / 帽子稻草人（配色与光迹仅在跑酷中体现，不在庭院铺静态装饰） */
+    /** 装扮物品在庭院中的可视化：围巾晾绳（配色/光迹/帽子仅在猫身上或跑酷中体现） */
     private fun drawCosmeticYardDeco(
         canvas: Canvas, cx: Float, gy: Float, half: Float, s: Float,
         color: Int, trail: Int, scarf: Int, hat: Int, ghost: Boolean
@@ -2347,25 +2345,6 @@ class HudView(context: Context, private val game: Game) : View(context) {
             rc(sx - 42f * s, gy - 64f * s, sx + 42f * s, gy - 60f * s, 0xFFB9B9B9.toInt())
             val sway = kotlin.math.sin(homePhase * 1.2f) * 5f * s
             rc(sx - 18f * s + sway, gy - 60f * s, sx + 18f * s + sway, gy - 46f * s, scC)
-        }
-        if (hat > 0) {
-            val hx = cx + 196f * s
-            rc(hx - 3f * s, gy - 48f * s, hx + 3f * s, gy, 0xFF97622F.toInt())
-            rc(hx - 10f * s, gy - 66f * s, hx + 10f * s, gy - 48f * s, 0xFFD8B98A.toInt())
-            when (hat) {
-                1 -> {
-                    rc(hx - 14f * s, gy - 74f * s, hx + 14f * s, gy - 68f * s, HAT_CAP)
-                    rc(hx - 8f * s, gy - 82f * s, hx + 8f * s, gy - 74f * s, HAT_CAP_DK)
-                }
-                2 -> {
-                    rc(hx - 16f * s, gy - 78f * s, hx + 16f * s, gy - 70f * s, HAT_STRAW)
-                    rc(hx - 16f * s, gy - 70f * s, hx + 16f * s, gy - 66f * s, HAT_STRAW_BAND)
-                }
-                else -> {
-                    rc(hx - 12f * s, gy - 80f * s, hx + 12f * s, gy - 72f * s, HAT_GOLD)
-                    rc(hx - 4f * s, gy - 86f * s, hx + 4f * s, gy - 80f * s, HAT_RUBY)
-                }
-            }
         }
     }
 
