@@ -596,6 +596,8 @@ class Game {
     private var ownedHouses = 1       // bit0 免费小木屋
     private var ownedRoofs = 1
     private var ownedDecos = 0
+    /** 各世界庭院装饰拥有情况（bit 与 DECO 下标一致） */
+    private val ownedDecosByWorld = IntArray(UNIVERSE_COUNT) { 0 }
     @Volatile var homeTab = HOME_TAB_HOUSE
     @Volatile var homeBrowseHouse = 0
     @Volatile var homeBrowseRoof = 0
@@ -778,12 +780,14 @@ class Game {
         ownedHouses = p.getInt("ownedHouses", 1) or 1
         ownedRoofs = p.getInt("ownedRoofs", 1) or 1
         ownedDecos = p.getInt("ownedDecos", 0)
+        loadPerWorldOwnedDecos(p)
         loadPerWorldHouseStyles(p)
         loadHomePlayerLayout(p.getString("homePlayerLayout", null) ?: p.getString("yardPlayerLayout", null))
         homeWorld = p.getInt("homeWorld", UNI_MEADOW).coerceIn(0, UNIVERSE_COUNT - 1)
         if (!homeWorldUnlocked(homeWorld)) homeWorld = UNI_MEADOW
         homeBrowseHouse = houseStyle
         homeBrowseRoof = roofStyle
+        homeBrowseDeco = HomeWorldContent.clampDecoBrowse(homeWorld, homeBrowseDeco)
         telescopeLevel = p.getInt("telescopeLevel", 0).coerceIn(0, TELESCOPE_MAX_LEVEL)
         stargazeReadMask = p.getInt("stargazeReadMask", 0)
         stargazeDayKey = p.getString("stargazeDayKey", "") ?: ""
@@ -908,7 +912,8 @@ class Game {
             ?.apply()
     }
 
-    fun canUseTelescope() = ownsDeco(DECO_TELESCOPE)
+    fun canUseTelescope() =
+        HomeWorldContent.decoAvailable(homeWorld, DECO_TELESCOPE) && ownsDeco(DECO_TELESCOPE)
 
     fun telescopeCanUpgrade() = canUseTelescope() && telescopeLevel < TELESCOPE_MAX_LEVEL
 
@@ -941,7 +946,17 @@ class Game {
     fun ownsHat(i: Int) = (ownedHats and (1 shl i)) != 0
     fun ownsHouse(i: Int) = (ownedHouses and (1 shl i)) != 0
     fun ownsRoof(i: Int) = (ownedRoofs and (1 shl i)) != 0
-    fun ownsDeco(i: Int) = (ownedDecos and (1 shl i)) != 0
+    fun ownsDeco(i: Int): Boolean {
+        val w = homeWorld.coerceIn(0, UNIVERSE_COUNT - 1)
+        if (!HomeWorldContent.decoAvailable(w, i)) return false
+        return (ownedDecosByWorld[w] and (1 shl i)) != 0
+    }
+
+    fun decoAvailableInHome(i: Int) = HomeWorldContent.decoAvailable(homeWorld, i)
+
+    fun homeDecoName(i: Int) = HomeWorldContent.decoName(homeWorld, i)
+
+    fun homeHouseName(i: Int) = HomeWorldContent.houseName(homeWorld, i)
 
     fun selectHomeLayoutOrientation(portrait: Boolean) {
         homeLayoutPortraitActive = portrait
@@ -971,6 +986,7 @@ class Game {
                 homeWorld = w
                 homeBrowseHouse = houseStyles[w]
                 homeBrowseRoof = roofStyles[w]
+                homeBrowseDeco = HomeWorldContent.clampDecoBrowse(w, homeBrowseDeco)
                 prefs?.edit()?.putInt("homeWorld", w)?.apply()
                 emit(EV_PORTAL, HAPTIC_LIGHT)
                 return UNIVERSE_NAMES[w]
@@ -1116,7 +1132,15 @@ class Game {
     }
     fun museumComplete() = relicsFound >= RELIC_COUNT
 
-    fun decoOwnedCount(): Int = Integer.bitCount(ownedDecos)
+    fun decoOwnedCount(): Int {
+        var n = 0
+        for (w in 0 until UNIVERSE_COUNT) {
+            for (d in 0 until HomeWorldContent.DECO_COUNT) {
+                if (HomeWorldContent.decoAvailable(w, d) && (ownedDecosByWorld[w] and (1 shl d)) != 0) n++
+            }
+        }
+        return n
+    }
 
     @Synchronized fun renameCharacter(rawName: String): Boolean {
         if (state == State.RUNNING) return false
@@ -1133,7 +1157,13 @@ class Game {
         var sum = 0
         for (i in 1 until HOUSE_PRICES.size) if (ownsHouse(i)) sum += HOUSE_PRICES[i]
         for (i in 1 until ROOF_PRICES.size) if (ownsRoof(i)) sum += ROOF_PRICES[i]
-        for (i in DECO_PRICES.indices) if (ownsDeco(i)) sum += DECO_PRICES[i]
+        for (i in DECO_PRICES.indices) {
+            for (w in 0 until UNIVERSE_COUNT) {
+                if (HomeWorldContent.decoAvailable(w, i) &&
+                    (ownedDecosByWorld[w] and (1 shl i)) != 0
+                ) sum += DECO_PRICES[i]
+            }
+        }
         for (i in 0 until telescopeLevel) sum += TELESCOPE_UPGRADE_PRICES[i]
         for (i in 1 until CAT_COLOR_COUNT) if (ownsColor(i)) sum += COLOR_PRICES[i]
         for (i in 1 until TRAIL_COUNT) if (ownsTrail(i)) sum += TRAIL_PRICES[i]
@@ -1269,7 +1299,7 @@ class Game {
             HOME_TAB_ROOF -> homeBrowseRoof =
                 (homeBrowseRoof + delta + ROOF_NAMES.size) % ROOF_NAMES.size
             HOME_TAB_DECO -> homeBrowseDeco =
-                (homeBrowseDeco + delta + DECO_NAMES.size) % DECO_NAMES.size
+                HomeWorldContent.nextDecoBrowse(homeWorld, homeBrowseDeco, delta)
             HOME_TAB_COLOR -> browseColor(delta)
             HOME_TAB_TRAIL -> browseTrail(delta)
             HOME_TAB_SCARF -> {
@@ -1290,7 +1320,7 @@ class Game {
                 if (ownsHouse(i)) {
                     houseStyle = i
                     persistHome()
-                    return "已在${UNIVERSE_NAMES[homeWorld]}入住 ${HOUSE_NAMES[i]}"
+                    return "已在${UNIVERSE_NAMES[homeWorld]}入住 ${homeHouseName(i)}"
                 }
                 val price = HOUSE_PRICES[i]
                 if (wallet < price) return "金币不足（需 $price）"
@@ -1300,7 +1330,7 @@ class Game {
                 persistHome()
                 emit(EV_BUY, HAPTIC_MED)
                 tryUnlockAchievements(persist = true)
-                return "乔迁新居：${UNIVERSE_NAMES[homeWorld]} · ${HOUSE_NAMES[i]}！"
+                return "乔迁新居：${UNIVERSE_NAMES[homeWorld]} · ${homeHouseName(i)}！"
             }
             HOME_TAB_ROOF -> {
                 val i = homeBrowseRoof
@@ -1321,15 +1351,21 @@ class Game {
             }
             HOME_TAB_DECO -> {
                 val i = homeBrowseDeco
-                if (ownsDeco(i)) return "${DECO_NAMES[i]} 已摆放在院子里"
+                if (!HomeWorldContent.decoAvailable(homeWorld, i)) {
+                    homeBrowseDeco = HomeWorldContent.clampDecoBrowse(homeWorld, i)
+                    return "该世界没有这种装饰"
+                }
+                if (ownsDeco(i)) return "${homeDecoName(i)} 已摆放在院子里"
                 val price = DECO_PRICES[i]
                 if (wallet < price) return "金币不足（需 $price）"
                 wallet -= price
+                val w = homeWorld.coerceIn(0, UNIVERSE_COUNT - 1)
+                ownedDecosByWorld[w] = ownedDecosByWorld[w] or (1 shl i)
                 ownedDecos = ownedDecos or (1 shl i)
                 persistHome()
                 emit(EV_BUY, HAPTIC_MED)
                 tryUnlockAchievements(persist = true)
-                return "已摆上：${DECO_NAMES[i]}"
+                return "已摆上：${homeDecoName(i)}"
             }
             HOME_TAB_COLOR -> return buyOrEquipColor()
             HOME_TAB_TRAIL -> return buyOrEquipTrail()
@@ -1474,8 +1510,7 @@ class Game {
 
     /** 家园建造拥有件数：房屋 / 屋顶 / 庭院装饰 */
     fun homeCosmeticCount(): Int =
-        Integer.bitCount(ownedHouses) + Integer.bitCount(ownedRoofs) +
-            Integer.bitCount(ownedDecos)
+        Integer.bitCount(ownedHouses) + Integer.bitCount(ownedRoofs) + decoOwnedCount()
 
     // ---------- 输入 ----------
     /** Debug 测试开关（不死 + 藏品全览）：仅当前进程内有效，重启后自动关闭。 */
@@ -2645,6 +2680,32 @@ class Game {
             ?.apply()
     }
 
+    private fun loadPerWorldOwnedDecos(p: android.content.SharedPreferences) {
+        val legacy = p.getInt("ownedDecos", 0)
+        val saved = p.getString("ownedDecosByWorld", null)
+        if (saved != null) {
+            saved.split(',').forEachIndexed { i, v ->
+                if (i < UNIVERSE_COUNT) ownedDecosByWorld[i] = v.toIntOrNull() ?: 0
+            }
+        } else {
+            ownedDecosByWorld.fill(legacy)
+        }
+        for (w in 0 until UNIVERSE_COUNT) {
+            for (d in 0 until HomeWorldContent.DECO_COUNT) {
+                if (!HomeWorldContent.decoAvailable(w, d)) {
+                    ownedDecosByWorld[w] = ownedDecosByWorld[w] and (1 shl d).inv()
+                }
+            }
+        }
+        ownedDecos = ownedDecosByWorld.fold(0) { acc, mask -> acc or mask }
+    }
+
+    private fun persistPerWorldOwnedDecos(ed: android.content.SharedPreferences.Editor) {
+        ownedDecos = ownedDecosByWorld.fold(0) { acc, mask -> acc or mask }
+        ed.putString("ownedDecosByWorld", ownedDecosByWorld.joinToString(","))
+            .putInt("ownedDecos", ownedDecos)
+    }
+
     private fun loadPerWorldHouseStyles(p: android.content.SharedPreferences) {
         val legacyHouse = p.getInt("houseStyle", 0).coerceIn(0, HOUSE_NAMES.size - 1)
         val legacyRoof = p.getInt("roofStyle", 0).coerceIn(0, ROOF_NAMES.size - 1)
@@ -2688,7 +2749,10 @@ class Game {
             ?.putInt("ownedHouses", ownedHouses)
             ?.putInt("ownedRoofs", ownedRoofs)
             ?.putInt("ownedDecos", ownedDecos)
-            ?.also { persistPerWorldHouseStyles(it) }
+            ?.also { ed ->
+                persistPerWorldHouseStyles(ed)
+                persistPerWorldOwnedDecos(ed)
+            }
             ?.putInt("telescopeLevel", telescopeLevel)
             ?.putInt("stargazeReadMask", stargazeReadMask)
             ?.putString("stargazeDayKey", stargazeDayKey)
@@ -2733,7 +2797,10 @@ class Game {
             .putInt("ownedHouses", ownedHouses)
             .putInt("ownedRoofs", ownedRoofs)
             .putInt("ownedDecos", ownedDecos)
-            .also { persistPerWorldHouseStyles(it) }
+            .also { ed ->
+                persistPerWorldHouseStyles(ed)
+                persistPerWorldOwnedDecos(ed)
+            }
             .putInt("telescopeLevel", telescopeLevel)
             .putInt("stargazeReadMask", stargazeReadMask)
             .putString("stargazeDayKey", stargazeDayKey)

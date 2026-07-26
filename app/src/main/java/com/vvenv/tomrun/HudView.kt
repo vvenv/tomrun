@@ -2129,7 +2129,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         Game.HOME_TAB_HOUSE -> {
             val i = game.homeBrowseHouse
             HomeRow(
-                Game.HOUSE_NAMES[i], Game.HOUSE_PRICES[i],
+                game.homeHouseName(i), Game.HOUSE_PRICES[i],
                 when {
                     game.houseStyle == i -> "${Game.UNIVERSE_NAMES[game.homeWorld]}居住中"
                     game.ownsHouse(i) -> "已拥有"
@@ -2153,7 +2153,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         Game.HOME_TAB_DECO -> {
             val i = game.homeBrowseDeco
             HomeRow(
-                Game.DECO_NAMES[i], Game.DECO_PRICES[i],
+                game.homeDecoName(i), Game.DECO_PRICES[i],
                 if (game.ownsDeco(i)) "已摆放" else "",
                 // 摆件一旦拥有就直接摆进院子，没有再点一次的意义；
                 // action 留空表示这行不需要按钮，避免和上面的状态文字重复
@@ -2287,7 +2287,8 @@ class HudView(context: Context, private val game: Game) : View(context) {
     }
 
     /** 庭院道具拖放热区（屏幕坐标，须在 canvas.restore 之后调用） */
-    private fun registerDecoDragHit(deco: Int, cx: Float, gy: Float, half: Float, s: Float) {
+    private fun registerDecoDragHit(world: Int, deco: Int, cx: Float, gy: Float, half: Float, s: Float) {
+        if (!HomeWorldContent.decoAvailable(world, deco)) return
         fun yardHit(id: String, ax: Float, footY: Float, sc: Float, l: Float, t: Float, r: Float, b: Float) {
             scaleRectAround(ax, footY, ax + l, footY + t, ax + r, footY + b, sc, dragHitScratch)
             putDragHit(id, dragHitScratch)
@@ -2638,74 +2639,20 @@ class HudView(context: Context, private val game: Game) : View(context) {
         // 房屋接地阴影：与藏品馆 / 荣誉墙统一，避免房屋「浮」在草地上
         groundShadow(canvas, cx, gy, 118f * s, s)
 
-        // 房屋主体（中心 cx，底部落在 gy）
-        when (house) {
-            0 -> { // 小木屋
-                rc(cx - 80f * s, gy - 110f * s, cx + 80f * s, gy, housePal[0])
-                for (i in 0..3) {
-                    rc(cx - 80f * s, gy - 110f * s + i * 28f * s, cx + 80f * s, gy - 108f * s + i * 28f * s, housePal[1])
-                }
-                boxShade(canvas, cx - 80f * s, gy - 110f * s, cx + 80f * s, gy, s)
-                pyramidRoof(canvas, cx, gy - 110f * s, 104f * s, 46f * s, roofC, roofD, s)
-                door(canvas, cx + 34f * s, gy, s)
-                window(canvas, cx - 40f * s, gy - 62f * s, s, winLight)
-            }
-            1 -> { // 砖瓦房
-                rc(cx - 100f * s, gy - 122f * s, cx + 100f * s, gy, housePal[0])
-                for (r in 0..4) for (c in 0..5) {
-                    val bx = cx - 100f * s + (c * 34f + if (r % 2 == 0) 0f else 17f) * s
-                    rc(bx, gy - 122f * s + r * 25f * s, bx + 15f * s, gy - 120f * s + r * 25f * s, housePal[1])
-                }
-                boxShade(canvas, cx - 100f * s, gy - 122f * s, cx + 100f * s, gy, s)
-                pyramidRoof(canvas, cx, gy - 122f * s, 126f * s, 50f * s, roofC, roofD, s)
-                door(canvas, cx - 52f * s, gy, s)
-                window(canvas, cx + 14f * s, gy - 66f * s, s, winLight)
-                window(canvas, cx + 58f * s, gy - 66f * s, s, winLight)
-            }
-            2 -> { // 双层小楼
-                rc(cx - 100f * s, gy - 190f * s, cx + 100f * s, gy, housePal[0])
-                rc(cx - 100f * s, gy - 100f * s, cx + 100f * s, gy - 92f * s, housePal[1])
-                boxShade(canvas, cx - 100f * s, gy - 190f * s, cx + 100f * s, gy, s)
-                pyramidRoof(canvas, cx, gy - 190f * s, 126f * s, 48f * s, roofC, roofD, s)
-                door(canvas, cx, gy, s)
-                window(canvas, cx - 64f * s, gy - 52f * s, s, winLight)
-                window(canvas, cx + 64f * s, gy - 52f * s, s, winLight)
-                window(canvas, cx - 64f * s, gy - 142f * s, s, winLight)
-                window(canvas, cx + 64f * s, gy - 142f * s, s, winLight)
-                // 阳台
-                rc(cx - 30f * s, gy - 126f * s, cx + 30f * s, gy - 118f * s, housePal[2])
-            }
-            else -> { // 梦幻城堡
-                rc(cx - 85f * s, gy - 150f * s, cx + 85f * s, gy, housePal[0])
-                rc(cx - 130f * s, gy - 205f * s, cx - 82f * s, gy, housePal[1])
-                rc(cx + 82f * s, gy - 205f * s, cx + 130f * s, gy, housePal[1])
-                boxShade(canvas, cx - 85f * s, gy - 150f * s, cx + 85f * s, gy, s)
-                boxShade(canvas, cx - 130f * s, gy - 205f * s, cx - 82f * s, gy, s)
-                boxShade(canvas, cx + 82f * s, gy - 205f * s, cx + 130f * s, gy, s)
-                pyramidRoof(canvas, cx - 106f * s, gy - 205f * s, 56f * s, 42f * s, roofC, roofD, s)
-                pyramidRoof(canvas, cx + 106f * s, gy - 205f * s, 56f * s, 42f * s, roofC, roofD, s)
-                pyramidRoof(canvas, cx, gy - 150f * s, 96f * s, 40f * s, roofC, roofD, s)
-                // 旗帜
-                rc(cx - 108f * s, gy - 268f * s, cx - 104f * s, gy - 247f * s, 0xFF97622F.toInt())
-                rc(cx - 104f * s, gy - 266f * s, cx - 84f * s, gy - 256f * s, 0xFFF25A5A.toInt())
-                rc(cx + 104f * s, gy - 268f * s, cx + 108f * s, gy - 247f * s, 0xFF97622F.toInt())
-                rc(cx + 108f * s, gy - 266f * s, cx + 128f * s, gy - 256f * s, 0xFF5AA9F2.toInt())
-                // 大门 + 窄窗
-                rc(cx - 26f * s, gy - 64f * s, cx + 26f * s, gy, 0xFF6B4A2B.toInt())
-                rc(cx - 18f * s, gy - 56f * s, cx + 18f * s, gy, 0xFF553A20.toInt())
-                rc(cx - 60f * s, gy - 110f * s, cx - 48f * s, gy - 78f * s, housePal[2])
-                rc(cx + 48f * s, gy - 110f * s, cx + 60f * s, gy - 78f * s, housePal[2])
-            }
-        }
+        // 房屋主体（中心 cx，底部落在 gy）——造型因世界而异
+        HomeWorldDraw.drawHouse(
+            world, house, cx, gy, housePal, roofC, roofD, winLight, homeWorldGfx(canvas, s, gy)
+        )
         drawHouseWorldTrim(canvas, world, house, cx, gy, s)
         canvas.restore()   // 结束房屋平移；装饰与热区回到未偏移坐标系
 
-        // 装饰：已购实心；浏览未购的半透明预览
+        // 装饰：仅本世界可购且已购（或浏览预览）的才绘制
         for (i in Game.DECO_NAMES.indices) {
+            if (!HomeWorldContent.decoAvailable(world, i)) continue
             val owned = game.ownsDeco(i)
             if (!owned && i != ghostDeco) continue
             val alpha = if (owned) 255 else 110
-            drawDeco(canvas, i, cx, gy, half, s, alpha)
+            drawDeco(canvas, world, i, cx, gy, half, s, alpha)
         }
 
         drawCosmeticYardDeco(
@@ -3114,14 +3061,26 @@ class HudView(context: Context, private val game: Game) : View(context) {
         btnPaint.isAntiAlias = aa
     }
 
-    private fun drawDeco(canvas: Canvas, deco: Int, cx: Float, gy: Float, half: Float, s: Float, alpha: Int) {
-        val world = game.homeWorld.coerceIn(0, Game.UNIVERSE_COUNT - 1)
-        fun rc(l: Float, t: Float, r: Float, b: Float, color: Int) {
-            btnPaint.style = Paint.Style.FILL
-            btnPaint.color = withAlpha(color, alpha)
-            canvas.drawRect(l, t, r, b, btnPaint)
-        }
-        // 每个道具：LayoutConfig 基线 + 玩家偏移，Y 偏移 + 缩放（绕自身底部锚点）
+    private fun homeWorldGfx(canvas: Canvas, s: Float, gy: Float, alpha: Int = 255): HomeWorldDraw.Gfx {
+        return HomeWorldDraw.Gfx(
+            canvas, btnPaint, s, homePhase,
+            rc = { l, t, r, b, color ->
+                btnPaint.style = Paint.Style.FILL
+                btnPaint.color = withAlpha(color, alpha)
+                canvas.drawRect(l, t, r, b, btnPaint)
+            },
+            boxShade = { l, t, r, b -> boxShade(canvas, l, t, r, b, s) },
+            pyramidRoof = { rcx, bottomY, halfW, height, c, cd ->
+                pyramidRoof(canvas, rcx, bottomY, halfW, height, c, cd, s)
+            },
+            door = { doorCx -> door(canvas, doorCx, gy, s) },
+            window = { wcx, wcy, light -> window(canvas, wcx, wcy, s, light) },
+            groundShadow = { scx, baseY, halfW -> groundShadow(canvas, scx, baseY, halfW, s) },
+            withAlpha = { c, a -> withAlpha(c, a) }
+        )
+    }
+
+    private fun drawDeco(canvas: Canvas, world: Int, deco: Int, cx: Float, gy: Float, half: Float, s: Float, alpha: Int) {
         val decoAx = cx + when (deco) {
             0 -> game.yardGardenX(); 2 -> game.yardMailboxX(); 3 -> game.yardSwingX()
             4 -> game.yardPerchX(); 6 -> game.yardTelescopeX(); else -> 0f
@@ -3137,128 +3096,21 @@ class HudView(context: Context, private val game: Game) : View(context) {
         canvas.save()
         canvas.translate(0f, decoDy)
         canvas.scale(decoSc, decoSc, if (deco == 1) cx else decoAx, gy)
-        when (deco) {
-            0 -> { // 花坛
-                val fx = cx + game.yardGardenX() * s
-                if (alpha == 255) groundShadow(canvas, fx, gy + 32f * s, 44f * s, s)
-                rc(fx - 40f * s, gy + 16f * s, fx + 40f * s, gy + 32f * s, 0xFF97622F.toInt())
-                for (i in 0..2) {
-                    val px = fx - 26f * s + i * 26f * s
-                    rc(px - 2f * s, gy + 2f * s, px + 2f * s, gy + 16f * s, HOME_FLOWER_STEM[world])
-                    rc(px - 6f * s, gy - 8f * s, px + 6f * s, gy + 4f * s, HOME_FLOWERS[world][i])
-                }
-            }
-            1 -> { // 木栅栏（Y 偏移与缩放由外层统一处理）
-                var px = cx - half + 20f * s
-                while (px < cx + half - 20f * s) {
-                    rc(px - 3f * s, gy + 36f * s, px + 3f * s, gy + 64f * s, HOME_FENCE[world][0])
-                    px += 34f * s
-                }
-                rc(cx - half + 12f * s, gy + 44f * s, cx + half - 12f * s, gy + 50f * s, HOME_FENCE[world][1])
-            }
-            2 -> { // 信箱
-                val mx = cx + game.yardMailboxX() * s
-                if (alpha == 255) groundShadow(canvas, mx, gy, 18f * s, s)
-                rc(mx - 3f * s, gy - 34f * s, mx + 3f * s, gy, 0xFF97622F.toInt())
-                rc(mx - 16f * s, gy - 52f * s, mx + 16f * s, gy - 32f * s, 0xFFF25A5A.toInt())
-                rc(mx + 12f * s, gy - 62f * s, mx + 16f * s, gy - 50f * s, 0xFFFFD75E.toInt())
-            }
-            3 -> { // 秋千（座位摇摆）
-                val sx = cx + game.yardSwingX() * s
-                if (alpha == 255) groundShadow(canvas, sx, gy, 40f * s, s)
-                rc(sx - 34f * s, gy - 84f * s, sx - 28f * s, gy, 0xFF97622F.toInt())
-                rc(sx + 28f * s, gy - 84f * s, sx + 34f * s, gy, 0xFF97622F.toInt())
-                rc(sx - 38f * s, gy - 90f * s, sx + 38f * s, gy - 82f * s, 0xFF7A4E22.toInt())
-                val sway = kotlin.math.sin(homePhase * 1.6f) * 10f * s
-                rc(sx - 14f * s + sway, gy - 82f * s, sx - 11f * s + sway * 1.2f, gy - 34f * s, 0xFFB9B9B9.toInt())
-                rc(sx + 11f * s + sway, gy - 82f * s, sx + 14f * s + sway * 1.2f, gy - 34f * s, 0xFFB9B9B9.toInt())
-                rc(sx - 18f * s + sway * 1.2f, gy - 34f * s, sx + 18f * s + sway * 1.2f, gy - 26f * s, 0xFFFFD75E.toInt())
-            }
-            4 -> { // 猫爬架
-                val tx = cx + game.yardPerchX() * s
-                if (alpha == 255) groundShadow(canvas, tx, gy, 22f * s, s)
-                rc(tx - 4f * s, gy - 96f * s, tx + 4f * s, gy, 0xFFC9A570.toInt())
-                rc(tx - 30f * s, gy - 64f * s, tx + 10f * s, gy - 54f * s, 0xFF8594B3.toInt())
-                rc(tx - 10f * s, gy - 102f * s, tx + 30f * s, gy - 92f * s, 0xFFF5A8C1.toInt())
-                rc(tx + 12f * s, gy - 92f * s, tx + 20f * s, gy - 78f * s, 0xFFB9B9B9.toInt())
-            }
-            5 -> { // 小泳池：圆角水池 + 暖木池沿 + 上浅下深水面 + 反光涟漪
-                val pool = game.yardPool()
-                val pl = cx + pool.l * s; val pr = cx + pool.r * s
-                val pt = gy + pool.t * s; val pb = gy + pool.b * s
-                val aa = btnPaint.isAntiAlias
-                btnPaint.isAntiAlias = true
-                btnPaint.shader = null
-                val rad = 16f * s
-                // 接地阴影：把水池「坐」进草地
-                if (alpha == 255) {
-                    btnPaint.color = 0x22000000
-                    canvas.drawOval(pl - 4f * s, pb - 12f * s, pr + 4f * s, pb + 8f * s, btnPaint)
-                }
-                // 暖木池沿：下缘略暗做出厚度
-                btnPaint.color = withAlpha(0xFF9A6E3E.toInt(), alpha)
-                canvas.drawRoundRect(pl, pt + 4f * s, pr, pb, rad, rad, btnPaint)
-                btnPaint.color = withAlpha(0xFFC79761.toInt(), alpha)
-                canvas.drawRoundRect(pl, pt, pr, pb - 6f * s, rad, rad, btnPaint)
-                // 水面：上浅下深竖直渐变
-                val wl = pl + 9f * s; val wt = pt + 8f * s
-                val wr = pr - 9f * s; val wb = pb - 12f * s
-                val wRad = 11f * s
-                btnPaint.shader = LinearGradient(
-                    0f, wt, 0f, wb,
-                    intArrayOf(
-                        withAlpha(HOME_POOL_WATER[world][0], alpha),
-                        withAlpha(HOME_POOL_WATER[world][1], alpha)
-                    ),
-                    null, Shader.TileMode.CLAMP
-                )
-                canvas.drawRoundRect(wl, wt, wr, wb, wRad, wRad, btnPaint)
-                btnPaint.shader = null
-                // 下缘反光
-                btnPaint.color = withAlpha(0xFFFFFFFF.toInt(), (alpha * 0.30f).toInt())
-                canvas.drawRoundRect(wl + 3f * s, wb - 2f * s, wr - 3f * s, wb - 8f * s, wRad, wRad, btnPaint)
-                // 动画涟漪：一上一下错开漂动
-                val rip = kotlin.math.sin(homePhase * 2.2f) * 7f * s
-                btnPaint.color = withAlpha(0xFFCDEBFA.toInt(), (alpha * 0.85f).toInt())
-                canvas.drawRect(wl + 16f * s + rip, wt + 16f * s, wl + 58f * s + rip, wt + 19f * s, btnPaint)
-                canvas.drawRect(wr - 58f * s - rip, wb - 12f * s, wr - 16f * s - rip, wb - 9f * s, btnPaint)
-                btnPaint.isAntiAlias = aa
-            }
-            6 -> { // 望远镜：三脚架托住镜筒，支架跟随镜筒
-                val tx = cx + game.yardTelescopeX() * s
-                val topY = gy - 26f * s                       // 支架顶（云台高度）
-                if (alpha == 255) groundShadow(canvas, tx, gy, 22f * s, s)
-                // 三脚：中柱 + 左右斜撑，都从云台指向地面
-                rc(tx - 3f * s, topY, tx + 3f * s, gy, 0xFF5B5B66.toInt())
-                canvas.save(); canvas.rotate(24f, tx, topY + 4f * s)
-                rc(tx - 3f * s, topY + 4f * s, tx + 3f * s, gy + 6f * s, 0xFF6B6B77.toInt()); canvas.restore()
-                canvas.save(); canvas.rotate(-24f, tx, topY + 4f * s)
-                rc(tx - 3f * s, topY + 4f * s, tx + 3f * s, gy + 6f * s, 0xFF6B6B77.toInt()); canvas.restore()
-                // 云台
-                rc(tx - 7f * s, topY - 3f * s, tx + 7f * s, topY + 4f * s, 0xFF4A4A55.toInt())
-                // 镜筒：斜 -30°，架在云台上（枢轴在 topY，与支架顶重合）
-                canvas.save()
-                canvas.rotate(-30f, tx, topY)
-                btnPaint.color = withAlpha(0xFF3E4A66.toInt(), alpha)
-                canvas.drawRect(tx - 12f * s, topY - 8f * s, tx + 32f * s, topY + 8f * s, btnPaint)
-                btnPaint.color = withAlpha(0xFF57B6E8.toInt(), alpha)
-                canvas.drawRect(tx + 28f * s, topY - 6f * s, tx + 32f * s, topY + 6f * s, btnPaint)
-                canvas.restore()
-            }
-            else -> { // 彩旗：从屋顶拉向两侧，配色随世界
-                val flags = HOME_FLAGS[world]
-                for (side in intArrayOf(-1, 1)) {
-                    for (i in 0..4) {
-                        val t = (i + 1) / 6f
-                        val fx = cx + side * t * (half - 30f * s)
-                        val fy = gy - 200f * s + t * t * 130f * s
-                        rc(fx - 7f * s, fy, fx + 7f * s, fy + 16f * s, flags[i])
-                    }
-                }
-            }
-        }
+        val pool = game.yardPool()
+        HomeWorldDraw.drawDeco(
+            world, deco, cx, gy, half, alpha,
+            HOME_FLOWERS[world], HOME_FLOWER_STEM[world], HOME_FENCE[world],
+            HOME_POOL_WATER[world], HOME_FLAGS[world],
+            homeWorldGfx(canvas, s, gy, alpha),
+            game.yardGardenX(), game.yardGardenY(), game.yardFenceY(),
+            game.yardMailboxX(), game.yardMailboxY(),
+            game.yardSwingX(), game.yardSwingY(),
+            game.yardPerchX(), game.yardPerchY(),
+            pool.l, pool.r, pool.t, pool.b,
+            game.yardTelescopeX(), game.yardTelescopeY()
+        )
         canvas.restore()
-        registerDecoDragHit(deco, cx, gy, half, s)
+        registerDecoDragHit(world, deco, cx, gy, half, s)
     }
 
     // ---------- 庭院猫 ----------
