@@ -159,7 +159,6 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private val yardTelescopeHit = RectF()
     private val hitHomeEnergy = RectF()
     private val hitHomeReward = RectF()
-    private val hitCosmeticScarf = RectF()
     private val homeDragHits = HashMap<String, RectF>()
     private val dragHitScratch = RectF()
     private val yardSceneHit = RectF()
@@ -202,7 +201,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         "buy", "arrowL", "arrowR", "tabHat", "tabScarf", "tabTrail", "tabColor",
         "worldL", "worldR",
         "leave", "wallet", "name", "energy", "reward",
-        "cat", "scarf", "museum", "honor", "house"
+        "cat", "museum", "honor", "house"
     )
     /** 家园 UI 文字（商店栏名称/价格/状态、提示语、名牌等） */
     private val homeUiTextDragOrder = arrayOf(
@@ -793,7 +792,6 @@ class HudView(context: Context, private val game: Game) : View(context) {
                     hitHouse.contains(x, y) -> selectHomeCategory(Game.HOME_TAB_HOUSE)
                     hitRoof.contains(x, y) -> selectHomeCategory(Game.HOME_TAB_ROOF)
                     hitYardDeco.contains(x, y) -> selectHomeCategory(Game.HOME_TAB_DECO)
-                    hitCosmeticScarf.contains(x, y) -> selectHomeCategory(Game.HOME_TAB_SCARF)
                     yardCatHit.contains(x, y) -> selectHomeCategory(Game.HOME_TAB_COLOR)
                     hitSky.contains(x, y) -> homeEditing = false
                     yardSceneHit.contains(x, y) -> scheduleYardSceneTap(x, y)
@@ -2860,11 +2858,6 @@ class HudView(context: Context, private val game: Game) : View(context) {
         }
         registerOwnedDecoDragHits(world, cx, gy, half, s)
 
-        drawCosmeticYardDeco(
-            canvas, cx, gy, half, s, yardColor, yardTrail, yardScarf, yardHat, cosmeticGhost,
-            showScarfLine = homeEditing && game.homeTab == Game.HOME_TAB_SCARF && yardScarf > 0
-        )
-
         // 可点击热区（装扮购置）
         hitSky.set(0f, top, w, farGy)
         val houseSc = LayoutConfig.cur.houseS
@@ -2879,7 +2872,6 @@ class HudView(context: Context, private val game: Game) : View(context) {
         hitCosmeticColor.setEmpty()
         hitCosmeticTrail.setEmpty()
         hitCosmeticHat.setEmpty()
-        hitCosmeticScarf.setEmpty()
 
         if (highlightEditing) {
             val pulse = if (kotlin.math.sin(homePhase * 4f) > 0f) 0x44FFD426 else 0x22FFD426
@@ -2895,8 +2887,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
                         homeDragHits[ownedDecoDragId[i]]?.let { canvas.drawRect(it, btnPaint) }
                     }
                 }
-                Game.HOME_TAB_SCARF -> homeDragHits["scarf"]?.let { canvas.drawRect(it, btnPaint) }
-                Game.HOME_TAB_COLOR, Game.HOME_TAB_TRAIL, Game.HOME_TAB_HAT ->
+                Game.HOME_TAB_COLOR, Game.HOME_TAB_TRAIL, Game.HOME_TAB_SCARF, Game.HOME_TAB_HAT ->
                     canvas.drawRect(yardCatHit, btnPaint)
             }
             btnPaint.style = Paint.Style.FILL
@@ -3106,38 +3097,6 @@ class HudView(context: Context, private val game: Game) : View(context) {
 
         scaleRectAround(hx, base, hx - 76f * u, signT, hx + 76f * u, base + 6f * s, LayoutConfig.cur.honorS, hitHonorWall)
         putDragHit("honor", hitHonorWall)
-    }
-
-    /** 装扮物品在庭院中的可视化：围巾晾绳（仅围巾装扮页预览时显示） */
-    private fun drawCosmeticYardDeco(
-        canvas: Canvas, cx: Float, gy: Float, half: Float, s: Float,
-        color: Int, trail: Int, scarf: Int, hat: Int, ghost: Boolean,
-        showScarfLine: Boolean
-    ) {
-        if (!homeShown("scarf")) {
-            hitCosmeticScarf.setEmpty()
-            return
-        }
-        if (!showScarfLine || scarf <= 0) {
-            hitCosmeticScarf.setEmpty()
-            return
-        }
-        val alpha = if (ghost) 110 else 255
-        fun rc(l: Float, t: Float, r: Float, b: Float, c: Int) {
-            btnPaint.style = Paint.Style.FILL
-            btnPaint.color = withAlpha(c, alpha)
-            canvas.drawRect(l, t, r, b, btnPaint)
-        }
-        val sx = cx + (72f + game.homeScarfDX()) * s
-        val sy = game.homeScarfDY() * s
-        val scC = SCARF_CHIPS[scarf]
-        rc(sx - 44f * s, gy - 66f * s + sy, sx - 40f * s, gy + 6f * s + sy, 0xFF97622F.toInt())
-        rc(sx + 40f * s, gy - 54f * s + sy, sx + 44f * s, gy + 6f * s + sy, 0xFF97622F.toInt())
-        rc(sx - 42f * s, gy - 64f * s + sy, sx + 42f * s, gy - 60f * s + sy, 0xFFB9B9B9.toInt())
-        val sway = kotlin.math.sin(homePhase * 1.2f) * 5f * s
-        rc(sx - 18f * s + sway, gy - 60f * s + sy, sx + 18f * s + sway, gy - 46f * s + sy, scC)
-        hitCosmeticScarf.set(sx - 48f * s, gy - 70f * s + sy, sx + 48f * s, gy + 10f * s + sy)
-        putDragHit("scarf", hitCosmeticScarf)
     }
 
     private fun darken(c: Int): Int = PixelUi.darken(c)
@@ -3618,7 +3577,6 @@ class HudView(context: Context, private val game: Game) : View(context) {
         "perch" -> game.ownsDeco(4)
         "pool" -> game.ownsDeco(5)
         "telescope" -> game.ownsDeco(6)
-        "scarf" -> homeEditing && game.homeTab == Game.HOME_TAB_SCARF
         "buy", "arrowL", "arrowR" -> homeEditing
         "shopName", "shopPrice", "shopStatus", "editHint" -> homeEditing
         "homeHint", "worldLabel" -> !homeEditing
@@ -3650,7 +3608,6 @@ class HudView(context: Context, private val game: Game) : View(context) {
             "energy" -> { homeDragStartOff[0] = po.energyDX; homeDragStartOff[1] = po.energyDY }
             "reward" -> { homeDragStartOff[0] = po.rewardDX; homeDragStartOff[1] = po.rewardDY }
             "cat" -> { homeDragStartOff[0] = po.catDX; homeDragStartOff[1] = po.catDY }
-            "scarf" -> { homeDragStartOff[0] = po.scarfDX; homeDragStartOff[1] = po.scarfDY }
             else -> {
                 homeDragStartOff[0] = game.homeUiDX(id)
                 homeDragStartOff[1] = game.homeUiDY(id)
@@ -3720,10 +3677,6 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 po.catDX = (homeDragStartOff[0] + sceneDx).coerceIn(-bound, bound)
                 po.catDY = (homeDragStartOff[1] + sceneDy).coerceIn(-220f, 220f)
             }
-            "scarf" -> {
-                po.scarfDX = (homeDragStartOff[0] + sceneDx).coerceIn(-bound, bound)
-                po.scarfDY = (homeDragStartOff[1] + sceneDy).coerceIn(-220f, 220f)
-            }
             else -> {
                 po.uiDX[id] = homeDragStartOff[0] + pixDx
                 po.uiDY[id] = homeDragStartOff[1] + pixDy
@@ -3746,7 +3699,6 @@ class HudView(context: Context, private val game: Game) : View(context) {
             } else {
                 petYardCat()
             }
-            "scarf" -> if (homeEditing) selectHomeCategory(Game.HOME_TAB_SCARF)
             "name" -> showRenameDialog(firstTime = false)
             "leave" -> leaveHomePage()
             "tabColor" -> if (homeEditing) game.switchHomeTab(Game.HOME_TAB_COLOR)

@@ -1020,8 +1020,6 @@ class Game {
     fun homeRewardDY() = LayoutConfig.cur.rewardDY + homeLayout().rewardDY
     fun homeCatDX() = homeLayout().catDX
     fun homeCatDY() = homeLayout().catDY
-    fun homeScarfDX() = homeLayout().scarfDX
-    fun homeScarfDY() = homeLayout().scarfDY
     fun homeUiDX(id: String) = homeLayout().uiDX[id] ?: 0f
     fun homeUiDY(id: String) = homeLayout().uiDY[id] ?: 0f
 

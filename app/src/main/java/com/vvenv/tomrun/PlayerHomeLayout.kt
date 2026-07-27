@@ -25,7 +25,6 @@ object PlayerHomeLayout {
         Element("pool", "泳池"),
         Element("telescope", "望远镜"),
         Element("cat", "猫"),
-        Element("scarf", "围巾晾绳"),
         Element("name", "家名称"),
         Element("energy", "家能量"),
         Element("reward", "开局奖励"),
@@ -66,7 +65,6 @@ object PlayerHomeLayout {
         var energyDX = 0f; var energyDY = 0f
         var rewardDX = 0f; var rewardDY = 0f
         var catDX = 0f; var catDY = 0f
-        var scarfDX = 0f; var scarfDY = 0f
         val uiDX = HashMap<String, Float>()
         val uiDY = HashMap<String, Float>()
         val hidden = HashSet<String>()
@@ -94,7 +92,6 @@ object PlayerHomeLayout {
         put("energyDX", s.energyDX); put("energyDY", s.energyDY)
         put("rewardDX", s.rewardDX); put("rewardDY", s.rewardDY)
         put("catDX", s.catDX); put("catDY", s.catDY)
-        put("scarfDX", s.scarfDX); put("scarfDY", s.scarfDY)
         if (s.hidden.isNotEmpty()) {
             put("hidden", JSONArray(s.hidden.toList()))
         }
@@ -138,8 +135,6 @@ object PlayerHomeLayout {
         into.rewardDY = j.optDouble("rewardDY", 0.0).toFloat()
         into.catDX = j.optDouble("catDX", 0.0).toFloat()
         into.catDY = j.optDouble("catDY", 0.0).toFloat()
-        into.scarfDX = j.optDouble("scarfDX", 0.0).toFloat()
-        into.scarfDY = j.optDouble("scarfDY", 0.0).toFloat()
         into.hidden.clear()
         j.optJSONArray("hidden")?.let { arr ->
             for (i in 0 until arr.length()) {
