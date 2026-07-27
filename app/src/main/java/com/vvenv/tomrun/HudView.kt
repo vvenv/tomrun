@@ -122,6 +122,14 @@ class HudView(context: Context, private val game: Game) : View(context) {
     /** 世界切换：左右箭头在已解锁世界的家之间穿梭 */
     private val btnHomeWorldL = RectF()
     private val btnHomeWorldR = RectF()
+    /** 家园图层：游戏内显示/隐藏各元素 */
+    private var showHomeLayers = false
+    private var homeLayerScroll = 0f
+    private val btnHomeLayers = RectF()
+    private val btnHomeLayersClose = RectF()
+    private val btnHomeLayersShowAll = RectF()
+    private val homeLayerPanel = RectF()
+    private val homeLayerRowHits = ArrayList<Pair<String, RectF>>()
     private val btnPause = RectF()
     private val btnResume = RectF()
     private val btnQuit = RectF()
@@ -205,6 +213,19 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private val ownedDecoDragId = arrayOf(
         "garden", "fence", "mailbox", "swing", "perch", "pool", "telescope"
     )
+
+    private fun decoElementId(deco: Int): String? = when (deco) {
+        0 -> "garden"
+        1 -> "fence"
+        2 -> "mailbox"
+        3 -> "swing"
+        4 -> "perch"
+        5 -> "pool"
+        6 -> "telescope"
+        else -> null
+    }
+
+    private fun homeShown(id: String) = game.homeElVisible(id)
     private val yardSingleTapRunnable = Runnable {
         handleYardSingleTap(yardPendingTapX, yardPendingTapY)
     }
@@ -635,7 +656,8 @@ class HudView(context: Context, private val game: Game) : View(context) {
 
     private fun isHomeDraggable(): Boolean =
         (game.state == Game.State.READY || game.state == Game.State.DEAD) &&
-            game.menuPanel == Game.PANEL_HOME && !showStargazing && homeSubView == HOME_SUB_SCENE
+            game.menuPanel == Game.PANEL_HOME && !showStargazing && homeSubView == HOME_SUB_SCENE &&
+            !showHomeLayers
 
     private fun isYardInteractive(): Boolean = isHomeDraggable()
 
@@ -700,6 +722,10 @@ class HudView(context: Context, private val game: Game) : View(context) {
                     }
                     return
                 }
+                if (showHomeLayers) {
+                    handleHomeLayersTap(x, y)
+                    return
+                }
                 when (homeSubView) {
                     HOME_SUB_COLLECTION -> {
                         if (museumDetailId >= 0) {
@@ -735,6 +761,10 @@ class HudView(context: Context, private val game: Game) : View(context) {
                     }
                 }
                 when {
+                    homeSubView == HOME_SUB_SCENE && btnHomeLayers.contains(x, y) -> {
+                        showHomeLayers = true
+                        homeLayerScroll = 0f
+                    }
                     btnLeaveHome.contains(x, y) -> leaveHomePage()
                     hitHomeTitle.contains(x, y) -> showRenameDialog(firstTime = false)
                     btnHomeWorldL.contains(x, y) -> switchHomeWorldWithToast(-1)
@@ -917,6 +947,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private fun openHomePage() {
         homeSubView = HOME_SUB_SCENE
         homeEditing = false
+        showHomeLayers = false
         museumDetailId = -1
         game.switchMenuPanel(Game.PANEL_HOME)
     }
@@ -926,6 +957,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         cancelYardTouch()
         homeSubView = HOME_SUB_SCENE
         homeEditing = false
+        showHomeLayers = false
         museumDetailId = -1
         game.switchMenuPanel(Game.PANEL_MAIN)
     }
@@ -1602,11 +1634,15 @@ class HudView(context: Context, private val game: Game) : View(context) {
 
         if (homeSubView == HOME_SUB_SCENE) {
             layoutLeaveHomeButton(w, h, s)
-            drawLeaveHomeBtn(canvas, btnLeaveHome, s)
-            putDragHit("leave", btnLeaveHome)
+            if (homeShown("leave")) {
+                drawLeaveHomeBtn(canvas, btnLeaveHome, s)
+                putDragHit("leave", btnLeaveHome)
+            } else btnLeaveHome.setEmpty()
             layoutHomeWalletPlate(w, h, s)
-            drawHomeWalletPlate(canvas, homeWalletPlate, s, sdx, sdy)
-            putDragHit("wallet", homeWalletPlate)
+            if (homeShown("wallet")) {
+                drawHomeWalletPlate(canvas, homeWalletPlate, s, sdx, sdy)
+                putDragHit("wallet", homeWalletPlate)
+            } else homeWalletPlate.setEmpty()
             if (!homeEditing) {
                 drawHomeWorldSwitcher(canvas, w, h, s, sdx, sdy)
             } else {
@@ -1623,6 +1659,123 @@ class HudView(context: Context, private val game: Game) : View(context) {
         }
         if (showStargazing) drawStargazeOverlay(canvas, w, h, s, sdx, sdy)
         drawHomeDragHighlight(canvas, s)
+        if (homeSubView == HOME_SUB_SCENE) {
+            layoutHomeLayersButton(w, h, s)
+            drawHomeLayersButton(canvas, s)
+            if (showHomeLayers) drawHomeLayersPanel(canvas, w, h, s, sdx, sdy)
+        } else {
+            btnHomeLayers.setEmpty()
+        }
+    }
+
+    private fun handleHomeLayersTap(x: Float, y: Float) {
+        if (btnHomeLayersClose.contains(x, y) || btnHomeLayersShowAll.contains(x, y)) {
+            if (btnHomeLayersShowAll.contains(x, y)) {
+                game.showAllHomeElements()
+                showToast("已全部显示")
+            }
+            showHomeLayers = false
+            invalidate()
+            return
+        }
+        for ((id, rect) in homeLayerRowHits) {
+            if (rect.contains(x, y)) {
+                val on = game.toggleHomeElVisible(id)
+                showToast((if (on) "已显示 " else "已隐藏 ") + PlayerHomeLayout.labelOf(id))
+                invalidate()
+                return
+            }
+        }
+        if (!homeLayerPanel.contains(x, y)) showHomeLayers = false
+    }
+
+    private fun layoutHomeLayersButton(w: Float, h: Float, s: Float) {
+        val size = 44f * s
+        btnHomeLayers.set(
+            w - safeR - 14f * s - size, safeT + 14f * s,
+            w - safeR - 14f * s, safeT + 14f * s + size
+        )
+    }
+
+    private fun drawHomeLayersButton(canvas: Canvas, s: Float) {
+        PixelUi.drawButton(
+            canvas, btnPaint, btnHomeLayers.left, btnHomeLayers.top,
+            btnHomeLayers.right, btnHomeLayers.bottom,
+            0xCC2A3444.toInt(), 0xFF6B4E28.toInt(), s, notch = 6f * s
+        )
+        pixText(
+            canvas, "图层", btnHomeLayers.centerX(), btnHomeLayers.centerY() + 6f * s,
+            18f * s, Color.WHITE, 1f, 1f
+        )
+    }
+
+    private fun drawHomeLayersPanel(canvas: Canvas, w: Float, h: Float, s: Float, sdx: Float, sdy: Float) {
+        homeLayerRowHits.clear()
+        val pad = 16f * s
+        val panelW = min(w * 0.88f, 420f * s)
+        val panelH = min(h * 0.82f, 680f * s)
+        val left = (w - panelW) / 2f
+        val top = (h - panelH) / 2f
+        homeLayerPanel.set(left, top, left + panelW, top + panelH)
+        btnPaint.style = Paint.Style.FILL
+        btnPaint.color = 0xCC000000.toInt()
+        canvas.drawRect(0f, 0f, w, h, btnPaint)
+        PixelUi.drawRect(
+            canvas, btnPaint, left, top, left + panelW, top + panelH,
+            0xF01C2634.toInt(), s, bevel = PixelUi.Bevel.INSET, edge = 0x55FFFFFF
+        )
+        val titleY = top + 28f * s
+        textPaint.textAlign = Paint.Align.CENTER
+        pixText(canvas, "家园图层", left + panelW / 2f, titleY, 22f * s, Color.WHITE, sdx, sdy)
+        val btnH = 34f * s
+        val btnW = 88f * s
+        btnHomeLayersShowAll.set(left + pad, top + pad, left + pad + btnW, top + pad + btnH)
+        btnHomeLayersClose.set(left + panelW - pad - btnW, top + pad, left + panelW - pad, top + pad + btnH)
+        drawBtn(canvas, btnHomeLayersShowAll, "全显示", s * 0.85f)
+        drawBtn(canvas, btnHomeLayersClose, "完成", s * 0.85f)
+        val listTop = top + pad + btnH + 14f * s
+        val listBottom = top + panelH - pad
+        val rowH = 36f * s
+        val contentH = PlayerHomeLayout.ELEMENTS.size * rowH
+        val maxScroll = (contentH - (listBottom - listTop)).coerceAtLeast(0f)
+        homeLayerScroll = homeLayerScroll.coerceIn(0f, maxScroll)
+        canvas.save()
+        canvas.clipRect(left + pad, listTop, left + panelW - pad, listBottom)
+        var y = listTop - homeLayerScroll
+        for (el in PlayerHomeLayout.ELEMENTS) {
+            val rowTop = y
+            val rowBottom = y + rowH - 4f * s
+            if (rowBottom >= listTop && rowTop <= listBottom) {
+                val on = homeShown(el.id)
+                val rowL = left + pad + 4f * s
+                val rowR = left + panelW - pad - 4f * s
+                PixelUi.drawRect(
+                    canvas, btnPaint, rowL, rowTop, rowR, rowBottom,
+                    if (on) 0xFF3A4A5E.toInt() else 0xFF2A3038.toInt(), s,
+                    bevel = PixelUi.Bevel.INSET
+                )
+                val box = 18f * s
+                val boxL = rowL + 10f * s
+                val boxCy = (rowTop + rowBottom) * 0.5f
+                PixelUi.drawRect(
+                    canvas, btnPaint, boxL, boxCy - box / 2f, boxL + box, boxCy + box / 2f,
+                    if (on) 0xFF3F9E5A.toInt() else 0xFF4A5563.toInt(), s
+                )
+                if (on) {
+                    btnPaint.color = Color.WHITE
+                    canvas.drawRect(boxL + 4f * s, boxCy - 1.5f * s, boxL + box - 4f * s, boxCy + 1.5f * s, btnPaint)
+                }
+                textPaint.textAlign = Paint.Align.LEFT
+                pixText(
+                    canvas, el.label, boxL + box + 12f * s, boxCy + 6f * s,
+                    18f * s, if (on) Color.WHITE else 0xFF8899AA.toInt(), sdx, sdy
+                )
+                homeLayerRowHits.add(el.id to RectF(rowL, rowTop, rowR, rowBottom))
+            }
+            y += rowH
+        }
+        canvas.restore()
+        textPaint.textAlign = Paint.Align.CENTER
     }
 
     private fun drawHomeDragHighlight(canvas: Canvas, s: Float) {
@@ -1638,6 +1791,10 @@ class HudView(context: Context, private val game: Game) : View(context) {
     }
 
     private fun putDragHit(id: String, rect: RectF) {
+        if (!homeShown(id)) {
+            homeDragHits.remove(id)
+            return
+        }
         if (rect.isEmpty) {
             homeDragHits.remove(id)
             return
@@ -1702,17 +1859,18 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val nameCx = (plaqueL + plaqueR) * 0.5f + ndx; val nameCy = plaqueCy + ndy
         val nhw = (plaqueR - plaqueL) * 0.5f * nameSc; val nhh = (plaqueB - plaqueT) * 0.5f * nameSc
         hitHomeTitle.set(nameCx - nhw, nameCy - nhh, nameCx + nhw, nameCy + nhh)
-        canvas.save(); canvas.scale(nameSc, nameSc, nameCx, nameCy)
-        drawHomeNamePlaque(canvas, plaqueL + ndx, plaqueT + ndy, plaqueR + ndx, plaqueB + ndy, s)
-        drawTinyHouseIcon(canvas, plaqueL + 22f * s + ndx, plaqueCy + ndy, s * 0.85f)
-        pixText(
-            canvas, title, titleCx + 6f * s + ndx, centeredBaselineY(plaqueCy, titleSize) + ndy,
-            titleSize, 0xFFFFF6E8.toInt(), sdx, sdy
-        )
-        canvas.restore()
+        if (homeShown("name")) {
+            canvas.save(); canvas.scale(nameSc, nameSc, nameCx, nameCy)
+            drawHomeNamePlaque(canvas, plaqueL + ndx, plaqueT + ndy, plaqueR + ndx, plaqueB + ndy, s)
+            drawTinyHouseIcon(canvas, plaqueL + 22f * s + ndx, plaqueCy + ndy, s * 0.85f)
+            pixText(
+                canvas, title, titleCx + 6f * s + ndx, centeredBaselineY(plaqueCy, titleSize) + ndy,
+                titleSize, 0xFFFFF6E8.toInt(), sdx, sdy
+            )
+            canvas.restore()
+            putDragHit("name", hitHomeTitle)
+        } else hitHomeTitle.setEmpty()
         y = plaqueB + afterPlaque
-
-        putDragHit("name", hitHomeTitle)
 
         // 第 2 行：家能量等级格（整行独占高度）
         val energyCy = y + energyH * 0.5f
@@ -1723,9 +1881,11 @@ class HudView(context: Context, private val game: Game) : View(context) {
             enCx + 96f * s * enSc, enCy + 16f * s * enSc
         )
         putDragHit("energy", hitHomeEnergy)
-        canvas.save(); canvas.scale(enSc, enSc, enCx, enCy)
-        drawHomeEnergyMeter(canvas, enCx, enCy, s, lv, sdx, sdy)
-        canvas.restore()
+        if (homeShown("energy")) {
+            canvas.save(); canvas.scale(enSc, enSc, enCx, enCy)
+            drawHomeEnergyMeter(canvas, enCx, enCy, s, lv, sdx, sdy)
+            canvas.restore()
+        } else hitHomeEnergy.setEmpty()
         y += energyH + afterEnergy
 
         // 第 3 行：奖励说明（芯片完全落在本行内）
@@ -1745,18 +1905,20 @@ class HudView(context: Context, private val game: Game) : View(context) {
             rewardSc, hitHomeReward
         )
         putDragHit("reward", hitHomeReward)
-        canvas.save(); canvas.scale(rewardSc, rewardSc, rewardCx, rewardCyScaled)
-        PixelUi.drawRect(
-            canvas, btnPaint, w / 2f - rewardChipW / 2f + rdx, rewardTop + rdy,
-            w / 2f + rewardChipW / 2f + rdx, rewardBottom + rdy,
-            0x88101820.toInt(), s, bevel = PixelUi.Bevel.INSET,
-            edge = 0x44FFFFFF, edgeW = max(1f, 1.5f * s)
-        )
-        pixText(
-            canvas, rewardLine, w / 2f + rdx, centeredBaselineY(rewardCy, rewardSize) + rdy,
-            rewardSize, 0xCCE8F4FF.toInt(), sdx, sdy
-        )
-        canvas.restore()
+        if (homeShown("reward")) {
+            canvas.save(); canvas.scale(rewardSc, rewardSc, rewardCx, rewardCyScaled)
+            PixelUi.drawRect(
+                canvas, btnPaint, w / 2f - rewardChipW / 2f + rdx, rewardTop + rdy,
+                w / 2f + rewardChipW / 2f + rdx, rewardBottom + rdy,
+                0x88101820.toInt(), s, bevel = PixelUi.Bevel.INSET,
+                edge = 0x44FFFFFF, edgeW = max(1f, 1.5f * s)
+            )
+            pixText(
+                canvas, rewardLine, w / 2f + rdx, centeredBaselineY(rewardCy, rewardSize) + rdy,
+                rewardSize, 0xCCE8F4FF.toInt(), sdx, sdy
+            )
+            canvas.restore()
+        } else hitHomeReward.setEmpty()
         y = rewardBottom + afterReward
 
         if (showHint) {
@@ -1804,6 +1966,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         padH: Float = 10f,
         padV: Float = 8f
     ) {
+        if (!homeShown(id)) return
         val dx = game.homeUiDX(id)
         val dy = game.homeUiDY(id)
         val x = baseX + dx
@@ -1944,23 +2107,29 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val cx2 = cx + wdx
         val cy2 = cy + wdy
         val accent = UNI_HUD[world]
-        PixelUi.drawRect(
-            canvas, btnPaint, cx2 - chipW / 2f, cy2 - chipH / 2f, cx2 + chipW / 2f, cy2 + chipH / 2f,
-            0xCC101820.toInt(), s, bevel = PixelUi.Bevel.INSET,
-            edge = withAlpha(accent, 0xAA), edgeW = max(1f, 1.5f * s)
-        )
-        pixText(canvas, label, cx2, centeredBaselineY(cy2, labelSize), labelSize, 0xFFF4F8FF.toInt(), sdx, sdy)
-        dragHitScratch.set(cx2 - chipW / 2f, cy2 - chipH / 2f, cx2 + chipW / 2f, cy2 + chipH / 2f)
-        putDragHit("worldLabel", dragHitScratch)
+        if (homeShown("worldLabel")) {
+            PixelUi.drawRect(
+                canvas, btnPaint, cx2 - chipW / 2f, cy2 - chipH / 2f, cx2 + chipW / 2f, cy2 + chipH / 2f,
+                0xCC101820.toInt(), s, bevel = PixelUi.Bevel.INSET,
+                edge = withAlpha(accent, 0xAA), edgeW = max(1f, 1.5f * s)
+            )
+            pixText(canvas, label, cx2, centeredBaselineY(cy2, labelSize), labelSize, 0xFFF4F8FF.toInt(), sdx, sdy)
+            dragHitScratch.set(cx2 - chipW / 2f, cy2 - chipH / 2f, cx2 + chipW / 2f, cy2 + chipH / 2f)
+            putDragHit("worldLabel", dragHitScratch)
+        }
         if (multi) {
             val a = chipH
             val gap = 8f * s
-            btnHomeWorldL.set(cx2 - chipW / 2f - gap - a, cy2 - a / 2f, cx2 - chipW / 2f - gap, cy2 + a / 2f)
-            btnHomeWorldR.set(cx2 + chipW / 2f + gap, cy2 - a / 2f, cx2 + chipW / 2f + gap + a, cy2 + a / 2f)
-            applyUiOverride("worldL", w, h, s, btnHomeWorldL)
-            applyUiOverride("worldR", w, h, s, btnHomeWorldR)
-            drawBtn(canvas, btnHomeWorldL, "<", s)
-            drawBtn(canvas, btnHomeWorldR, ">", s)
+            if (homeShown("worldL")) {
+                btnHomeWorldL.set(cx2 - chipW / 2f - gap - a, cy2 - a / 2f, cx2 - chipW / 2f - gap, cy2 + a / 2f)
+                applyUiOverride("worldL", w, h, s, btnHomeWorldL)
+                drawBtn(canvas, btnHomeWorldL, "<", s)
+            } else btnHomeWorldL.setEmpty()
+            if (homeShown("worldR")) {
+                btnHomeWorldR.set(cx2 + chipW / 2f + gap, cy2 - a / 2f, cx2 + chipW / 2f + gap + a, cy2 + a / 2f)
+                applyUiOverride("worldR", w, h, s, btnHomeWorldR)
+                drawBtn(canvas, btnHomeWorldR, ">", s)
+            } else btnHomeWorldR.setEmpty()
         } else {
             btnHomeWorldL.setEmpty()
             btnHomeWorldR.setEmpty()
@@ -2054,6 +2223,10 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 val selected = game.homeTab == tabIdx
                 btnHomeTabs[i].set(cx - tabW / 2f, tabY, cx + tabW / 2f, tabY + tabH)
                 applyUiOverride(tabIds[i], w, h, s, btnHomeTabs[i])
+                if (!homeShown(tabIds[i])) {
+                    btnHomeTabs[i].setEmpty()
+                    continue
+                }
                 val tab = btnHomeTabs[i]
                 PixelUi.drawButton(
                     canvas, btnPaint, tab.left, tab.top, tab.right, tab.bottom,
@@ -2077,8 +2250,8 @@ class HudView(context: Context, private val game: Game) : View(context) {
         btnHomeR.set(w * 0.84f - arrowHalf, by - arrowH, w * 0.84f + arrowHalf, by + arrowH)
         applyUiOverride("arrowL", w, h, s, btnHomeL)
         applyUiOverride("arrowR", w, h, s, btnHomeR)
-        drawBtn(canvas, btnHomeL, "<", s)
-        drawBtn(canvas, btnHomeR, ">", s)
+        if (homeShown("arrowL")) drawBtn(canvas, btnHomeL, "<", s) else btnHomeL.setEmpty()
+        if (homeShown("arrowR")) drawBtn(canvas, btnHomeR, ">", s) else btnHomeR.setEmpty()
         val (name, price, status, action) = homeBrowseRow()
         val rowY = by + 6f * s
         val nameSize = fittedTextSize(name, 24f * s, w * 0.28f, 18f * s)
@@ -2112,11 +2285,10 @@ class HudView(context: Context, private val game: Game) : View(context) {
         if (action.isNotEmpty()) {
             val buyH = if (portrait) 52f * s else 44f * s
             val buyW = if (portrait) min(150f * s, w * 0.34f) else 120f * s
-            // 紧跟在名称/翻页那一行下面，不再按固定的 0.855h 往下拉开一截
             val buyTop = by + 34f * s
             btnHomeBuy.set(w / 2f - buyW, buyTop, w / 2f + buyW, buyTop + buyH)
             applyUiOverride("buy", w, h, s, btnHomeBuy)
-            drawBtn(canvas, btnHomeBuy, action, s)
+            if (homeShown("buy")) drawBtn(canvas, btnHomeBuy, action, s) else btnHomeBuy.setEmpty()
         } else {
             btnHomeBuy.setEmpty()
         }
@@ -2340,7 +2512,10 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 val a = decoAnchor(deco, cx, gy, s) ?: return
                 val b = HomeWorldDraw.decoDragBounds(world, deco, half)
                 yardHit(ownedDecoDragId[deco], a.pivotX, a.footY, a.sc, b[0], b[1], b[2], b[3])
-                if (deco == 6) yardTelescopeHit.set(dragHitScratch)
+                if (deco == 6) {
+                    if (homeShown("telescope")) yardTelescopeHit.set(dragHitScratch)
+                    else yardTelescopeHit.setEmpty()
+                }
             }
             5 -> {
                 val pool = game.yardPool()
@@ -2637,14 +2812,18 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val farX = min(half - 78f * s, 196f * s).coerceAtLeast(150f * s)
         val museumX = cx - farX + game.homeMuseumDX() * s
         val museumBase = farGy + game.homeMuseumDY() * s
-        canvas.save(); canvas.scale(LayoutConfig.cur.museumS, LayoutConfig.cur.museumS, museumX, museumBase)
-        drawMuseumBuilding(canvas, museumX, museumBase, landmarkU, s)
-        canvas.restore()
+        if (homeShown("museum")) {
+            canvas.save(); canvas.scale(LayoutConfig.cur.museumS, LayoutConfig.cur.museumS, museumX, museumBase)
+            drawMuseumBuilding(canvas, museumX, museumBase, landmarkU, s)
+            canvas.restore()
+        } else hitMuseum.setEmpty()
         val honorX = cx + farX + game.homeHonorDX() * s
         val honorBase = farGy + game.homeHonorDY() * s
-        canvas.save(); canvas.scale(LayoutConfig.cur.honorS, LayoutConfig.cur.honorS, honorX, honorBase)
-        drawHonorWall(canvas, honorX, honorBase, landmarkU, s)
-        canvas.restore()
+        if (homeShown("honor")) {
+            canvas.save(); canvas.scale(LayoutConfig.cur.honorS, LayoutConfig.cur.honorS, honorX, honorBase)
+            drawHonorWall(canvas, honorX, honorBase, landmarkU, s)
+            canvas.restore()
+        } else hitHonorWall.setEmpty()
 
         val roofC = ROOF_CHIPS[roof]
         val roofD = PixelUi.darken(roofC)
@@ -2655,25 +2834,27 @@ class HudView(context: Context, private val game: Game) : View(context) {
         // 房屋整体微调偏移（LayoutConfig）：平移绘制，热区随后同步偏移
         val houseDx = game.homeHouseDX() * s
         val houseDy = game.homeHouseDY() * s
-        canvas.save()
-        canvas.translate(houseDx, houseDy)
-        canvas.scale(LayoutConfig.cur.houseS, LayoutConfig.cur.houseS, cx, gy)
+        if (homeShown("house")) {
+            canvas.save()
+            canvas.translate(houseDx, houseDy)
+            canvas.scale(LayoutConfig.cur.houseS, LayoutConfig.cur.houseS, cx, gy)
+            groundShadow(canvas, cx, gy, 118f * s, s)
+            HomeWorldDraw.drawHouse(
+                world, house, cx, gy, housePal, roofC, roofD, winLight, homeWorldGfx(canvas, s, gy, world)
+            )
+            drawHouseWorldTrim(canvas, world, house, cx, gy, s)
+            canvas.restore()
+        } else {
+            hitHouse.setEmpty()
+            hitRoof.setEmpty()
+        }
 
-        // 房屋接地阴影：与藏品馆 / 荣誉墙统一，避免房屋「浮」在草地上
-        groundShadow(canvas, cx, gy, 118f * s, s)
-
-        // 房屋主体（中心 cx，底部落在 gy）——造型因世界而异
-        HomeWorldDraw.drawHouse(
-            world, house, cx, gy, housePal, roofC, roofD, winLight, homeWorldGfx(canvas, s, gy, world)
-        )
-        drawHouseWorldTrim(canvas, world, house, cx, gy, s)
-        canvas.restore()   // 结束房屋平移；装饰与热区回到未偏移坐标系
-
-        // 装饰：仅本世界可购且已购（或浏览预览）的才绘制
         for (i in Game.DECO_NAMES.indices) {
             if (!HomeWorldContent.decoAvailable(world, i)) continue
             val owned = game.ownsDeco(i)
             if (!owned && i != ghostDeco) continue
+            val decoId = decoElementId(i)
+            if (decoId != null && !homeShown(decoId)) continue
             val alpha = if (owned) 255 else 110
             drawDeco(canvas, world, i, cx, gy, half, s, alpha)
         }
@@ -2689,9 +2870,11 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val houseSc = LayoutConfig.cur.houseS
         val hcx = cx + houseDx
         val hgy = gy + houseDy
-        scaleRectAround(hcx, hgy, hcx - 118f * s, top + houseDy, hcx + 118f * s, hgy - 108f * s, houseSc, hitRoof)
-        scaleRectAround(hcx, hgy, hcx - 108f * s, hgy - 108f * s, hcx + 108f * s, hgy, houseSc, hitHouse)
-        putDragHit("house", hitHouse)
+        if (homeShown("house")) {
+            scaleRectAround(hcx, hgy, hcx - 118f * s, top + houseDy, hcx + 118f * s, hgy - 108f * s, houseSc, hitRoof)
+            scaleRectAround(hcx, hgy, hcx - 108f * s, hgy - 108f * s, hcx + 108f * s, hgy, houseSc, hitHouse)
+            putDragHit("house", hitHouse)
+        }
         hitYardDeco.set(cx - half, gy - 12f * s, cx + half, bottom)
         hitCosmeticColor.setEmpty()
         hitCosmeticTrail.setEmpty()
@@ -2727,7 +2910,8 @@ class HudView(context: Context, private val game: Game) : View(context) {
         yardSceneHit.set(0f, top, w, bottom)
         updateYardCat(0.016f, half / s)
         drawYardButterfly(canvas, cx, gy, s)
-        drawYardCat(canvas, cx, gy, s, yardColor, yardScarf, yardHat)
+        if (homeShown("cat")) drawYardCat(canvas, cx, gy, s, yardColor, yardScarf, yardHat)
+        else yardCatHit.setEmpty()
         if (handMarkerLife > 0f) drawHandMarker(canvas, cx, gy, s)
         drawYardFloaters(canvas, s)
         if (!game.ownsDeco(6)) yardTelescopeHit.setEmpty()
@@ -2785,10 +2969,12 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val label = "藏品 ${game.relicsFound}/${Game.RELIC_COUNT}"
         val size = fittedTextSize(label, min(15f * s, 17f * u), 100f * u, 12f * s)
         val labelY = centeredBaselineY((friezeT + friezeB) * 0.5f, size)
-        drawDraggableUiText(
-            canvas, "museumLabel", label, mx, labelY, size, 0xFF5C3D0A.toInt(), 0f, 0f,
-            padH = 6f * s, padV = 4f * s
-        )
+        if (homeShown("museumLabel")) {
+            drawDraggableUiText(
+                canvas, "museumLabel", label, mx, labelY, size, 0xFF5C3D0A.toInt(), 0f, 0f,
+                padH = 6f * s, padV = 4f * s
+            )
+        }
         landmarkPulseFrame(canvas, mx - 54f * u, friezeT, mx + 54f * u, friezeB, s)
 
         scaleRectAround(mx, base, mx - 60f * u, friezeT - 30f * u, mx + 60f * u, base + 6f * s, LayoutConfig.cur.museumS, hitMuseum)
@@ -2910,10 +3096,12 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val label = "荣誉 ${game.achieveCount}/${Game.ACHIEVE_MAX}"
         val size = fittedTextSize(label, min(15f * s, 17f * u), 92f * u, 12f * s)
         val labelY = centeredBaselineY((signT + signB) * 0.5f, size)
-        drawDraggableUiText(
-            canvas, "honorLabel", label, hx, labelY, size, 0xFFFFF6E8.toInt(), 0f, 0f,
-            padH = 6f * s, padV = 4f * s
-        )
+        if (homeShown("honorLabel")) {
+            drawDraggableUiText(
+                canvas, "honorLabel", label, hx, labelY, size, 0xFFFFF6E8.toInt(), 0f, 0f,
+                padH = 6f * s, padV = 4f * s
+            )
+        }
         landmarkPulseFrame(canvas, hx - 50f * u, signT, hx + 50f * u, signB, s)
 
         scaleRectAround(hx, base, hx - 76f * u, signT, hx + 76f * u, base + 6f * s, LayoutConfig.cur.honorS, hitHonorWall)
@@ -2926,6 +3114,10 @@ class HudView(context: Context, private val game: Game) : View(context) {
         color: Int, trail: Int, scarf: Int, hat: Int, ghost: Boolean,
         showScarfLine: Boolean
     ) {
+        if (!homeShown("scarf")) {
+            hitCosmeticScarf.setEmpty()
+            return
+        }
         if (!showScarfLine || scarf <= 0) {
             hitCosmeticScarf.setEmpty()
             return

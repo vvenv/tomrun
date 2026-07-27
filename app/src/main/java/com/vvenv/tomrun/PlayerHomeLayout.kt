@@ -1,5 +1,6 @@
 package com.vvenv.tomrun
 
+import org.json.JSONArray
 import org.json.JSONObject
 
 /**
@@ -8,6 +9,47 @@ import org.json.JSONObject
  * 横竖屏各一套，持久化到 SharedPreferences。
  */
 object PlayerHomeLayout {
+
+    data class Element(val id: String, val label: String)
+
+    /** 家园可单独显示/隐藏的元素（与 HudView 拖放 id 一致） */
+    val ELEMENTS = arrayOf(
+        Element("house", "房子"),
+        Element("museum", "藏品馆"),
+        Element("honor", "荣誉墙"),
+        Element("garden", "花坛"),
+        Element("fence", "栅栏"),
+        Element("mailbox", "信箱"),
+        Element("swing", "秋千"),
+        Element("perch", "猫爬架"),
+        Element("pool", "泳池"),
+        Element("telescope", "望远镜"),
+        Element("cat", "猫"),
+        Element("scarf", "围巾晾绳"),
+        Element("name", "家名称"),
+        Element("energy", "家能量"),
+        Element("reward", "开局奖励"),
+        Element("homeHint", "摆放提示"),
+        Element("editHint", "装扮提示"),
+        Element("worldLabel", "世界名"),
+        Element("worldUnlockHint", "解锁提示"),
+        Element("museumLabel", "藏品标签"),
+        Element("honorLabel", "荣誉标签"),
+        Element("shopName", "商品名"),
+        Element("shopPrice", "价格"),
+        Element("shopStatus", "状态"),
+        Element("leave", "出门"),
+        Element("wallet", "钱包"),
+        Element("worldL", "世界上一个"),
+        Element("worldR", "世界下一个"),
+        Element("arrowL", "上一个"),
+        Element("arrowR", "下一个"),
+        Element("buy", "载上"),
+        Element("tabColor", "配色"),
+        Element("tabTrail", "光迹"),
+        Element("tabScarf", "围巾"),
+        Element("tabHat", "帽子"),
+    )
 
     class Set {
         var gardenX = 0f; var gardenY = 0f
@@ -27,12 +69,15 @@ object PlayerHomeLayout {
         var scarfDX = 0f; var scarfDY = 0f
         val uiDX = HashMap<String, Float>()
         val uiDY = HashMap<String, Float>()
+        val hidden = HashSet<String>()
     }
 
     val UI_IDS = arrayOf(
         "leave", "wallet", "tabColor", "tabTrail", "tabScarf", "tabHat",
         "arrowL", "arrowR", "buy", "worldL", "worldR"
     )
+
+    fun labelOf(id: String) = ELEMENTS.firstOrNull { it.id == id }?.label ?: id
 
     fun toJson(s: Set): JSONObject = JSONObject().apply {
         put("gardenX", s.gardenX); put("gardenY", s.gardenY)
@@ -50,6 +95,9 @@ object PlayerHomeLayout {
         put("rewardDX", s.rewardDX); put("rewardDY", s.rewardDY)
         put("catDX", s.catDX); put("catDY", s.catDY)
         put("scarfDX", s.scarfDX); put("scarfDY", s.scarfDY)
+        if (s.hidden.isNotEmpty()) {
+            put("hidden", JSONArray(s.hidden.toList()))
+        }
         val ui = JSONObject()
         for (id in UI_IDS) {
             val dx = s.uiDX[id] ?: 0f
@@ -92,6 +140,12 @@ object PlayerHomeLayout {
         into.catDY = j.optDouble("catDY", 0.0).toFloat()
         into.scarfDX = j.optDouble("scarfDX", 0.0).toFloat()
         into.scarfDY = j.optDouble("scarfDY", 0.0).toFloat()
+        into.hidden.clear()
+        j.optJSONArray("hidden")?.let { arr ->
+            for (i in 0 until arr.length()) {
+                arr.optString(i)?.takeIf { it.isNotEmpty() }?.let { into.hidden.add(it) }
+            }
+        }
         into.uiDX.clear()
         into.uiDY.clear()
         j.optJSONObject("ui")?.let { ui ->

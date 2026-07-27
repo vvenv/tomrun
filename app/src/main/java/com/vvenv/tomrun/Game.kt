@@ -1025,6 +1025,25 @@ class Game {
     fun homeUiDX(id: String) = homeLayout().uiDX[id] ?: 0f
     fun homeUiDY(id: String) = homeLayout().uiDY[id] ?: 0f
 
+    fun homeElVisible(id: String) = id !in homeLayout().hidden
+
+    fun setHomeElVisible(id: String, visible: Boolean) {
+        val po = homeLayout()
+        if (visible) po.hidden.remove(id) else po.hidden.add(id)
+        persistHomeLayout()
+    }
+
+    fun toggleHomeElVisible(id: String): Boolean {
+        val on = !homeElVisible(id)
+        setHomeElVisible(id, on)
+        return on
+    }
+
+    fun showAllHomeElements() {
+        homeLayout().hidden.clear()
+        persistHomeLayout()
+    }
+
     fun yardPool(): LayoutConfig.Pool {
         val p = LayoutConfig.cur.pool
         val po = homeLayout()
