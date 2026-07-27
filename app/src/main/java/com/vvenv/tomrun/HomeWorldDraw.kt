@@ -3,6 +3,7 @@ package com.vvenv.tomrun
 import android.graphics.Canvas
 import android.graphics.LinearGradient
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.Shader
 import kotlin.math.sin
 
@@ -52,8 +53,8 @@ object HomeWorldDraw {
         1 -> floatArrayOf(-half, 22f, half, 76f)
         2 -> when (world) {
             Game.UNI_SKY -> floatArrayOf(-22f, -62f, 22f, 8f)
-            Game.UNI_WATER -> floatArrayOf(-18f, -52f, 18f, 8f)
-            else -> floatArrayOf(-20f, -66f, 20f, 8f)
+            Game.UNI_WATER -> floatArrayOf(-18f, -56f, 18f, 8f)
+            else -> floatArrayOf(-22f, -66f, 28f, 8f)
         }
         3 -> floatArrayOf(-56f, -102f, 56f, 12f)
         4 -> floatArrayOf(-36f, -110f, 36f, 8f)
@@ -548,229 +549,520 @@ object HomeWorldDraw {
     }
 
     // ---------- 庭院装饰（按世界换造型） ----------
+
+    /** 半透明色再叠 ghost 预览的 alpha */
+    private fun Gfx.ca(c: Int, a: Int, alpha: Int): Int = withAlpha(c, a * alpha / 255)
+
     private fun drawGarden(world: Int, cx: Float, gy: Float, s: Float, alpha: Int, flowers: IntArray, stem: Int, g: Gfx, gx: Float, gyOff: Float) {
         val fx = cx + gx * s; val fy = gy + gyOff * s; val rc = g.rc
+        val aa = g.paint.isAntiAlias
         if (alpha == 255) g.groundShadow(fx, fy + 32f * s, 44f * s)
         when (world) {
             Game.UNI_WATER -> {
-                rc(fx - 36f * s, fy + 18f * s, fx + 36f * s, fy + 32f * s, 0xFFC66A57.toInt())
+                // 陶盆：亮沿 + 盆身 + 底部暗带
+                rc(fx - 38f * s, fy + 16f * s, fx + 38f * s, fy + 21f * s, 0xFFE8836E.toInt())
+                rc(fx - 36f * s, fy + 21f * s, fx + 36f * s, fy + 32f * s, 0xFFC66A57.toInt())
+                rc(fx - 36f * s, fy + 29f * s, fx + 36f * s, fy + 32f * s, 0xFFA85846.toInt())
+                g.paint.isAntiAlias = true
                 for (i in 0..2) {
                     val px = fx - 22f * s + i * 22f * s
-                    g.paint.isAntiAlias = true; g.paint.color = g.withAlpha(flowers[i], alpha)
-                    g.canvas.drawCircle(px, fy - 4f * s, 10f * s, g.paint)
-                    rc(px - 2f * s, fy + 2f * s, px + 2f * s, fy + 16f * s, stem)
+                    // 海葵：底盘 + 三根随水流摆动的触手 + 触尖亮点
+                    g.paint.color = g.ca(flowers[i], 255, alpha)
+                    g.canvas.drawCircle(px, fy + 10f * s, 7f * s, g.paint)
+                    for (k in -1..1) {
+                        val sway = sin(g.homePhase * 2f + i * 1.3f + k * 0.9f) * 2.5f * s
+                        rc(px + k * 4.5f * s - 1.2f * s + sway, fy - 8f * s, px + k * 4.5f * s + 1.2f * s + sway, fy + 8f * s, flowers[i])
+                        g.paint.color = g.ca(0xFFFFFFFF.toInt(), 170, alpha)
+                        g.canvas.drawCircle(px + k * 4.5f * s + sway, fy - 8f * s, 1.6f * s, g.paint)
+                        g.paint.color = g.ca(flowers[i], 255, alpha)
+                    }
                 }
+                // 盆沿的小气泡
+                val t = (g.homePhase * 0.5f) % 1f
+                g.paint.color = g.ca(0xFFCFF2FF.toInt(), ((1f - t) * 130).toInt(), alpha)
+                g.canvas.drawCircle(fx + 28f * s, fy + 12f * s - t * 22f * s, 2.2f * s, g.paint)
             }
             Game.UNI_SKY -> {
-                g.paint.isAntiAlias = true; g.paint.color = g.withAlpha(0xFFE8F4FF.toInt(), alpha)
+                // 云托盘：椭圆 + 两端绒球 + 高光
+                g.paint.isAntiAlias = true
+                g.paint.color = g.ca(0xFFE8F4FF.toInt(), 255, alpha)
                 g.canvas.drawOval(fx - 44f * s, fy + 10f * s, fx + 44f * s, fy + 30f * s, g.paint)
+                g.canvas.drawCircle(fx - 38f * s, fy + 17f * s, 8f * s, g.paint)
+                g.canvas.drawCircle(fx + 38f * s, fy + 17f * s, 8f * s, g.paint)
+                g.paint.color = g.ca(0xFFFFFFFF.toInt(), 150, alpha)
+                g.canvas.drawOval(fx - 32f * s, fy + 12f * s, fx - 6f * s, fy + 18f * s, g.paint)
                 for (i in 0..2) {
                     val px = fx - 24f * s + i * 24f * s
-                    g.paint.color = g.withAlpha(flowers[i], alpha)
-                    g.canvas.drawOval(px - 10f * s, fy - 10f * s, px + 10f * s, fy + 6f * s, g.paint)
+                    val bob = sin(g.homePhase * 1.5f + i * 2.1f) * 2.5f * s
+                    // 云绒花：花球 + 受光亮斑
+                    g.paint.color = g.ca(flowers[i], 255, alpha)
+                    g.canvas.drawOval(px - 10f * s, fy - 10f * s + bob, px + 10f * s, fy + 6f * s + bob, g.paint)
+                    g.paint.color = g.ca(0xFFFFFFFF.toInt(), 160, alpha)
+                    g.canvas.drawOval(px - 6f * s, fy - 8f * s + bob, px + 1f * s, fy - 2f * s + bob, g.paint)
                 }
             }
             Game.UNI_LAVA -> {
+                // 焦土苗床：亮沿 + 呼吸的岩浆细缝
                 rc(fx - 40f * s, fy + 20f * s, fx + 40f * s, fy + 34f * s, 0xFF4A3028.toInt())
+                rc(fx - 40f * s, fy + 20f * s, fx + 40f * s, fy + 23f * s, 0xFF5A4038.toInt())
+                val glow = 0.5f + 0.5f * sin(g.homePhase * 2.6f)
+                g.paint.color = g.ca(0xFFFF7A2A.toInt(), (110 + 120 * glow).toInt(), alpha)
+                g.canvas.drawRect(fx - 26f * s, fy + 26f * s, fx - 8f * s, fy + 28f * s, g.paint)
+                g.canvas.drawRect(fx + 6f * s, fy + 29f * s, fx + 26f * s, fy + 31f * s, g.paint)
+                g.paint.isAntiAlias = true
                 for (i in 0..2) {
                     val px = fx - 24f * s + i * 24f * s
-                    rc(px - 4f * s, fy + 4f * s, px + 4f * s, fy + 18f * s, 0xFF6E4A3A.toInt())
-                    rc(px - 6f * s, fy - 10f * s, px + 6f * s, fy + 2f * s, flowers[i])
+                    // 焦枝 + 侧杈
+                    rc(px - 3f * s, fy + 2f * s, px + 3f * s, fy + 20f * s, 0xFF6E4A3A.toInt())
+                    rc(px - 7f * s, fy + 6f * s, px - 3f * s, fy + 9f * s, 0xFF6E4A3A.toInt())
+                    // 余烬花：光晕 + 花核 + 亮心，按各自节奏呼吸
+                    val fl = 0.5f + 0.5f * sin(g.homePhase * 3f + i * 2.2f)
+                    g.paint.color = g.ca(flowers[i], (80 + 60 * fl).toInt(), alpha)
+                    g.canvas.drawCircle(px, fy - 4f * s, 9f * s, g.paint)
+                    g.paint.color = g.ca(flowers[i], 255, alpha)
+                    g.canvas.drawCircle(px, fy - 4f * s, 5f * s, g.paint)
+                    g.paint.color = g.ca(0xFFFFE0B0.toInt(), (140 + 110 * fl).toInt(), alpha)
+                    g.canvas.drawCircle(px, fy - 4f * s, 2.2f * s, g.paint)
                 }
             }
             Game.UNI_CANDY -> {
-                rc(fx - 40f * s, fy + 16f * s, fx + 40f * s, fy + 32f * s, 0xFFA46A3E.toInt())
+                // 巧克力花盒 + 糖霜滴边
+                rc(fx - 40f * s, fy + 16f * s, fx + 40f * s, fy + 32f * s, 0xFF6B4230.toInt())
+                rc(fx - 40f * s, fy + 29f * s, fx + 40f * s, fy + 32f * s, 0xFF54321F.toInt())
+                g.paint.isAntiAlias = true
+                g.paint.color = g.ca(0xFFFFF8F0.toInt(), 255, alpha)
+                var dx = fx - 33f * s
+                while (dx < fx + 34f * s) { g.canvas.drawCircle(dx, fy + 18f * s, 3.5f * s, g.paint); dx += 9f * s }
                 for (i in 0..2) {
                     val px = fx - 26f * s + i * 26f * s
-                    rc(px - 2f * s, fy + 2f * s, px + 2f * s, fy + 20f * s, 0xFFF2E8D8.toInt())
-                    g.paint.isAntiAlias = true; g.paint.color = g.withAlpha(flowers[i], alpha)
+                    // 棒棒糖花：糖棍 + 糖圈 + 白芯 + 糖点
+                    rc(px - 1.5f * s, fy + 2f * s, px + 1.5f * s, fy + 18f * s, 0xFFF2E8D8.toInt())
+                    g.paint.color = g.ca(flowers[i], 255, alpha)
                     g.canvas.drawCircle(px, fy - 6f * s, 9f * s, g.paint)
+                    g.paint.color = g.ca(0xFFFFF8F0.toInt(), 255, alpha)
+                    g.canvas.drawCircle(px, fy - 6f * s, 4.5f * s, g.paint)
+                    g.paint.color = g.ca(flowers[i], 255, alpha)
+                    g.canvas.drawCircle(px, fy - 6f * s, 1.8f * s, g.paint)
                 }
+                // 散落的糖豆
+                rc(fx - 18f * s, fy + 23f * s, fx - 13f * s, fy + 28f * s, 0xFF7ADBC8.toInt())
+                rc(fx + 10f * s, fy + 24f * s, fx + 15f * s, fy + 29f * s, 0xFFFFD54A.toInt())
             }
             Game.UNI_SPACE -> {
+                // 金属栽培槽：亮沿 + 呼吸的营养液灯条
                 rc(fx - 38f * s, fy + 18f * s, fx + 38f * s, fy + 32f * s, 0xFF565B6E.toInt())
+                rc(fx - 38f * s, fy + 18f * s, fx + 38f * s, fy + 21f * s, 0xFF6E7488.toInt())
+                val pulse = 0.5f + 0.5f * sin(g.homePhase * 2f)
+                g.paint.color = g.ca(0xFF4DE8FF.toInt(), (100 + 110 * pulse).toInt(), alpha)
+                g.canvas.drawRect(fx - 34f * s, fy + 25f * s, fx + 34f * s, fy + 27f * s, g.paint)
+                g.paint.isAntiAlias = true
                 for (i in 0..2) {
                     val px = fx - 24f * s + i * 24f * s
-                    rc(px - 3f * s, fy + 2f * s, px + 3f * s, fy + 16f * s, stem)
-                    rc(px - 5f * s, fy - 12f * s, px + 5f * s, fy + 2f * s, flowers[i])
-                    rc(px - 2f * s, fy - 16f * s, px + 2f * s, fy - 12f * s, 0xFF4DE8FF.toInt())
+                    rc(px - 2f * s, fy + 4f * s, px + 2f * s, fy + 18f * s, stem)
+                    // 晶花：主晶 + 侧晶 + 晶尖闪烁辉光
+                    rc(px - 4f * s, fy - 12f * s, px + 4f * s, fy + 6f * s, flowers[i])
+                    rc(px - 8f * s, fy - 4f * s, px - 4f * s, fy + 4f * s, flowers[i])
+                    rc(px - 2f * s, fy - 8f * s, px + 2f * s, fy - 4f * s, 0xFFFFFFFF.toInt())
+                    val tw = 0.5f + 0.5f * sin(g.homePhase * 2.4f + i * 1.8f)
+                    g.paint.color = g.ca(0xFFFFFFFF.toInt(), (80 + 140 * tw).toInt(), alpha)
+                    g.canvas.drawCircle(px, fy - 13f * s, 2.5f * s, g.paint)
                 }
             }
             else -> {
+                // 木花箱：亮沿 + 土壤 + 底部暗带
                 rc(fx - 40f * s, fy + 16f * s, fx + 40f * s, fy + 32f * s, 0xFF97622F.toInt())
+                rc(fx - 40f * s, fy + 16f * s, fx + 40f * s, fy + 19f * s, 0xFFB07A45.toInt())
+                rc(fx - 36f * s, fy + 12f * s, fx + 36f * s, fy + 16f * s, 0xFF5A3D22.toInt())
+                rc(fx - 40f * s, fy + 29f * s, fx + 40f * s, fy + 32f * s, 0xFF7A4E22.toInt())
+                g.paint.isAntiAlias = true
                 for (i in 0..2) {
                     val px = fx - 26f * s + i * 26f * s
-                    rc(px - 2f * s, fy + 2f * s, px + 2f * s, fy + 16f * s, stem)
-                    rc(px - 6f * s, fy - 8f * s, px + 6f * s, fy + 4f * s, flowers[i])
+                    val bob = sin(g.homePhase * 1.6f + i * 1.9f) * 1.5f * s
+                    // 花茎 + 侧叶
+                    rc(px - 1.5f * s, fy + 2f * s, px + 1.5f * s, fy + 14f * s, stem)
+                    rc(px + 1.5f * s, fy + 7f * s, px + 6f * s, fy + 10f * s, stem)
+                    // 四瓣花 + 亮花心，随微风轻点头
+                    val py = fy - 6f * s + bob
+                    g.paint.color = g.ca(flowers[i], 255, alpha)
+                    g.canvas.drawCircle(px - 4.5f * s, py, 4f * s, g.paint)
+                    g.canvas.drawCircle(px + 4.5f * s, py, 4f * s, g.paint)
+                    g.canvas.drawCircle(px, py - 4.5f * s, 4f * s, g.paint)
+                    g.canvas.drawCircle(px, py + 4.5f * s, 4f * s, g.paint)
+                    g.paint.color = g.ca(0xFFFFF3B8.toInt(), 255, alpha)
+                    g.canvas.drawCircle(px, py, 3f * s, g.paint)
                 }
             }
         }
+        g.paint.isAntiAlias = aa
     }
 
     private fun drawFence(world: Int, cx: Float, gy: Float, half: Float, s: Float, alpha: Int, fence: IntArray, g: Gfx, fenceY: Float) {
         val fy = gy + fenceY * s; val rc = g.rc
+        val aa = g.paint.isAntiAlias
         when (world) {
             Game.UNI_WATER -> {
+                // 珊瑚指栏：主枝 + 交错侧芽 + 受光亮面，横杆穿过
+                g.paint.isAntiAlias = true
                 var px = cx - half + 24f * s
+                var i = 0
                 while (px < cx + half - 24f * s) {
-                    g.paint.isAntiAlias = true; g.paint.color = g.withAlpha(fence[0], alpha)
+                    g.paint.color = g.ca(fence[0], 255, alpha)
                     g.canvas.drawOval(px - 8f * s, fy + 30f * s, px + 8f * s, fy + 58f * s, g.paint)
-                    px += 36f * s
+                    g.canvas.drawCircle(px + (if (i % 2 == 0) 9f else -9f) * s, fy + 38f * s, 4.5f * s, g.paint)
+                    g.paint.color = g.ca(0xFFFFFFFF.toInt(), 90, alpha)
+                    g.canvas.drawOval(px - 4f * s, fy + 33f * s, px + 1f * s, fy + 44f * s, g.paint)
+                    px += 36f * s; i++
                 }
                 rc(cx - half + 10f * s, fy + 44f * s, cx + half - 10f * s, fy + 50f * s, fence[1])
+                rc(cx - half + 10f * s, fy + 48f * s, cx + half - 10f * s, fy + 50f * s, fence[0])
             }
             Game.UNI_SKY -> {
-                g.paint.isAntiAlias = true; g.paint.color = g.withAlpha(fence[0], alpha)
+                // 云篱：长云带上叠大小绒球，前缘一道高光
+                g.paint.isAntiAlias = true
+                g.paint.color = g.ca(fence[0], 255, alpha)
                 g.canvas.drawOval(cx - half + 20f * s, fy + 38f * s, cx + half - 20f * s, fy + 54f * s, g.paint)
+                var px = cx - half + 36f * s
+                var i = 0
+                while (px < cx + half - 30f * s) {
+                    g.canvas.drawCircle(px, fy + 40f * s, (7f + (i % 3) * 3f) * s, g.paint)
+                    px += 42f * s; i++
+                }
+                g.paint.color = g.ca(0xFFFFFFFF.toInt(), 120, alpha)
+                g.canvas.drawOval(cx - half + 30f * s, fy + 39f * s, cx - half + 92f * s, fy + 46f * s, g.paint)
             }
             Game.UNI_LAVA -> {
+                // 黑曜石碎片：一高一矮交错斜插，石间岩浆微光呼吸
+                val glow = 0.5f + 0.5f * sin(g.homePhase * 2.6f)
                 var px = cx - half + 22f * s
+                var i = 0
                 while (px < cx + half - 22f * s) {
-                    rc(px - 5f * s, fy + 28f * s, px + 2f * s, fy + 62f * s, fence[0])
-                    px += 38f * s
+                    val hgt = if (i % 2 == 0) 34f else 24f
+                    g.canvas.save(); g.canvas.rotate(if (i % 2 == 0) 6f else -5f, px, fy + 62f * s)
+                    rc(px - 5f * s, fy + (62f - hgt) * s, px + 3f * s, fy + 62f * s, fence[0])
+                    rc(px, fy + (62f - hgt) * s, px + 3f * s, fy + 62f * s, fence[1])
+                    g.canvas.restore()
+                    if (px + 34f * s < cx + half - 22f * s) {
+                        g.paint.color = g.ca(0xFFFF7A2A.toInt(), (60 + 90 * glow).toInt(), alpha)
+                        g.canvas.drawRect(px + 10f * s, fy + 58f * s, px + 28f * s, fy + 61f * s, g.paint)
+                    }
+                    px += 38f * s; i++
                 }
             }
             Game.UNI_CANDY -> {
+                // 拐杖糖栏：白柱 + 斜纹糖圈 + 圆糖顶，奶油横杆
+                g.paint.isAntiAlias = true
                 var px = cx - half + 20f * s
                 while (px < cx + half - 20f * s) {
-                    rc(px - 4f * s, fy + 34f * s, px + 4f * s, fy + 62f * s, fence[0])
-                    rc(px - 6f * s, fy + 30f * s, px + 6f * s, fy + 36f * s, 0xFFFFF8F0.toInt())
+                    rc(px - 4f * s, fy + 32f * s, px + 4f * s, fy + 62f * s, fence[0])
+                    for (k in 0..1) rc(px - 4f * s, fy + (38f + k * 12f) * s, px + 4f * s, fy + (42f + k * 12f) * s, 0xFFFF6E8E.toInt())
+                    g.paint.color = g.ca(0xFFFFF8F0.toInt(), 255, alpha)
+                    g.canvas.drawCircle(px, fy + 31f * s, 5f * s, g.paint)
                     px += 34f * s
                 }
                 rc(cx - half + 12f * s, fy + 44f * s, cx + half - 12f * s, fy + 50f * s, fence[1])
+                rc(cx - half + 12f * s, fy + 44f * s, cx + half - 12f * s, fy + 46f * s, 0xFFFFF8F0.toInt())
             }
             Game.UNI_SPACE -> {
+                // 悬浮光栏：立柱顶着光珠，中间一条呼吸的能量带
+                val pulse = 0.5f + 0.5f * sin(g.homePhase * 2f)
+                g.paint.isAntiAlias = true
                 var px = cx - half + 28f * s
                 while (px < cx + half - 28f * s) {
                     rc(px - 2f * s, fy + 30f * s, px + 2f * s, fy + 64f * s, fence[0])
-                    rc(px - 8f * s, fy + 38f * s, px + 8f * s, fy + 42f * s, 0xFF4DE8FF.toInt())
+                    rc(px - 2f * s, fy + 30f * s, px, fy + 64f * s, 0xFF7E8498.toInt())
+                    g.paint.color = g.ca(0xFF9FE8FF.toInt(), (140 + 110 * pulse).toInt(), alpha)
+                    g.canvas.drawCircle(px, fy + 28f * s, 2.6f * s, g.paint)
                     px += 40f * s
                 }
+                g.paint.color = g.ca(0xFF4DE8FF.toInt(), (55 + 55 * pulse).toInt(), alpha)
+                g.canvas.drawRect(cx - half + 22f * s, fy + 36f * s, cx + half - 22f * s, fy + 44f * s, g.paint)
+                g.paint.color = g.ca(0xFF9FE8FF.toInt(), (140 + 100 * pulse).toInt(), alpha)
+                g.canvas.drawRect(cx - half + 22f * s, fy + 38.5f * s, cx + half - 22f * s, fy + 41.5f * s, g.paint)
             }
             else -> {
+                // 尖顶木桩 + 双横杆，右缘留暗边
                 var px = cx - half + 20f * s
                 while (px < cx + half - 20f * s) {
-                    rc(px - 3f * s, fy + 36f * s, px + 3f * s, fy + 64f * s, fence[0])
+                    rc(px - 2f * s, fy + 31f * s, px + 2f * s, fy + 36f * s, fence[0])
+                    rc(px - 3f * s, fy + 34f * s, px + 3f * s, fy + 64f * s, fence[0])
+                    rc(px + 1.5f * s, fy + 36f * s, px + 3f * s, fy + 64f * s, fence[1])
                     px += 34f * s
                 }
-                rc(cx - half + 12f * s, fy + 44f * s, cx + half - 12f * s, fy + 50f * s, fence[1])
+                rc(cx - half + 12f * s, fy + 40f * s, cx + half - 12f * s, fy + 45f * s, fence[1])
+                rc(cx - half + 12f * s, fy + 52f * s, cx + half - 12f * s, fy + 57f * s, fence[1])
             }
         }
+        g.paint.isAntiAlias = aa
     }
 
     private fun drawMailbox(world: Int, cx: Float, gy: Float, s: Float, alpha: Int, g: Gfx, mx: Float, my: Float) {
         val x = cx + mx * s; val fy = gy + my * s; val rc = g.rc
+        val aa = g.paint.isAntiAlias
         if (alpha == 255) g.groundShadow(x, fy, 18f * s)
         when (world) {
             Game.UNI_WATER -> {
-                g.paint.isAntiAlias = true; g.paint.color = g.withAlpha(0xFF57B6E8.toInt(), alpha)
+                // 浮标信箱：蓝浮筒 + 红条纹 + 投递舷窗 + 顶部提环
+                g.paint.isAntiAlias = true
+                g.paint.color = g.ca(0xFF57B6E8.toInt(), 255, alpha)
                 g.canvas.drawOval(x - 14f * s, fy - 48f * s, x + 14f * s, fy - 8f * s, g.paint)
+                g.paint.color = g.ca(0xFFF25A5A.toInt(), 255, alpha)
+                g.canvas.drawRect(x - 13f * s, fy - 34f * s, x + 13f * s, fy - 26f * s, g.paint)
+                g.paint.color = g.ca(0xFF64998F.toInt(), 255, alpha)
+                g.canvas.drawCircle(x, fy - 30f * s, 6.5f * s, g.paint)
+                g.paint.color = g.ca(0xFFE4FAFF.toInt(), 255, alpha)
+                g.canvas.drawCircle(x, fy - 30f * s, 4.5f * s, g.paint)
+                g.paint.color = g.ca(0xFFFFFFFF.toInt(), 110, alpha)
+                g.canvas.drawOval(x - 9f * s, fy - 45f * s, x - 2f * s, fy - 36f * s, g.paint)
+                g.paint.style = Paint.Style.STROKE
+                g.paint.strokeWidth = 2.5f * s
+                g.paint.color = g.ca(0xFFC66A57.toInt(), 255, alpha)
+                g.canvas.drawCircle(x, fy - 50f * s, 4f * s, g.paint)
+                g.paint.style = Paint.Style.FILL
                 rc(x - 3f * s, fy - 8f * s, x + 3f * s, fy, 0xFFC66A57.toInt())
             }
             Game.UNI_SKY -> {
+                // 云朵信箱：木柱 + 云球箱体 + 金色投递口
                 rc(x - 3f * s, fy - 40f * s, x + 3f * s, fy, 0xFFC9A570.toInt())
-                g.paint.isAntiAlias = true; g.paint.color = g.withAlpha(0xFFE8F4FF.toInt(), alpha)
+                rc(x - 1f * s, fy - 40f * s, x + 3f * s, fy, 0xFFB08A50.toInt())
+                g.paint.isAntiAlias = true
+                g.paint.color = g.ca(0xFFE8F4FF.toInt(), 255, alpha)
                 g.canvas.drawOval(x - 18f * s, fy - 58f * s, x + 18f * s, fy - 38f * s, g.paint)
+                g.canvas.drawCircle(x - 14f * s, fy - 44f * s, 6f * s, g.paint)
+                g.canvas.drawCircle(x + 14f * s, fy - 44f * s, 6f * s, g.paint)
+                g.paint.color = g.ca(0xFFFFFFFF.toInt(), 150, alpha)
+                g.canvas.drawOval(x - 12f * s, fy - 55f * s, x + 2f * s, fy - 49f * s, g.paint)
+                g.paint.color = g.ca(0xFFF2C14E.toInt(), 255, alpha)
+                g.canvas.drawRect(x - 7f * s, fy - 50f * s, x + 7f * s, fy - 46.5f * s, g.paint)
             }
             Game.UNI_LAVA -> {
-                rc(x - 18f * s, fy - 50f * s, x + 18f * s, fy - 30f * s, 0xFF4A3028.toInt())
+                // 石砌信箱：亮顶沿 + 呼吸的投递口熔光 + 顶部火星
                 rc(x - 3f * s, fy - 30f * s, x + 3f * s, fy, 0xFF43302A.toInt())
-                rc(x + 10f * s, fy - 56f * s, x + 14f * s, fy - 48f * s, 0xFFFF7A2A.toInt())
+                rc(x - 18f * s, fy - 50f * s, x + 18f * s, fy - 28f * s, 0xFF4A3028.toInt())
+                rc(x - 18f * s, fy - 50f * s, x + 18f * s, fy - 47f * s, 0xFF5A4038.toInt())
+                val glow = 0.5f + 0.5f * sin(g.homePhase * 2.8f)
+                g.paint.color = g.ca(0xFFFF7A2A.toInt(), (140 + 110 * glow).toInt(), alpha)
+                g.canvas.drawRect(x - 10f * s, fy - 42f * s, x + 10f * s, fy - 38f * s, g.paint)
+                g.paint.color = g.ca(0xFFFFA25A.toInt(), (glow * 220).toInt(), alpha)
+                g.canvas.drawRect(x + 10f * s, fy - 58f * s, x + 13f * s, fy - 55f * s, g.paint)
             }
             Game.UNI_CANDY -> {
-                rc(x - 16f * s, fy - 52f * s, x + 16f * s, fy - 32f * s, 0xFFFF8FBE.toInt())
-                rc(x - 16f * s, fy - 32f * s, x + 16f * s, fy - 28f * s, 0xFFFFF8F0.toInt())
-                rc(x - 3f * s, fy - 28f * s, x + 3f * s, fy, 0xFFA46A3E.toInt())
+                // 马卡龙信箱：上下糖壳夹奶油 + 樱桃钮
+                rc(x - 3f * s, fy - 26f * s, x + 3f * s, fy, 0xFFA46A3E.toInt())
+                g.paint.isAntiAlias = true
+                g.paint.color = g.ca(0xFFFF8FBE.toInt(), 255, alpha)
+                g.canvas.drawArc(x - 16f * s, fy - 56f * s, x + 16f * s, fy - 32f * s, 180f, 180f, true, g.paint)
+                g.canvas.drawArc(x - 16f * s, fy - 44f * s, x + 16f * s, fy - 26f * s, 0f, 180f, true, g.paint)
+                g.paint.color = g.ca(0xFFFFF8F0.toInt(), 255, alpha)
+                g.canvas.drawRect(x - 15f * s, fy - 45f * s, x + 15f * s, fy - 41f * s, g.paint)
+                g.paint.color = g.ca(0xFFFFB8D4.toInt(), 255, alpha)
+                g.canvas.drawOval(x - 10f * s, fy - 53f * s, x - 2f * s, fy - 48f * s, g.paint)
+                g.paint.color = g.ca(0xFFE84A4A.toInt(), 255, alpha)
+                g.canvas.drawCircle(x, fy - 57f * s, 3.5f * s, g.paint)
             }
             Game.UNI_SPACE -> return // 星空世界无信箱槽位
             else -> {
+                // 美式圆顶信箱：木柱木纹 + 弧顶箱体 + 投递缝 + 小黄旗
                 rc(x - 3f * s, fy - 34f * s, x + 3f * s, fy, 0xFF97622F.toInt())
-                rc(x - 16f * s, fy - 52f * s, x + 16f * s, fy - 32f * s, 0xFFF25A5A.toInt())
-                rc(x + 12f * s, fy - 62f * s, x + 16f * s, fy - 50f * s, 0xFFFFD75E.toInt())
+                rc(x - 1f * s, fy - 30f * s, x, fy - 6f * s, 0xFF7A4E22.toInt())
+                g.paint.isAntiAlias = true
+                g.paint.color = g.ca(0xFFF25A5A.toInt(), 255, alpha)
+                g.canvas.drawRect(x - 16f * s, fy - 44f * s, x + 16f * s, fy - 32f * s, g.paint)
+                g.canvas.drawArc(x - 16f * s, fy - 54f * s, x + 16f * s, fy - 34f * s, 180f, 180f, true, g.paint)
+                g.paint.color = g.ca(0xFFB23E3E.toInt(), 255, alpha)
+                g.canvas.drawRect(x - 10f * s, fy - 41f * s, x + 10f * s, fy - 38f * s, g.paint)
+                g.paint.color = g.ca(0xFFFFFFFF.toInt(), 100, alpha)
+                g.canvas.drawOval(x - 12f * s, fy - 51f * s, x, fy - 45f * s, g.paint)
+                rc(x + 14f * s, fy - 62f * s, x + 17f * s, fy - 44f * s, 0xFF97622F.toInt())
+                rc(x + 17f * s, fy - 62f * s, x + 26f * s, fy - 55f * s, 0xFFFFD75E.toInt())
             }
         }
+        g.paint.isAntiAlias = aa
     }
 
     private fun drawSwing(world: Int, cx: Float, gy: Float, s: Float, alpha: Int, g: Gfx, sx: Float, sy: Float) {
         val x = cx + sx * s; val fy = gy + sy * s; val rc = g.rc
         val sway = sin(g.homePhase * 1.6f) * 10f * s
+        val aa = g.paint.isAntiAlias
         if (alpha == 255) g.groundShadow(x, fy, 40f * s)
         when (world) {
             Game.UNI_WATER -> {
+                // 沉木架 + 海草吊绳 + 双色海藻坐板
                 rc(x - 30f * s, fy - 78f * s, x - 26f * s, fy, 0xFF64998F.toInt())
                 rc(x + 26f * s, fy - 78f * s, x + 30f * s, fy, 0xFF64998F.toInt())
+                rc(x - 34f * s, fy - 84f * s, x + 34f * s, fy - 76f * s, 0xFF578A80.toInt())
+                rc(x - 34f * s, fy - 84f * s, x + 34f * s, fy - 82f * s, 0xFF6EAA9E.toInt())
+                rc(x - 13f * s + sway * 0.6f, fy - 76f * s, x - 10f * s + sway, fy - 32f * s, 0xFF2E8A6E.toInt())
+                rc(x + 10f * s + sway * 0.6f, fy - 76f * s, x + 13f * s + sway, fy - 32f * s, 0xFF2E8A6E.toInt())
                 rc(x - 32f * s + sway, fy - 34f * s, x + 32f * s + sway, fy - 28f * s, 0xFF6EE8D8.toInt())
+                rc(x - 32f * s + sway, fy - 30f * s, x + 32f * s + sway, fy - 28f * s, 0xFF4EC8B8.toInt())
             }
             Game.UNI_SKY -> {
-                rc(x - 4f * s, fy - 90f * s, x + 4f * s, fy - 82f * s, 0xFFDCD2B4.toInt())
-                rc(x - 12f * s + sway, fy - 82f * s, x - 9f * s + sway * 1.2f, fy - 36f * s, 0xFFB9B9B9.toInt())
-                rc(x + 9f * s + sway, fy - 82f * s, x + 12f * s + sway * 1.2f, fy - 36f * s, 0xFFB9B9B9.toInt())
-                g.paint.isAntiAlias = true; g.paint.color = g.withAlpha(0xFFE8F4FF.toInt(), alpha)
+                // 悬浮云锚缓缓起伏，银索吊着云绒坐垫
+                g.paint.isAntiAlias = true
+                val bob = sin(g.homePhase * 1.1f) * 2f * s
+                g.paint.color = g.ca(0xFFE8F4FF.toInt(), 255, alpha)
+                g.canvas.drawOval(x - 18f * s, fy - 96f * s + bob, x + 18f * s, fy - 80f * s + bob, g.paint)
+                g.canvas.drawCircle(x - 13f * s, fy - 85f * s + bob, 6f * s, g.paint)
+                g.canvas.drawCircle(x + 13f * s, fy - 85f * s + bob, 6f * s, g.paint)
+                rc(x - 12f * s + sway, fy - 84f * s + bob, x - 9f * s + sway * 1.2f, fy - 36f * s, 0xFFB9B9B9.toInt())
+                rc(x + 9f * s + sway, fy - 84f * s + bob, x + 12f * s + sway * 1.2f, fy - 36f * s, 0xFFB9B9B9.toInt())
+                g.paint.color = g.ca(0xFFE8F4FF.toInt(), 255, alpha)
                 g.canvas.drawOval(x - 20f * s + sway, fy - 36f * s, x + 20f * s + sway, fy - 24f * s, g.paint)
+                g.paint.color = g.ca(0xFFFFFFFF.toInt(), 150, alpha)
+                g.canvas.drawOval(x - 14f * s + sway, fy - 35f * s, x - 2f * s + sway, fy - 30f * s, g.paint)
             }
             Game.UNI_LAVA -> {
+                // 黑曜石架 + 铁链 + 带余温辉光的坐板
                 rc(x - 32f * s, fy - 84f * s, x - 28f * s, fy, 0xFF43302A.toInt())
                 rc(x + 28f * s, fy - 84f * s, x + 32f * s, fy, 0xFF43302A.toInt())
+                rc(x - 36f * s, fy - 90f * s, x + 36f * s, fy - 82f * s, 0xFF4A3028.toInt())
+                rc(x - 36f * s, fy - 90f * s, x + 36f * s, fy - 88f * s, 0xFF5A4038.toInt())
+                rc(x - 12f * s + sway * 0.6f, fy - 82f * s, x - 9f * s + sway, fy - 34f * s, 0xFF6E5A50.toInt())
+                rc(x + 9f * s + sway * 0.6f, fy - 82f * s, x + 12f * s + sway, fy - 34f * s, 0xFF6E5A50.toInt())
                 rc(x - 16f * s + sway, fy - 34f * s, x + 16f * s + sway, fy - 26f * s, 0xFFFF7A2A.toInt())
+                val glow = 0.5f + 0.5f * sin(g.homePhase * 2.6f)
+                g.paint.color = g.ca(0xFFFFC48A.toInt(), (glow * 140).toInt(), alpha)
+                g.canvas.drawRect(x - 16f * s + sway, fy - 34f * s, x + 16f * s + sway, fy - 31f * s, g.paint)
             }
             Game.UNI_CANDY -> {
-                rc(x - 30f * s, fy - 80f * s, x - 26f * s, fy, 0xFFA46A3E.toInt())
-                rc(x + 26f * s, fy - 80f * s, x + 30f * s, fy, 0xFFA46A3E.toInt())
+                // 拐杖糖立柱 + 巧克力横梁 + 甘草绳 + 双色糖坐板
+                rc(x - 30f * s, fy - 80f * s, x - 26f * s, fy, 0xFFFFF8F0.toInt())
+                rc(x + 26f * s, fy - 80f * s, x + 30f * s, fy, 0xFFFFF8F0.toInt())
+                for (k in 0..3) {
+                    rc(x - 30f * s, fy - (72f - k * 20f) * s, x - 26f * s, fy - (66f - k * 20f) * s, 0xFFFF6E8E.toInt())
+                    rc(x + 26f * s, fy - (72f - k * 20f) * s, x + 30f * s, fy - (66f - k * 20f) * s, 0xFFFF6E8E.toInt())
+                }
+                rc(x - 34f * s, fy - 86f * s, x + 34f * s, fy - 78f * s, 0xFF6B4230.toInt())
+                rc(x - 34f * s, fy - 86f * s, x + 34f * s, fy - 84f * s, 0xFF8A5A40.toInt())
+                rc(x - 12f * s + sway * 0.6f, fy - 78f * s, x - 9f * s + sway, fy - 36f * s, 0xFFE87F9F.toInt())
+                rc(x + 9f * s + sway * 0.6f, fy - 78f * s, x + 12f * s + sway, fy - 36f * s, 0xFFE87F9F.toInt())
                 rc(x - 20f * s + sway, fy - 36f * s, x + 20f * s + sway, fy - 26f * s, 0xFFFF8FBE.toInt())
+                rc(x - 20f * s + sway, fy - 29f * s, x + 20f * s + sway, fy - 26f * s, 0xFFD86F9E.toInt())
             }
             Game.UNI_SPACE -> {
+                // 金属门架 + 半透明能量吊索 + 发光坐板与顶部航标灯
                 rc(x - 34f * s, fy - 86f * s, x - 30f * s, fy, 0xFF565B6E.toInt())
                 rc(x + 30f * s, fy - 86f * s, x + 34f * s, fy, 0xFF565B6E.toInt())
+                rc(x - 38f * s, fy - 92f * s, x + 38f * s, fy - 84f * s, 0xFF6E7488.toInt())
+                val pulse = 0.5f + 0.5f * sin(g.homePhase * 2f)
+                g.paint.color = g.ca(0xFF4DE8FF.toInt(), (100 + 90 * pulse).toInt(), alpha)
+                g.canvas.drawRect(x - 12f * s + sway * 0.6f, fy - 84f * s, x - 9f * s + sway, fy - 38f * s, g.paint)
+                g.canvas.drawRect(x + 9f * s + sway * 0.6f, fy - 84f * s, x + 12f * s + sway, fy - 38f * s, g.paint)
                 rc(x - 18f * s + sway, fy - 38f * s, x + 18f * s + sway, fy - 30f * s, 0xFF4DE8FF.toInt())
+                g.paint.color = g.ca(0xFF9FE8FF.toInt(), 255, alpha)
+                g.canvas.drawRect(x - 18f * s + sway, fy - 38f * s, x + 18f * s + sway, fy - 36f * s, g.paint)
+                g.paint.isAntiAlias = true
+                g.paint.color = g.ca(0xFFFF5A5A.toInt(), if (sin(g.homePhase * 3f) > 0f) 255 else 90, alpha)
+                g.canvas.drawCircle(x, fy - 88f * s, 2.5f * s, g.paint)
             }
             else -> {
-                rc(x - 34f * s, fy - 84f * s, x - 28f * s, fy, 0xFF97622F.toInt())
-                rc(x + 28f * s, fy - 84f * s, x + 34f * s, fy, 0xFF97622F.toInt())
+                // A 字木架（微外倾）+ 双色横梁 + 麻绳 + 木纹坐板
+                for (side in intArrayOf(-1, 1)) {
+                    g.canvas.save(); g.canvas.rotate(side * 6f, x + side * 31f * s, fy)
+                    rc(x + side * 31f * s - 3f * s, fy - 86f * s, x + side * 31f * s + 3f * s, fy, 0xFF97622F.toInt())
+                    g.canvas.restore()
+                }
                 rc(x - 38f * s, fy - 90f * s, x + 38f * s, fy - 82f * s, 0xFF7A4E22.toInt())
-                rc(x - 14f * s + sway, fy - 82f * s, x - 11f * s + sway * 1.2f, fy - 34f * s, 0xFFB9B9B9.toInt())
-                rc(x + 11f * s + sway, fy - 82f * s, x + 14f * s + sway * 1.2f, fy - 34f * s, 0xFFB9B9B9.toInt())
+                rc(x - 38f * s, fy - 90f * s, x + 38f * s, fy - 87f * s, 0xFF97622F.toInt())
+                rc(x - 14f * s + sway, fy - 82f * s, x - 11f * s + sway * 1.2f, fy - 34f * s, 0xFFC9A570.toInt())
+                rc(x + 11f * s + sway, fy - 82f * s, x + 14f * s + sway * 1.2f, fy - 34f * s, 0xFFC9A570.toInt())
                 rc(x - 18f * s + sway * 1.2f, fy - 34f * s, x + 18f * s + sway * 1.2f, fy - 26f * s, 0xFFFFD75E.toInt())
+                rc(x - 18f * s + sway * 1.2f, fy - 29f * s, x + 18f * s + sway * 1.2f, fy - 26f * s, 0xFFD9A82E.toInt())
             }
         }
+        g.paint.isAntiAlias = aa
     }
 
     private fun drawPerch(world: Int, cx: Float, gy: Float, s: Float, alpha: Int, g: Gfx, px: Float, py: Float) {
         val x = cx + px * s; val fy = gy + py * s; val rc = g.rc
+        val aa = g.paint.isAntiAlias
         if (alpha == 255) g.groundShadow(x, fy, 22f * s)
         when (world) {
             Game.UNI_WATER -> {
+                // 沉木爬架：底座 + 双层带沿口平台 + 顶层冒泡
                 rc(x - 4f * s, fy - 88f * s, x + 4f * s, fy, 0xFFC66A57.toInt())
+                rc(x - 14f * s, fy - 4f * s, x + 14f * s, fy, 0xFFB25A47.toInt())
                 rc(x - 28f * s, fy - 58f * s, x + 8f * s, fy - 50f * s, 0xFF64998F.toInt())
+                rc(x - 28f * s, fy - 53f * s, x + 8f * s, fy - 50f * s, 0xFF527F76.toInt())
                 rc(x - 8f * s, fy - 94f * s, x + 28f * s, fy - 86f * s, 0xFF6EE8D8.toInt())
+                rc(x - 8f * s, fy - 89f * s, x + 28f * s, fy - 86f * s, 0xFF54C8B8.toInt())
+                g.paint.isAntiAlias = true
+                for (i in 0 until 2) {
+                    val t = (g.homePhase * 0.4f + i * 0.5f) % 1f
+                    g.paint.color = g.ca(0xFFCFF2FF.toInt(), ((1f - t) * 120).toInt(), alpha)
+                    g.canvas.drawCircle(x + 8f * s + i * 9f * s, fy - 97f * s - t * 20f * s, 2.4f * s, g.paint)
+                }
             }
             Game.UNI_SKY -> {
+                // 云端爬架：双层云台反向起伏
                 rc(x - 4f * s, fy - 92f * s, x + 4f * s, fy, 0xFFDCD2B4.toInt())
-                g.paint.isAntiAlias = true; g.paint.color = g.withAlpha(0xFFE8F4FF.toInt(), alpha)
-                g.canvas.drawOval(x - 32f * s, fy - 66f * s, x + 12f * s, fy - 54f * s, g.paint)
-                g.canvas.drawOval(x - 12f * s, fy - 104f * s, x + 28f * s, fy - 92f * s, g.paint)
+                rc(x - 14f * s, fy - 4f * s, x + 14f * s, fy, 0xFFC9BD9C.toInt())
+                g.paint.isAntiAlias = true
+                val bob = sin(g.homePhase * 1.4f) * 2f * s
+                g.paint.color = g.ca(0xFFE8F4FF.toInt(), 255, alpha)
+                g.canvas.drawOval(x - 32f * s, fy - 66f * s + bob, x + 12f * s, fy - 54f * s + bob, g.paint)
+                g.canvas.drawOval(x - 12f * s, fy - 104f * s - bob, x + 28f * s, fy - 92f * s - bob, g.paint)
+                g.paint.color = g.ca(0xFFFFFFFF.toInt(), 150, alpha)
+                g.canvas.drawOval(x - 26f * s, fy - 64f * s + bob, x - 10f * s, fy - 59f * s + bob, g.paint)
+                g.canvas.drawOval(x - 6f * s, fy - 102f * s - bob, x + 10f * s, fy - 97f * s - bob, g.paint)
             }
             Game.UNI_LAVA -> {
+                // 玄武岩爬塔：石座 + 石台 + 顶层余温辉光
                 rc(x - 5f * s, fy - 94f * s, x + 5f * s, fy, 0xFF43302A.toInt())
+                rc(x - 15f * s, fy - 4f * s, x + 15f * s, fy, 0xFF4A3028.toInt())
                 rc(x - 32f * s, fy - 62f * s, x + 10f * s, fy - 52f * s, 0xFF4A3028.toInt())
+                rc(x - 32f * s, fy - 55f * s, x + 10f * s, fy - 52f * s, 0xFF3A2622.toInt())
                 rc(x - 10f * s, fy - 100f * s, x + 30f * s, fy - 90f * s, 0xFFFF7A2A.toInt())
+                val glow = 0.5f + 0.5f * sin(g.homePhase * 2.6f)
+                g.paint.color = g.ca(0xFFFFC48A.toInt(), (glow * 150).toInt(), alpha)
+                g.canvas.drawRect(x - 10f * s, fy - 100f * s, x + 30f * s, fy - 97f * s, g.paint)
             }
             Game.UNI_CANDY -> {
+                // 华夫饼柱 + 薄荷/草莓糖台 + 顶台樱桃
                 rc(x - 4f * s, fy - 96f * s, x + 4f * s, fy, 0xFFA46A3E.toInt())
+                for (k in 0..3) rc(x - 4f * s, fy - (88f - k * 22f) * s, x + 4f * s, fy - (86f - k * 22f) * s, 0xFF8A5A36.toInt())
+                rc(x - 15f * s, fy - 4f * s, x + 15f * s, fy, 0xFF6B4230.toInt())
                 rc(x - 30f * s, fy - 64f * s, x + 10f * s, fy - 54f * s, 0xFF7ADBC8.toInt())
+                rc(x - 30f * s, fy - 57f * s, x + 10f * s, fy - 54f * s, 0xFF5ABBA8.toInt())
                 rc(x - 10f * s, fy - 102f * s, x + 30f * s, fy - 92f * s, 0xFFFF8FBE.toInt())
+                rc(x - 10f * s, fy - 95f * s, x + 30f * s, fy - 92f * s, 0xFFD86F9E.toInt())
+                g.paint.isAntiAlias = true
+                g.paint.color = g.ca(0xFFE84A4A.toInt(), 255, alpha)
+                g.canvas.drawCircle(x + 22f * s, fy - 105f * s, 3.5f * s, g.paint)
             }
             Game.UNI_SPACE -> {
+                // 反重力爬台：平台底缘泛着呼吸的悬浮光
                 rc(x - 4f * s, fy - 96f * s, x + 4f * s, fy, 0xFF565B6E.toInt())
+                rc(x - 15f * s, fy - 4f * s, x + 15f * s, fy, 0xFF474C60.toInt())
                 rc(x - 30f * s, fy - 66f * s, x + 10f * s, fy - 58f * s, 0xFF6E7488.toInt())
                 rc(x - 10f * s, fy - 102f * s, x + 30f * s, fy - 94f * s, 0xFF4DE8FF.toInt())
+                val pulse = 0.5f + 0.5f * sin(g.homePhase * 2.2f)
+                g.paint.color = g.ca(0xFF4DE8FF.toInt(), (60 + 80 * pulse).toInt(), alpha)
+                g.canvas.drawRect(x - 26f * s, fy - 57f * s, x + 6f * s, fy - 54f * s, g.paint)
+                g.canvas.drawRect(x - 6f * s, fy - 93f * s, x + 26f * s, fy - 90f * s, g.paint)
+                g.paint.isAntiAlias = true
+                g.paint.color = g.ca(0xFF9FE8FF.toInt(), (150 + 100 * pulse).toInt(), alpha)
+                g.canvas.drawCircle(x, fy - 100f * s, 2.5f * s, g.paint)
             }
             else -> {
+                // 木爬架：剑麻缠绕柱 + 底座 + 带沿口平台 + 晃动的吊球玩具
                 rc(x - 4f * s, fy - 96f * s, x + 4f * s, fy, 0xFFC9A570.toInt())
+                for (k in 0..2) rc(x - 4f * s, fy - (48f - k * 8f) * s, x + 4f * s, fy - (45f - k * 8f) * s, 0xFFB08A50.toInt())
+                rc(x - 16f * s, fy - 4f * s, x + 16f * s, fy, 0xFF97622F.toInt())
                 rc(x - 30f * s, fy - 64f * s, x + 10f * s, fy - 54f * s, 0xFF8594B3.toInt())
+                rc(x - 30f * s, fy - 57f * s, x + 10f * s, fy - 54f * s, 0xFF6E7C9C.toInt())
                 rc(x - 10f * s, fy - 102f * s, x + 30f * s, fy - 92f * s, 0xFFF5A8C1.toInt())
-                rc(x + 12f * s, fy - 92f * s, x + 20f * s, fy - 78f * s, 0xFFB9B9B9.toInt())
+                rc(x - 10f * s, fy - 95f * s, x + 30f * s, fy - 92f * s, 0xFFD98BA6.toInt())
+                val sw = sin(g.homePhase * 2.2f) * 3f * s
+                rc(x + 18f * s, fy - 92f * s, x + 19.5f * s + sw * 0.4f, fy - 79f * s, 0xFFB9B9B9.toInt())
+                g.paint.isAntiAlias = true
+                g.paint.color = g.ca(0xFFF25A5A.toInt(), 255, alpha)
+                g.canvas.drawCircle(x + 19f * s + sw, fy - 75f * s, 4.5f * s, g.paint)
+                g.paint.color = g.ca(0xFFFF9A9A.toInt(), 255, alpha)
+                g.canvas.drawCircle(x + 17.5f * s + sw, fy - 76.5f * s, 1.6f * s, g.paint)
             }
         }
+        g.paint.isAntiAlias = aa
     }
 
     private fun drawPool(
@@ -800,12 +1092,42 @@ object HomeWorldDraw {
         val wl = left + 9f * s; val wt = top + 8f * s; val wr = right - 9f * s; val wb = bottom - 12f * s
         g.paint.shader = LinearGradient(0f, wt, 0f, wb, intArrayOf(g.withAlpha(poolWater[0], alpha), g.withAlpha(poolWater[1], alpha)), null, Shader.TileMode.CLAMP)
         g.canvas.drawRoundRect(wl, wt, wr, wb, 11f * s, 11f * s, g.paint)
-        g.paint.shader = null; g.paint.isAntiAlias = aa
+        g.paint.shader = null
+        // 岸沿高光 + 池边瓷砖缝
+        g.paint.color = g.ca(0xFFFFFFFF.toInt(), 70, alpha)
+        g.canvas.drawRoundRect(wl + 3f * s, wt + 2.5f * s, wl + (wr - wl) * 0.45f, wt + 8f * s, 4f * s, 4f * s, g.paint)
+        g.paint.color = g.ca(0xFF000000.toInt(), 40, alpha)
+        var tx = left + 18f * s
+        while (tx < right - 12f * s) {
+            g.canvas.drawRect(tx, top + 1f * s, tx + 2f * s, top + 4f * s, g.paint)
+            tx += 22f * s
+        }
+        // 两圈慢慢扩散的波纹
+        g.paint.style = Paint.Style.STROKE
+        g.paint.strokeWidth = 1.8f * s
+        for (i in 0 until 2) {
+            val t = (g.homePhase * 0.35f + i * 0.5f) % 1f
+            g.paint.color = g.ca(0xFFFFFFFF.toInt(), ((1f - t) * 90).toInt(), alpha)
+            val rx = wl + (wr - wl) * (0.32f + i * 0.38f)
+            val ry = (wt + wb) * 0.5f
+            val rw = (6f + 13f * t) * s
+            g.canvas.drawOval(rx - rw, ry - rw * 0.45f, rx + rw, ry + rw * 0.45f, g.paint)
+        }
+        g.paint.style = Paint.Style.FILL
+        // 右岸入水梯
+        val lx = right - 24f * s
+        g.paint.color = g.ca(0xFFE8ECF2.toInt(), 255, alpha)
+        g.canvas.drawRect(lx, top - 8f * s, lx + 2.6f * s, top + 16f * s, g.paint)
+        g.canvas.drawRect(lx + 10f * s, top - 8f * s, lx + 12.6f * s, top + 16f * s, g.paint)
+        g.canvas.drawRect(lx, top - 5f * s, lx + 12.6f * s, top - 2.6f * s, g.paint)
+        g.canvas.drawRect(lx, top + 3f * s, lx + 12.6f * s, top + 5.4f * s, g.paint)
+        g.paint.isAntiAlias = aa
     }
 
     private fun drawTelescope(world: Int, cx: Float, gy: Float, s: Float, alpha: Int, g: Gfx, tx: Float, ty: Float) {
         val x = cx + tx * s; val fy = gy + ty * s; val rc = g.rc
         val topY = fy - 26f * s
+        val aa = g.paint.isAntiAlias
         if (alpha == 255) g.groundShadow(x, fy, 22f * s)
         val leg = when (world) {
             Game.UNI_WATER -> 0xFF64998F.toInt()
@@ -819,22 +1141,68 @@ object HomeWorldDraw {
         rc(x - 3f * s, topY + 4f * s, x + 3f * s, fy + 6f * s, leg); g.canvas.restore()
         rc(x - 7f * s, topY - 3f * s, x + 7f * s, topY + 4f * s, leg)
         g.canvas.save(); g.canvas.rotate(if (world == Game.UNI_SPACE) -15f else -30f, x, topY)
-        g.paint.color = g.withAlpha(if (world == Game.UNI_WATER) 0xFF2E86BE.toInt() else 0xFF3E4A66.toInt(), alpha)
+        val tube = if (world == Game.UNI_WATER) 0xFF2E86BE.toInt() else 0xFF3E4A66.toInt()
+        g.paint.color = g.withAlpha(tube, alpha)
         g.canvas.drawRect(x - 12f * s, topY - 8f * s, x + 32f * s, topY + 8f * s, g.paint)
+        // 筒身高光 / 箍环 / 目镜
+        g.paint.color = g.ca(0xFFFFFFFF.toInt(), 60, alpha)
+        g.canvas.drawRect(x - 12f * s, topY - 8f * s, x + 32f * s, topY - 5f * s, g.paint)
+        g.paint.color = g.ca(0xFF222B3E.toInt(), 255, alpha)
+        g.canvas.drawRect(x + 8f * s, topY - 8f * s, x + 12f * s, topY + 8f * s, g.paint)
+        g.paint.color = g.withAlpha(leg, alpha)
+        g.canvas.drawRect(x - 17f * s, topY - 4f * s, x - 12f * s, topY + 4f * s, g.paint)
+        // 物镜镜片 + 呼吸的镜面反光
         g.paint.color = g.withAlpha(0xFF57B6E8.toInt(), alpha)
         g.canvas.drawRect(x + 28f * s, topY - 6f * s, x + 32f * s, topY + 6f * s, g.paint)
+        val glint = 0.5f + 0.5f * sin(g.homePhase * 2.2f)
+        g.paint.color = g.ca(0xFFFFFFFF.toInt(), (70 + 130 * glint).toInt(), alpha)
+        g.canvas.drawRect(x + 29f * s, topY - 4f * s, x + 31f * s, topY, g.paint)
         g.canvas.restore()
+        // 镜筒所指方向闪烁的小星星
+        val tw = 0.5f + 0.5f * sin(g.homePhase * 1.7f)
+        val sxr = x + 44f * s; val syr = topY - 26f * s
+        g.paint.color = g.ca(0xFFFFFFFF.toInt(), (60 + 170 * tw).toInt(), alpha)
+        g.canvas.drawRect(sxr - 1.4f * s, syr - 4.5f * s, sxr + 1.4f * s, syr + 4.5f * s, g.paint)
+        g.canvas.drawRect(sxr - 4.5f * s, syr - 1.4f * s, sxr + 4.5f * s, syr + 1.4f * s, g.paint)
+        g.paint.isAntiAlias = aa
     }
 
+    private val flagPath = Path()
+
     private fun drawFlags(cx: Float, gy: Float, half: Float, s: Float, alpha: Int, flags: IntArray, g: Gfx) {
-        val rc = g.rc
+        val aa = g.paint.isAntiAlias
+        g.paint.isAntiAlias = true
         for (side in intArrayOf(-1, 1)) {
+            // 挂旗的绳：沿旗点连成下垂的弧线
+            g.paint.style = Paint.Style.STROKE
+            g.paint.strokeWidth = 1.8f * s
+            g.paint.color = g.ca(0xFFF4F0E6.toInt(), 200, alpha)
+            var prevX = cx; var prevY = gy - 200f * s
+            for (i in 0..5) {
+                val t = (i + 1) / 6f
+                val nx = cx + side * t * (half - 30f * s)
+                val ny = gy - 200f * s + t * t * 130f * s
+                g.canvas.drawLine(prevX, prevY, nx, ny, g.paint)
+                prevX = nx; prevY = ny
+            }
+            g.paint.style = Paint.Style.FILL
+            // 三角旗：旗尾随风摆，加一道受光亮边
             for (i in 0..4) {
                 val t = (i + 1) / 6f
                 val fx = cx + side * t * (half - 30f * s)
                 val fy = gy - 200f * s + t * t * 130f * s
-                rc(fx - 7f * s, fy, fx + 7f * s, fy + 16f * s, flags[i])
+                val sway = sin(g.homePhase * 2.2f + i * 1.1f + (if (side < 0) 0.7f else 0f)) * 2.5f * s
+                flagPath.reset()
+                flagPath.moveTo(fx - 8f * s, fy)
+                flagPath.lineTo(fx + 8f * s, fy)
+                flagPath.lineTo(fx + sway, fy + 17f * s)
+                flagPath.close()
+                g.paint.color = g.withAlpha(flags[i], alpha)
+                g.canvas.drawPath(flagPath, g.paint)
+                g.paint.color = g.ca(0xFFFFFFFF.toInt(), 90, alpha)
+                g.canvas.drawRect(fx - 8f * s, fy, fx + 8f * s, fy + 2.5f * s, g.paint)
             }
         }
+        g.paint.isAntiAlias = aa
     }
 }
