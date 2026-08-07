@@ -1653,11 +1653,18 @@ class HudView(context: Context, private val game: Game) : View(context) {
                     edgeW = 1.5f * s
                 )
                 if (on) {
+                    btnPaint.color = 0xFF2A7A42.toInt()
+                    canvas.drawRect(boxL + 2f * s, boxCy - box / 2f + 2f * s, boxL + box - 2f * s, boxCy - box / 2f + 4f * s, btnPaint)
                     btnPaint.color = 0xFFF0FFF4.toInt()
                     canvas.drawRect(boxL + 5f * s, boxCy - 2f * s, boxL + box - 7f * s, boxCy, btnPaint)
                     canvas.drawRect(boxL + 5f * s, boxCy, boxL + box - 11f * s, boxCy + 2f * s, btnPaint)
-                    btnPaint.color = 0xFFD0FFE0.toInt()
+                    btnPaint.color = 0xFFFFFFFF.toInt()
                     canvas.drawRect(boxL + 6f * s, boxCy - 2f * s, boxL + 8f * s, boxCy - 1f * s, btnPaint)
+                    btnPaint.color = withAlpha(0xFFA8FFC0.toInt(), 80)
+                    canvas.drawCircle(boxL + box * 0.7f, boxCy - box * 0.2f, box * 0.2f, btnPaint)
+                } else {
+                    btnPaint.color = 0x44000000.toInt()
+                    canvas.drawRect(boxL + 4f * s, boxCy + 2f * s, boxL + box - 4f * s, boxCy + box / 2f - 3f * s, btnPaint)
                 }
                 textPaint.textAlign = Paint.Align.LEFT
                 pixText(
@@ -2194,7 +2201,6 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val rows = pickRowsFor(game.homeTab)
         val rowH = if (portrait) 64f * s else 54f * s
         val padH = 18f * s
-        val labelW = 60f * s
         val pw = min(w * 0.94f, 640f * s)
         val titleH = 50f * s
         val footerH = 34f * s
@@ -2233,17 +2239,35 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val dividerY = titleBarB + 6f * s
         PixelUi.drawDivider(canvas, btnPaint, l + padH, dividerY, l + pw - padH, s, 0x66FFD426.toInt())
 
-        var ry = titleBarB + 12f * s
+        var ry = titleBarB + 14f * s
         for (row in rows) {
-            textPaint.textAlign = Paint.Align.LEFT
-            pixText(
-                canvas, row.label, l + padH, centeredBaselineY(ry + rowH / 2f, 18f * s),
-                18f * s, 0xBBBBCCDD.toInt(), sdx, sdy
-            )
+            val labelSize = 17f * s
             textPaint.textAlign = Paint.Align.CENTER
+            textPaint.textSize = labelSize
+            val labelWActual = textPaint.measureText(row.label)
+            val labelTagPadX = 10f * s
+            val labelTagPadY = 5f * s
+            val labelTagL = l + padH
+            val labelTagR = labelTagL + labelWActual + labelTagPadX * 2f
+            val labelTagT = ry + (rowH - (labelSize + labelTagPadY * 2f)) * 0.5f
+            val labelTagB = labelTagT + labelSize + labelTagPadY * 2f
+            val labelTagCy = (labelTagT + labelTagB) * 0.5f
+
+            PixelUi.drawPanel(
+                canvas, btnPaint, labelTagL, labelTagT, labelTagR, labelTagB,
+                0x553A5068.toInt(), 0x6690B0D0.toInt(), s * 0.85f, 5f * s, edgeW = 1f * s, shadow = false
+            )
+            btnPaint.color = 0x33FFFFFF.toInt()
+            canvas.drawRect(labelTagL + 4f * s, labelTagT + 2f * s, labelTagR - 4f * s, labelTagT + 3.5f * s, btnPaint)
+
+            pixText(
+                canvas, row.label, (labelTagL + labelTagR) * 0.5f,
+                centeredBaselineY(labelTagCy, labelSize),
+                labelSize, 0xFFD0E0F0.toInt(), 0f, 0f
+            )
 
             val gap = 8f * s
-            val trackL = l + padH + labelW
+            val trackL = labelTagR + 8f * s
             val trackR = l + pw - padH
             val n = pickItemCount(row.tab)
             if (n > 0) {
@@ -2259,6 +2283,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
             }
             ry += rowH
         }
+        textPaint.textAlign = Paint.Align.CENTER
 
         val hint = if (pickArmedTab >= 0) "再点一次买下  ·  点别处收起" else "点别处收起"
         val hintAlpha = (0.55f + 0.25f * (0.5f + 0.5f * kotlin.math.sin(homePhase * 1.6f))).coerceIn(0.4f, 1f)
