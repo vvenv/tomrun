@@ -505,6 +505,9 @@ class Game {
     private var relicMaskHi = 0       // 图鉴位 32..63
     private var relicMaskTop = 0    // 图鉴位 64..87
     private var museumRewarded = false
+    /** 上次翻开图鉴时的进度——大于它说明有还没看过的新解锁，家园地标会为此发光 */
+    @Volatile var seenRelicsFound = 0
+    @Volatile var seenAchieveCount = 0
     @Volatile var totalRelicPickups = 0
     private var nextRelicAt = 0f
 
@@ -775,6 +778,8 @@ class Game {
         museumRewarded = p.getBoolean("museumRewarded", false)
         // 图鉴扩容后：未集齐新件数则允许再次领取全收集奖
         if (museumRewarded && relicsFound < RELIC_COUNT) museumRewarded = false
+        seenRelicsFound = p.getInt("seenRelicsFound", relicsFound)
+        seenAchieveCount = p.getInt("seenAchieveCount", achieveCount)
         totalRelicPickups = p.getInt("totalRelicPickups", 0)
 
         ownedHouses = p.getInt("ownedHouses", 1) or 1
@@ -783,6 +788,7 @@ class Game {
         loadPerWorldOwnedDecos(p)
         loadPerWorldHouseStyles(p)
         loadHomePlayerLayout(p.getString("homePlayerLayout", null) ?: p.getString("yardPlayerLayout", null))
+        migrateHomeLayoutRev(p)
         homeWorld = p.getInt("homeWorld", UNI_MEADOW).coerceIn(0, UNIVERSE_COUNT - 1)
         if (!homeWorldUnlocked(homeWorld)) homeWorld = UNI_MEADOW
         homeBrowseHouse = houseStyle
@@ -976,50 +982,82 @@ class Game {
         return n
     }
 
-    /** 切到下一个已解锁世界的家；返回新家所在世界名，没得切时返回空串 */
-    @Synchronized fun switchHomeWorld(dir: Int): String {
+    /** 直接搬到某个已解锁世界的家；返回新家所在世界名，切不过去时返回空串 */
+    @Synchronized fun setHomeWorld(w: Int): String {
         if (state == State.RUNNING) return ""
-        var w = homeWorld
-        repeat(UNIVERSE_COUNT - 1) {
-            w = (w + dir + UNIVERSE_COUNT) % UNIVERSE_COUNT
-            if (homeWorldUnlocked(w) && w != homeWorld) {
-                homeWorld = w
-                homeBrowseHouse = houseStyles[w]
-                homeBrowseRoof = roofStyles[w]
-                homeBrowseDeco = HomeWorldContent.clampDecoBrowse(w, homeBrowseDeco)
-                prefs?.edit()?.putInt("homeWorld", w)?.apply()
-                emit(EV_PORTAL, HAPTIC_LIGHT)
-                return UNIVERSE_NAMES[w]
-            }
-        }
-        return ""
+        if (w == homeWorld || w !in 0 until UNIVERSE_COUNT || !homeWorldUnlocked(w)) return ""
+        homeWorld = w
+        homeBrowseHouse = houseStyles[w]
+        homeBrowseRoof = roofStyles[w]
+        homeBrowseDeco = HomeWorldContent.clampDecoBrowse(w, homeBrowseDeco)
+        prefs?.edit()?.putInt("homeWorld", w)?.apply()
+        emit(EV_PORTAL, HAPTIC_LIGHT)
+        return UNIVERSE_NAMES[w]
     }
 
-    fun yardGardenX() = LayoutConfig.cur.gardenX + homeLayout().gardenX
-    fun yardGardenY() = LayoutConfig.cur.gardenY + homeLayout().gardenY
-    fun yardFenceY() = LayoutConfig.cur.fenceY + homeLayout().fenceY
-    fun yardMailboxX() = LayoutConfig.cur.mailboxX + homeLayout().mailboxX
-    fun yardMailboxY() = LayoutConfig.cur.mailboxY + homeLayout().mailboxY
-    fun yardSwingX() = LayoutConfig.cur.swingX + homeLayout().swingX
-    fun yardSwingY() = LayoutConfig.cur.swingY + homeLayout().swingY
-    fun yardPerchX() = LayoutConfig.cur.perchX + homeLayout().perchX
-    fun yardPerchY() = LayoutConfig.cur.perchY + homeLayout().perchY
-    fun yardTelescopeX() = LayoutConfig.cur.telescopeX + homeLayout().telescopeX
-    fun yardTelescopeY() = LayoutConfig.cur.telescopeY + homeLayout().telescopeY
-    fun homeHouseDX() = LayoutConfig.cur.houseDX + homeLayout().houseDX
-    fun homeHouseDY() = LayoutConfig.cur.houseDY + homeLayout().houseDY
-    fun homeMuseumDX() = LayoutConfig.cur.museumDX + homeLayout().museumDX
-    fun homeMuseumDY() = LayoutConfig.cur.museumDY + homeLayout().museumDY
-    fun homeHonorDX() = LayoutConfig.cur.honorDX + homeLayout().honorDX
-    fun homeHonorDY() = LayoutConfig.cur.honorDY + homeLayout().honorDY
+    /**
+     * 庭院元素相对默认锚点的玩家偏移，**单位是世界单位**（x 向右、z 朝镜头）。
+     *
+     * 家页面改成 3D 之后这批数字换了坐标系：原来是屏幕 s 单位的平移量，现在是院子里的
+     * 米数。存档字段沿用（`gardenX/gardenY` 这些名字里的 Y 现在读作 Z），靠
+     * [migrateHomeLayoutRev] 的 rev 3 把旧值清零一次——旧单位换到新坐标系是纯噪声，
+     * 一个 -232 会把花坛甩到雾里去。
+     */
+    fun homeYardOffX(id: String): Float {
+        val po = homeLayout()
+        return when (id) {
+            HomeYard.GARDEN -> po.gardenX
+            HomeYard.MAILBOX -> po.mailboxX
+            HomeYard.SWING -> po.swingX
+            HomeYard.PERCH -> po.perchX
+            HomeYard.TELESCOPE -> po.telescopeX
+            HomeYard.POOL -> po.poolDX
+            HomeYard.HOUSE -> po.houseDX
+            HomeYard.MUSEUM -> po.museumDX
+            HomeYard.CAT -> po.catDX
+            else -> 0f
+        }
+    }
+
+    fun homeYardOffZ(id: String): Float {
+        val po = homeLayout()
+        return when (id) {
+            HomeYard.GARDEN -> po.gardenY
+            HomeYard.FENCE -> po.fenceY
+            HomeYard.MAILBOX -> po.mailboxY
+            HomeYard.SWING -> po.swingY
+            HomeYard.PERCH -> po.perchY
+            HomeYard.TELESCOPE -> po.telescopeY
+            HomeYard.POOL -> po.poolDY
+            HomeYard.HOUSE -> po.houseDY
+            HomeYard.MUSEUM -> po.museumDY
+            HomeYard.CAT -> po.catDY
+            else -> 0f
+        }
+    }
+
+    fun setHomeYardOff(id: String, x: Float, z: Float) {
+        val po = homeLayout()
+        when (id) {
+            HomeYard.GARDEN -> { po.gardenX = x; po.gardenY = z }
+            HomeYard.FENCE -> po.fenceY = z
+            HomeYard.MAILBOX -> { po.mailboxX = x; po.mailboxY = z }
+            HomeYard.SWING -> { po.swingX = x; po.swingY = z }
+            HomeYard.PERCH -> { po.perchX = x; po.perchY = z }
+            HomeYard.TELESCOPE -> { po.telescopeX = x; po.telescopeY = z }
+            HomeYard.POOL -> { po.poolDX = x; po.poolDY = z }
+            HomeYard.HOUSE -> { po.houseDX = x; po.houseDY = z }
+            HomeYard.MUSEUM -> { po.museumDX = x; po.museumDY = z }
+            HomeYard.CAT -> { po.catDX = x; po.catDY = z }
+        }
+    }
+
     fun homeNameDX() = LayoutConfig.cur.nameDX + homeLayout().nameDX
     fun homeNameDY() = LayoutConfig.cur.nameDY + homeLayout().nameDY
     fun homeEnergyDX() = LayoutConfig.cur.energyDX + homeLayout().energyDX
     fun homeEnergyDY() = LayoutConfig.cur.energyDY + homeLayout().energyDY
     fun homeRewardDX() = LayoutConfig.cur.rewardDX + homeLayout().rewardDX
     fun homeRewardDY() = LayoutConfig.cur.rewardDY + homeLayout().rewardDY
-    fun homeCatDX() = homeLayout().catDX
-    fun homeCatDY() = homeLayout().catDY
     fun homeUiDX(id: String) = homeLayout().uiDX[id] ?: 0f
     fun homeUiDY(id: String) = homeLayout().uiDY[id] ?: 0f
 
@@ -1042,12 +1080,6 @@ class Game {
         persistHomeLayout()
     }
 
-    fun yardPool(): LayoutConfig.Pool {
-        val p = LayoutConfig.cur.pool
-        val po = homeLayout()
-        return LayoutConfig.Pool(p.l + po.poolDX, p.r + po.poolDX, p.t + po.poolDY, p.b + po.poolDY)
-    }
-
     fun saveHomeLayout() = persistHomeLayout()
 
     private fun loadHomePlayerLayout(json: String?) {
@@ -1066,6 +1098,38 @@ class Game {
                 }
             }
         }
+    }
+
+    /**
+     * 家园布局的一次性迁移。
+     *
+     * rev 2：藏品馆与荣誉墙合成一栋「藏馆」，锚点从「房屋左后方」改到了右后方。玩家早先
+     * 对藏品馆的位移是相对旧锚点存的，换到新锚点后方向完全不对（会把藏馆推出屏幕），
+     * 所以这里把它清零一次，让藏馆回到新的默认位置。
+     *
+     * rev 3：家页面从 Canvas 2D 换成体素 3D，所有偏移的单位从「屏幕 s 像素」变成
+     * 「院子里的世界单位」（见 [homeYardOffX]）。一个旧的 -232 在新坐标系里等于把花坛
+     * 扔进两百米外的雾里，没有任何换算能救——整批清零，让每件东西回到新的默认锚点。
+     */
+    private fun migrateHomeLayoutRev(p: android.content.SharedPreferences) {
+        if (p.getInt("homeLayoutRev", 0) >= 3) return
+        for (i in 0 until UNIVERSE_COUNT) {
+            for (set in arrayOf(homeLayoutPortrait[i], homeLayoutLandscape[i])) {
+                set.gardenX = 0f; set.gardenY = 0f
+                set.fenceY = 0f
+                set.mailboxX = 0f; set.mailboxY = 0f
+                set.swingX = 0f; set.swingY = 0f
+                set.perchX = 0f; set.perchY = 0f
+                set.telescopeX = 0f; set.telescopeY = 0f
+                set.poolDX = 0f; set.poolDY = 0f
+                set.houseDX = 0f; set.houseDY = 0f
+                set.museumDX = 0f; set.museumDY = 0f
+                set.catDX = 0f; set.catDY = 0f
+                set.hidden.remove("honorLabel")
+            }
+        }
+        p.edit().putInt("homeLayoutRev", 3).apply()
+        persistHomeLayout()
     }
 
     private fun persistHomeLayout() {
@@ -1148,6 +1212,23 @@ class Game {
         return n
     }
     fun museumComplete() = relicsFound >= RELIC_COUNT
+
+    /** 有没有还没翻开看过的新藏品 / 新荣誉——家园地标只在这时候发光提示 */
+    fun hasUnseenRelics() = relicsFound > seenRelicsFound
+    fun hasUnseenHonors() = achieveCount > seenAchieveCount
+
+    /** 打开对应图鉴时调用：进度记为已看过，地标随之熄灭 */
+    fun markRelicsSeen() {
+        if (seenRelicsFound == relicsFound) return
+        seenRelicsFound = relicsFound
+        prefs?.edit()?.putInt("seenRelicsFound", seenRelicsFound)?.apply()
+    }
+
+    fun markHonorsSeen() {
+        if (seenAchieveCount == achieveCount) return
+        seenAchieveCount = achieveCount
+        prefs?.edit()?.putInt("seenAchieveCount", seenAchieveCount)?.apply()
+    }
 
     fun decoOwnedCount(): Int {
         var n = 0
@@ -1325,6 +1406,24 @@ class Game {
             else -> {
                 shopBrowseHat = (shopBrowseHat + delta + HAT_COUNT) % HAT_COUNT
             }
+        }
+    }
+
+    /**
+     * 把某分类的浏览游标直接放到第 i 件上。
+     *
+     * 选物面板是一屏摊开的，玩家点哪件就是哪件，不再靠 [browseHome] 一格一格挪。
+     * 注意调用顺序：[switchHomeTab] 会把游标复位成当前在用的那件，所以要先切 tab 再调这里。
+     */
+    @Synchronized fun setHomeBrowse(tab: Int, i: Int) {
+        when (tab) {
+            HOME_TAB_HOUSE -> homeBrowseHouse = i.coerceIn(0, HOUSE_NAMES.size - 1)
+            HOME_TAB_ROOF -> homeBrowseRoof = i.coerceIn(0, ROOF_NAMES.size - 1)
+            HOME_TAB_DECO -> homeBrowseDeco = HomeWorldContent.clampDecoBrowse(homeWorld, i)
+            HOME_TAB_COLOR -> shopBrowseColor = i.coerceIn(0, COLOR_NAMES.size - 1)
+            HOME_TAB_TRAIL -> shopBrowseTrail = i.coerceIn(0, TRAIL_NAMES.size - 1)
+            HOME_TAB_SCARF -> shopBrowseScarf = i.coerceIn(0, SCARF_NAMES.size - 1)
+            HOME_TAB_HAT -> shopBrowseHat = i.coerceIn(0, HAT_NAMES.size - 1)
         }
     }
 
@@ -2810,6 +2909,8 @@ class Game {
             .putInt("relicMaskHi", relicMaskHi)
             .putInt("relicMaskTop", relicMaskTop)
             .putBoolean("museumRewarded", museumRewarded)
+            .putInt("seenRelicsFound", seenRelicsFound)
+            .putInt("seenAchieveCount", seenAchieveCount)
             .putInt("totalRelicPickups", totalRelicPickups)
             .putInt("ownedHouses", ownedHouses)
             .putInt("ownedRoofs", ownedRoofs)

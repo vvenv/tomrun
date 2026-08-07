@@ -6,6 +6,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
@@ -77,7 +78,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
 
     // 离屏按钮区域
     private val btnHome = RectF()
-    private val btnHelp = RectF()
+    /** 结算屏那一行「纪录榜 ›」的热区；READY 菜单上为空 */
     private val btnLeaderboard = RectF()
     private val btnLbClose = RectF()
     private val btnLbPrev = RectF()
@@ -97,13 +98,12 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private val btnCatalogClose = RectF()
     private val relicDetailFrame = RectF()
     private val hitHouse = RectF()
-    private val hitRoof = RectF()
-    private val hitYardDeco = RectF()
     private val hitCosmeticColor = RectF()
     private val hitCosmeticTrail = RectF()
     private val hitCosmeticHat = RectF()
-    private val hitSky = RectF()
     private var showHelp = false
+    /** 玩法说明本次进程已自动弹过：不加它的话关掉后下一帧又会被首局条件重新拉起 */
+    private var helpAutoShown = false
     private var showLeaderboard = false
     private var leaderboardTab = 0
     private var leaderboardScope = LB_SCOPE_LOCAL
@@ -114,14 +114,26 @@ class HudView(context: Context, private val game: Game) : View(context) {
     /** 藏品大图：-1 表示未打开 */
     private var museumDetailId = -1
     private val museumTileHits = Array(MUSEUM_PER_PAGE) { RectF() }
-    private val btnHomeTabs = Array(7) { RectF() }
-    private val btnHomeL = RectF()
-    private val btnHomeR = RectF()
-    private val btnHomeBuy = RectF()
+    /**
+     * 选物面板的格子：分类 tab + 该分类内的下标 + 屏幕矩形，三条并行数组。
+     * 一屏最多 4 行 × 4 件（猫装扮）或 1 行 × 8 件（摆件），留 20 个位子足够。
+     */
+    private val pickPanelRect = RectF()
+    private val pickChipRects = Array(20) { RectF() }
+    private val pickChipTab = IntArray(20)
+    private val pickChipIdx = IntArray(20)
+    private var pickChipCount = 0
+    /** 已预览、等第二下确认买下的那一格；-1 表示没有 */
+    private var pickArmedTab = -1
+    private var pickArmedIdx = -1
     private val hitHomeTitle = RectF()
-    /** 世界切换：左右箭头在已解锁世界的家之间穿梭 */
-    private val btnHomeWorldL = RectF()
-    private val btnHomeWorldR = RectF()
+    /** 世界切换：点房门开一张已解锁世界的清单，取代庭院里常驻的左右箭头 */
+    private var showHomeWorlds = false
+    private val hitDoor = RectF()
+    private var lastDoorCx = 0f
+    private val homeWorldRowHits = Array(Game.UNIVERSE_COUNT) { RectF() }
+    private val homeWorldRowIds = IntArray(Game.UNIVERSE_COUNT)
+    private var homeWorldRowCount = 0
     /** 家园图层：游戏内显示/隐藏各元素 */
     private var showHomeLayers = false
     private var homeLayerScroll = 0f
@@ -135,12 +147,15 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private val btnQuit = RectF()
     private var homePhase = 0f
 
-    // 庭院猫 AI：站立张望 / 散步 / 与装饰互动 / 打盹
+    // 庭院猫 AI：站立张望 / 散步 / 与装饰互动 / 打盹。坐标是**世界单位**（见 [HomeYard]）
     private var catState = CAT_IDLE
     private var catTimer = 1.5f
-    private var catX = -118f          // s 单位，相对场景中心
-    private var catDir = 1f
-    private var catTarget = -118f
+    private var catX = -3.5f
+    private var catZ = 4.4f
+    private var catY = 0f             // 相对台地面的高度：上爬架 / 下水时才不为 0
+    private var catTargetX = -3.5f
+    private var catTargetZ = 4.4f
+    private var catYaw = 180f         // 0 背对镜头，180 面朝镜头
     private var catDeco = -1          // 互动目标装饰，-1 为无
     private var catStage = 0          // 猫爬架分段动作
     private var catStageT = 0f
@@ -151,7 +166,8 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private var butterflySpawnTimer = 10f
     private var butterflyLife = 0f
     private var butterflyX = 0f
-    private var butterflyHeight = 70f
+    private var butterflyZ = 4f
+    private var butterflyY = 2.2f
     private var butterflyDir = 1f
     private var petTimer = 0f
     private var petCount = 0
@@ -163,10 +179,8 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private val dragHitScratch = RectF()
     private val yardSceneHit = RectF()
     private val butterflyHit = RectF()
-    private var yardSceneCx = 0f
-    private var yardSceneGy = 0f
+    /** HUD 的像素尺度，飘字等屏幕小物件按它排版 */
     private var yardSceneS = 1f
-    private var yardSceneHalf = 0f
     // 庭院手势：双击追手 / 长按撸猫
     private var yardLastTapX = 0f
     private var yardLastTapY = 0f
@@ -179,7 +193,10 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private var yardFingerDownTime = 0L
     private var yardLongPressTriggered = false
     private var handTargetX = 0f
+    private var handTargetZ = 0f
     private var handMarkerLife = 0f
+    /** 屏幕点打到地面的世界坐标暂存（拖放 / 叫猫共用），避免每次触摸都新建 */
+    private val groundHit = FloatArray(2)
     private var strokeActive = false
     private var strokeHoldT = 0f
     private var strokeCoinTimer = 0f
@@ -198,16 +215,16 @@ class HudView(context: Context, private val game: Game) : View(context) {
         "garden", "mailbox", "swing", "perch", "telescope", "pool", "fence"
     )
     private val homeDragOrder = arrayOf(
-        "buy", "arrowL", "arrowR", "tabHat", "tabScarf", "tabTrail", "tabColor",
-        "worldL", "worldR",
         "leave", "wallet", "name", "energy", "reward",
         "cat", "museum", "honor", "house"
     )
-    /** 家园 UI 文字（商店栏名称/价格/状态、提示语、名牌等） */
+    /**
+     * 家园 UI 文字（提示语、名牌等）。
+     * 商店栏的名称/价格/状态三段文字随选物面板一起删了——面板自带排版，
+     * 不再需要把三个字段拆开各自摆位。
+     */
     private val homeUiTextDragOrder = arrayOf(
-        "shopName", "shopPrice", "shopStatus",
-        "editHint", "homeHint", "worldLabel", "worldUnlockHint",
-        "museumLabel", "honorLabel"
+        "homeHint", "museumLabel", "honorLabel"
     )
     private val ownedDecoDragId = arrayOf(
         "garden", "fence", "mailbox", "swing", "perch", "pool", "telescope"
@@ -312,131 +329,24 @@ class HudView(context: Context, private val game: Game) : View(context) {
             0xFFFFFFFF.toInt(), 0xFF4DD8FF.toInt(), 0xFFFFE08A.toInt(),
             0xFFFF7A45.toInt(), 0xFFFFA1C9.toInt(), 0xFFB48CFF.toInt()
         )
-        private val ROOF_CHIPS = intArrayOf(
-            0xFFD9483B.toInt(), 0xFF3FA9A5.toInt(), 0xFF8C6BD9.toInt(), 0xFFF2C14E.toInt()
-        )
-        /** 各世界家园的天空渐变（天顶 → 地平线），与跑酷渲染层配色呼应 */
-        private val HOME_SKY_GRAD = arrayOf(
-            intArrayOf(0xFF6EB6E6.toInt(), 0xFF9AD1EF.toInt(), 0xFFF1E8C6.toInt()),  // 草原：黄金时刻
-            intArrayOf(0xFF07293F.toInt(), 0xFF0E4A66.toInt(), 0xFF1A6B84.toInt()),  // 水下：深海渐浅
-            intArrayOf(0xFF3D8FE0.toInt(), 0xFF7CC0F2.toInt(), 0xFFEAF7FF.toInt()),  // 天空：高空云海
-            intArrayOf(0xFF2A0F0E.toInt(), 0xFF5A1E14.toInt(), 0xFF93401B.toInt()),  // 熔岩：烟尘红光
-            intArrayOf(0xFFFFA8CF.toInt(), 0xFFFFC9E1.toInt(), 0xFFFFF0D8.toInt()),  // 糖果：棉花糖粉
-            intArrayOf(0xFF060714.toInt(), 0xFF12142E.toInt(), 0xFF2A1F52.toInt())   // 星空：靛黑夜幕
-        )
-        /** 各世界家园的近景地面：渐变上 / 渐变下 / 地平线压边 */
-        private val HOME_GRASS = arrayOf(
-            intArrayOf(0xFF8FC85F.toInt(), 0xFF77B94E.toInt(), 0xFF5FA845.toInt()),  // 草原草坪
-            intArrayOf(0xFFC9B678.toInt(), 0xFFAE9C5F.toInt(), 0xFF8D7B44.toInt()),  // 海底沙地
-            intArrayOf(0xFFEFF8FF.toInt(), 0xFFCFE4F6.toInt(), 0xFFAACCE8.toInt()),  // 云海地台
-            intArrayOf(0xFF4A3B36.toInt(), 0xFF352A27.toInt(), 0xFFFF7A2A.toInt()),  // 玄武岩 + 岩浆缝
-            intArrayOf(0xFF98DE7A.toInt(), 0xFF7CC75F.toInt(), 0xFF6B4230.toInt()),  // 软糖草坪 + 巧克力边
-            intArrayOf(0xFF2E2650.toInt(), 0xFF201A3C.toInt(), 0xFF7C5CD6.toInt())   // 星尘水晶地
-        )
-        /** 各世界家园的远景草坪：填色 / 压边 */
-        private val HOME_FAR = arrayOf(
-            intArrayOf(0xFF97CE6E.toInt(), 0xFF74B052.toInt()),
-            intArrayOf(0xFFD5C68B.toInt(), 0xFFB3A167.toInt()),
-            intArrayOf(0xFFF7FBFF.toInt(), 0xFFD9EBF9.toInt()),
-            intArrayOf(0xFF564540.toInt(), 0xFF3E312D.toInt()),
-            intArrayOf(0xFFA8E68C.toInt(), 0xFF86CE69.toInt()),
-            intArrayOf(0xFF383060.toInt(), 0xFF272148.toInt())
-        )
-        /**
-         * 各世界房屋材质 [world][style] = 主墙色 / 暗部（条纹、砖缝、楼层带、侧楼）/ 点缀（阳台、窄窗）。
-         * 同一档房屋在不同世界换成当地建材：珊瑚礁屋 / 云端白楼 / 黑曜石堡 / 姜饼糖屋 / 太空金属舱。
-         */
-        private val HOME_HOUSE_PAL = arrayOf(
-            arrayOf( // 草原：原版
-                intArrayOf(0xFFB07A45.toInt(), 0xFF97622F.toInt(), 0xFF97622F.toInt()),
-                intArrayOf(0xFFC96A4A.toInt(), 0xFFB2543A.toInt(), 0xFF97622F.toInt()),
-                intArrayOf(0xFFEBDDBB.toInt(), 0xFFC9B98F.toInt(), 0xFF97622F.toInt()),
-                intArrayOf(0xFFE3E6EF.toInt(), 0xFFD3D7E4.toInt(), 0xFF7A86A8.toInt())
-            ),
-            arrayOf( // 水下：珊瑚与海石
-                intArrayOf(0xFFE8836E.toInt(), 0xFFC66A57.toInt(), 0xFFC66A57.toInt()),
-                intArrayOf(0xFF7FB8B0.toInt(), 0xFF64998F.toInt(), 0xFFC66A57.toInt()),
-                intArrayOf(0xFFF2D8C4.toInt(), 0xFFD8B79E.toInt(), 0xFFC66A57.toInt()),
-                intArrayOf(0xFFD8E8E4.toInt(), 0xFFB8D0CC.toInt(), 0xFF5E8A96.toInt())
-            ),
-            arrayOf( // 天空：云端白与天青
-                intArrayOf(0xFFF4EFE2.toInt(), 0xFFD8CFBB.toInt(), 0xFFC9A570.toInt()),
-                intArrayOf(0xFFBBD7EE.toInt(), 0xFF9FC0DE.toInt(), 0xFFC9A570.toInt()),
-                intArrayOf(0xFFF8F4E6.toInt(), 0xFFDCD2B4.toInt(), 0xFFC9A570.toInt()),
-                intArrayOf(0xFFF4F8FF.toInt(), 0xFFDCE6F4.toInt(), 0xFF8FB4D9.toInt())
-            ),
-            arrayOf( // 熔岩：焦木与黑曜石
-                intArrayOf(0xFF5A4038.toInt(), 0xFF43302A.toInt(), 0xFF43302A.toInt()),
-                intArrayOf(0xFF6E4A3A.toInt(), 0xFF54382C.toInt(), 0xFF43302A.toInt()),
-                intArrayOf(0xFF7A6A58.toInt(), 0xFF60523F.toInt(), 0xFF43302A.toInt()),
-                intArrayOf(0xFF4A4048.toInt(), 0xFF3A323A.toInt(), 0xFFFF8A4A.toInt())
-            ),
-            arrayOf( // 糖果：姜饼与糖霜
-                intArrayOf(0xFFC98A57.toInt(), 0xFFA46A3E.toInt(), 0xFFA46A3E.toInt()),
-                intArrayOf(0xFFF2A0BC.toInt(), 0xFFD87F9F.toInt(), 0xFFA46A3E.toInt()),
-                intArrayOf(0xFFFFF2DC.toInt(), 0xFFF2D8B0.toInt(), 0xFFD87F9F.toInt()),
-                intArrayOf(0xFFFFE4F0.toInt(), 0xFFF8C8DE.toInt(), 0xFFC77DFF.toInt())
-            ),
-            arrayOf( // 星空：太空舱金属
-                intArrayOf(0xFF6E7488.toInt(), 0xFF565B6E.toInt(), 0xFF565B6E.toInt()),
-                intArrayOf(0xFF5A6078.toInt(), 0xFF474C60.toInt(), 0xFF565B6E.toInt()),
-                intArrayOf(0xFF8A90A8.toInt(), 0xFF6E7488.toInt(), 0xFF4DE8FF.toInt()),
-                intArrayOf(0xFF7C88A8.toInt(), 0xFF636E8C.toInt(), 0xFF4DE8FF.toInt())
-            )
-        )
-        /** 各世界的窗内灯光：暖黄 / 水光青 / 暖黄 / 岩浆橙 / 糖粉 / 霓虹青 */
-        private val HOME_WINDOW = intArrayOf(
-            0xFFFFF3B8.toInt(), 0xFFBFF2E8.toInt(), 0xFFFFF3B8.toInt(),
-            0xFFFFC48A.toInt(), 0xFFFFE2F0.toInt(), 0xFF9FE8FF.toInt()
-        )
-        /** 花坛三朵花的配色（按世界）：海葵 / 云绒花 / 火花草 / 糖果花 / 荧光晶花 */
-        private val HOME_FLOWERS = arrayOf(
-            intArrayOf(0xFFF25A5A.toInt(), 0xFFFFD75E.toInt(), 0xFFF5A8C1.toInt()),
-            intArrayOf(0xFFFF8A6E.toInt(), 0xFF6EE8D8.toInt(), 0xFFF5A8C1.toInt()),
-            intArrayOf(0xFFFFFFFF.toInt(), 0xFFFFE08A.toInt(), 0xFFBBD7EE.toInt()),
-            intArrayOf(0xFFFF6E3A.toInt(), 0xFFFFB05A.toInt(), 0xFFE84A2A.toInt()),
-            intArrayOf(0xFFFF8FBE.toInt(), 0xFF7ADBC8.toInt(), 0xFFC77DFF.toInt()),
-            intArrayOf(0xFF4DE8FF.toInt(), 0xFFB48CFF.toInt(), 0xFF8CFFC8.toInt())
-        )
-        /** 花坛花茎色（按世界） */
-        private val HOME_FLOWER_STEM = intArrayOf(
-            0xFF4E9142.toInt(), 0xFF2E8A6E.toInt(), 0xFF7AA86B.toInt(),
-            0xFF6E4A3A.toInt(), 0xFF4E9142.toInt(), 0xFF3E8A8A.toInt()
-        )
-        /** 栅栏：立柱 / 横杆（按世界） */
-        private val HOME_FENCE = arrayOf(
-            intArrayOf(0xFFD8B98A.toInt(), 0xFFC9A570.toInt()),
-            intArrayOf(0xFFE8DCC8.toInt(), 0xFFCBBFA5.toInt()),
-            intArrayOf(0xFFF8F4E6.toInt(), 0xFFDCD2B4.toInt()),
-            intArrayOf(0xFF5A4038.toInt(), 0xFF43302A.toInt()),
-            intArrayOf(0xFFF2E8D8.toInt(), 0xFFE87F9F.toInt()),
-            intArrayOf(0xFF6E7488.toInt(), 0xFF4DE8FF.toInt())
-        )
-        /** 泳池水面渐变：深 / 浅（按世界）——潟湖 / 天青 / 温泉 / 草莓奶昔 / 星光池 */
-        private val HOME_POOL_WATER = arrayOf(
-            intArrayOf(0xFF2E86BE.toInt(), 0xFF74C8EE.toInt()),
-            intArrayOf(0xFF1E9E8E.toInt(), 0xFF5EDCC8.toInt()),
-            intArrayOf(0xFF57B6E8.toInt(), 0xFFB8E8FF.toInt()),
-            intArrayOf(0xFFC85A1E.toInt(), 0xFFFF9A4A.toInt()),
-            intArrayOf(0xFFE85A8E.toInt(), 0xFFFFB8D4.toInt()),
-            intArrayOf(0xFF3E2E8E.toInt(), 0xFF7C5CD6.toInt())
-        )
-        /** 彩旗五色（按世界） */
-        private val HOME_FLAGS = arrayOf(
-            intArrayOf(0xFFF25A5A.toInt(), 0xFFFFD75E.toInt(), 0xFF6FBF56.toInt(), 0xFF57B6E8.toInt(), 0xFFC77DFF.toInt()),
-            intArrayOf(0xFF4DD8FF.toInt(), 0xFF6EE8D8.toInt(), 0xFF2E86BE.toInt(), 0xFF9FE8FF.toInt(), 0xFF57B6E8.toInt()),
-            intArrayOf(0xFFFFFFFF.toInt(), 0xFFFFE08A.toInt(), 0xFFBBD7EE.toInt(), 0xFFF2C14E.toInt(), 0xFFEAF7FF.toInt()),
-            intArrayOf(0xFFFF6E3A.toInt(), 0xFFFFB05A.toInt(), 0xFF8C3A17.toInt(), 0xFFFFD75E.toInt(), 0xFFE84A2A.toInt()),
-            intArrayOf(0xFFFF8FBE.toInt(), 0xFF7ADBC8.toInt(), 0xFFFFF2DC.toInt(), 0xFFC77DFF.toInt(), 0xFFFFD54A.toInt()),
-            intArrayOf(0xFF4DE8FF.toInt(), 0xFFB48CFF.toInt(), 0xFFFF66CC.toInt(), 0xFF8CFFC8.toInt(), 0xFFFFD54A.toInt())
-        )
         /** 图鉴内页的房间主题：博物馆展厅 / 荣誉厅 */
         private const val HALL_MUSEUM = 0
         private const val HALL_HONOR = 1
         private const val HOME_SUB_SCENE = 0
         private const val HOME_SUB_COLLECTION = 1
         private const val HOME_SUB_HONOR = 2
-        private val CAT_COSMETIC_TABS = arrayOf("配色", "光迹", "围巾", "帽子")
+        /** 选物面板的行编排：一个入口摊开一族货，分类降级成行号而不是要先点的 tab */
+        private val PICK_ROWS_HOUSE = arrayOf(
+            PickRow(Game.HOME_TAB_HOUSE, "小屋"),
+            PickRow(Game.HOME_TAB_ROOF, "屋顶")
+        )
+        private val PICK_ROWS_DECO = arrayOf(PickRow(Game.HOME_TAB_DECO, "摆件"))
+        private val PICK_ROWS_CAT = arrayOf(
+            PickRow(Game.HOME_TAB_COLOR, "配色"),
+            PickRow(Game.HOME_TAB_TRAIL, "光迹"),
+            PickRow(Game.HOME_TAB_SCARF, "围巾"),
+            PickRow(Game.HOME_TAB_HAT, "帽子")
+        )
         /** 跑酷通知带首行高度（连击 / 横幅 / 纪录共用） */
         private const val RUN_BANNER_Y = 0.283f
         /** 通知带行距：按最大字号（新纪录 48）留足，换行不会互相压字 */
@@ -566,17 +476,17 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 yardLongPressTriggered = false
                 homeDragId = null
                 homeDragActive = false
-                if (isYardInteractive()) {
+                if (isYardInteractive() && !homeOverlayBlocks(event.x, event.y)) {
                     yardFingerDown = true
                     yardFingerX = event.x
                     yardFingerY = event.y
                     yardFingerDownTime = SystemClock.uptimeMillis()
                 }
-                if (isHomeDraggable()) {
+                if (isHomeDraggable() && !homeOverlayBlocks(event.x, event.y)) {
                     val id = hitHomeDraggable(event.x, event.y)
                     if (id != null) {
                         homeDragId = id
-                        beginHomeDrag(id, event.x, event.y)
+                        if (canHomeDrag(id)) beginHomeDrag(id, event.x, event.y)
                     }
                 }
             }
@@ -585,7 +495,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
                     yardFingerX = event.x
                     yardFingerY = event.y
                 }
-                if (homeDragId != null) {
+                if (homeDragId != null && canHomeDrag(homeDragId!!)) {
                     val slop = YARD_DRAG_SLOP * yardSceneS.coerceAtLeast(0.5f)
                     if (!homeDragActive &&
                         kotlin.math.hypot(event.x - downX, event.y - downY) > slop
@@ -613,8 +523,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 }
                 // 追手模式：手指在庭院内滑动，目标跟随
                 if (catState == CAT_CHASE_HAND && yardSceneHit.contains(event.x, event.y)) {
-                    handTargetX = screenToSceneX(event.x)
-                    handMarkerLife = 2.5f
+                    aimHandAt(event.x, event.y)
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
@@ -656,9 +565,21 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private fun isHomeDraggable(): Boolean =
         (game.state == Game.State.READY || game.state == Game.State.DEAD) &&
             game.menuPanel == Game.PANEL_HOME && !showStargazing && homeSubView == HOME_SUB_SCENE &&
-            !showHomeLayers
+            !showHomeLayers && !showHomeWorlds
 
     private fun isYardInteractive(): Boolean = isHomeDraggable()
+
+    /**
+     * 手指落在浮层里的时候，庭院一律不接管。
+     *
+     * 拖放链路比 [handleTap] 先跑，2D 时代院子在屏幕中段、面板在底部，两者基本不重叠；
+     * 3D 之后院子的路面、栅栏、信箱会一直投影到屏幕最下缘，正好压在选物面板底下——
+     * 于是「点面板里的屋顶」变成了「拖院子里的栅栏」，看起来就是点击失灵、乱弹界面。
+     */
+    private fun homeOverlayBlocks(x: Float, y: Float): Boolean =
+        (!pickPanelRect.isEmpty && pickPanelRect.contains(x, y)) ||
+            (showHomeLayers && homeLayerPanel.contains(x, y)) ||
+            (!btnHomeLayers.isEmpty && btnHomeLayers.contains(x, y))
 
     private fun handleTap(x: Float, y: Float) {
         if (game.state == Game.State.RUNNING) {
@@ -691,7 +612,6 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 if (showHelp) { showHelp = false; return }
                 if (handleSecretTitleTap(x, y)) return
                 when {
-                    btnHelp.contains(x, y) -> showHelp = true
                     btnLeaderboard.contains(x, y) -> {
                         showLeaderboard = true
                         leaderboardTab = 0
@@ -719,6 +639,10 @@ class HudView(context: Context, private val game: Game) : View(context) {
                         }
                         else -> closeStargazing()
                     }
+                    return
+                }
+                if (showHomeWorlds) {
+                    handleHomeWorldsTap(x, y)
                     return
                 }
                 if (showHomeLayers) {
@@ -759,6 +683,9 @@ class HudView(context: Context, private val game: Game) : View(context) {
                         return
                     }
                 }
+                // 选物面板开着时，它盖住的那片区域优先归它，别让底下的物件抢走点击
+                if (homeEditing && handlePickTap(x, y)) return
+
                 when {
                     homeSubView == HOME_SUB_SCENE && btnHomeLayers.contains(x, y) -> {
                         showHomeLayers = true
@@ -766,34 +693,25 @@ class HudView(context: Context, private val game: Game) : View(context) {
                     }
                     btnLeaveHome.contains(x, y) -> leaveHomePage()
                     hitHomeTitle.contains(x, y) -> showRenameDialog(firstTime = false)
-                    btnHomeWorldL.contains(x, y) -> switchHomeWorldWithToast(-1)
-                    btnHomeWorldR.contains(x, y) -> switchHomeWorldWithToast(1)
-                    homeEditing && btnHomeL.contains(x, y) -> game.browseHome(-1)
-                    homeEditing && btnHomeR.contains(x, y) -> game.browseHome(1)
-                    homeEditing && btnHomeBuy.contains(x, y) -> showToast(game.buyOrEquipHome())
-                    homeEditing && game.isCatHomeTab() && btnHomeTabs[0].contains(x, y) ->
-                        game.switchHomeTab(Game.HOME_TAB_COLOR)
-                    homeEditing && game.isCatHomeTab() && btnHomeTabs[1].contains(x, y) ->
-                        game.switchHomeTab(Game.HOME_TAB_TRAIL)
-                    homeEditing && game.isCatHomeTab() && btnHomeTabs[2].contains(x, y) ->
-                        game.switchHomeTab(Game.HOME_TAB_SCARF)
-                    homeEditing && game.isCatHomeTab() && btnHomeTabs[3].contains(x, y) ->
-                        game.switchHomeTab(Game.HOME_TAB_HAT)
+                    hitDoor.contains(x, y) -> {
+                        showHomeWorlds = true
+                        closeHomePick()
+                    }
                     yardTelescopeHit.contains(x, y) && game.canUseTelescope() -> openStargazing()
                     hitMuseum.contains(x, y) -> {
                         museumPage = 0
                         museumDetailId = -1
                         homeSubView = HOME_SUB_COLLECTION
+                        game.markRelicsSeen()
                     }
                     hitHonorWall.contains(x, y) -> {
                         honorPage = 0
                         homeSubView = HOME_SUB_HONOR
+                        game.markHonorsSeen()
                     }
+                    // 房子与屋顶合成同一张面板（小屋 + 屋顶两行），不再靠热区上下半分家
                     hitHouse.contains(x, y) -> selectHomeCategory(Game.HOME_TAB_HOUSE)
-                    hitRoof.contains(x, y) -> selectHomeCategory(Game.HOME_TAB_ROOF)
-                    hitYardDeco.contains(x, y) -> selectHomeCategory(Game.HOME_TAB_DECO)
                     yardCatHit.contains(x, y) -> selectHomeCategory(Game.HOME_TAB_COLOR)
-                    hitSky.contains(x, y) -> homeEditing = false
                     yardSceneHit.contains(x, y) -> scheduleYardSceneTap(x, y)
                 }
             }
@@ -895,6 +813,14 @@ class HudView(context: Context, private val game: Game) : View(context) {
         }
         if (game.menuPanel == Game.PANEL_HOME) {
             when {
+                showHomeWorlds -> {
+                    showHomeWorlds = false
+                    return true
+                }
+                showHomeLayers -> {
+                    showHomeLayers = false
+                    return true
+                }
                 homeSubView == HOME_SUB_COLLECTION && museumDetailId >= 0 -> {
                     museumDetailId = -1
                     return true
@@ -943,6 +869,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
     }
 
     private fun openHomePage() {
+        HomeYard.resetLight()   // 进门重新取一次天色，在家期间不再随实时昼夜漂移
         homeSubView = HOME_SUB_SCENE
         homeEditing = false
         showHomeLayers = false
@@ -953,6 +880,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private fun leaveHomePage() {
         closeStargazing()
         cancelYardTouch()
+        HomeYard.resetLight()
         homeSubView = HOME_SUB_SCENE
         homeEditing = false
         showHomeLayers = false
@@ -963,6 +891,17 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private fun selectHomeCategory(tab: Int) {
         game.switchHomeTab(tab)
         homeEditing = true
+        pickArmedTab = -1
+        pickArmedIdx = -1
+    }
+
+    /** 收起选物面板：连带清掉「等第二下确认」的那格，免得下次开面板直接扣钱 */
+    private fun closeHomePick() {
+        homeEditing = false
+        pickChipCount = 0
+        pickPanelRect.setEmpty()
+        pickArmedTab = -1
+        pickArmedIdx = -1
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -995,12 +934,11 @@ class HudView(context: Context, private val game: Game) : View(context) {
             // 文物：世界投影名牌叠在文物上方（先画，HUD 文字盖在上面）
             drawRelicBillboards(canvas, w, h, s, sdx, sdy)
 
-            // 右上角：跑酷主显里程；菜单显示最远/最高分
+            // 右上角：跑酷只显里程 + 连击两行；得分/金币/任务/文物计数全部留到结算屏看。
+            // 跑起来时眼睛在赛道上，常驻数字读不到也用不上，反而糊住视线走廊。
             textPaint.textAlign = Paint.Align.RIGHT
             if (game.state == Game.State.RUNNING) {
                 pixText(canvas, "${game.distance.toInt()} m", w - 36f * s, top + 66f * s, 42f * s, Color.WHITE, sdx, sdy)
-                pixText(canvas, "得分 ${game.score}", w - 36f * s, top + 106f * s, 28f * s, 0xFFB8C4D0.toInt(), sdx, sdy)
-                pixText(canvas, "金币 ${game.coins}", w - 36f * s, top + 142f * s, 28f * s, 0xFFFFD54A.toInt(), sdx, sdy)
                 if (game.combo > 0) {
                     var cColor = when {
                         game.comboMult >= 5 -> 0xFFFF6B6B.toInt()
@@ -1016,7 +954,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
                         val blink = 0.4f + 0.6f * (0.5f + 0.5f * kotlin.math.sin(homePhase * 9f))
                         cColor = withAlpha(0xFFFF6B6B.toInt(), (blink * 255).toInt())
                     }
-                    pixText(canvas, line, w - 36f * s, top + 178f * s, 26f * s, cColor, sdx, sdy)
+                    pixText(canvas, line, w - 36f * s, top + 106f * s, 26f * s, cColor, sdx, sdy)
                 }
             } else {
                 pixText(canvas, "最远 ${game.highDistance} m", w - 36f * s, top + 66f * s, 28f * s, Color.WHITE, sdx, sdy)
@@ -1024,79 +962,15 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 pixText(canvas, "钱包 ${game.wallet}", w - 36f * s, top + 136f * s, 26f * s, 0xFFFFC21F.toInt(), sdx, sdy)
             }
 
-            // 左上角 buff：仅跑酷中显示
-            textPaint.textAlign = Paint.Align.LEFT
-            val buffStartY = top + 46f * s   // 暂停按钮已挪到右下角，左上角 buff 直接从顶部起排
-            var buffY = buffStartY
-            if (game.state == Game.State.RUNNING) {
-                if (game.immortalMode) {
-                    pixText(canvas, "测试 · 不死", 36f * s, buffY, 28f * s, 0xFF4DE8FF.toInt(), sdx, sdy)
-                    buffY += 36f * s
-                }
-                if (game.helmetLayers > 0) {
-                    pixText(canvas, if (game.helmetLayers >= 2) "头盔 x2" else "头盔",
-                        36f * s, buffY, 28f * s, 0xFFFFC21F.toInt(), sdx, sdy)
-                    buffY += 36f * s
-                }
-                if (game.magnetTime > 0f) {
-                    pixText(canvas, "磁铁 ${game.magnetLeft()}s", 36f * s, buffY, 28f * s, 0xFFFF6B6B.toInt(), sdx, sdy)
-                    buffY += 36f * s
-                }
-                if (game.doubleTime > 0f) {
-                    pixText(canvas, "加倍 ${game.doubleLeft()}s", 36f * s, buffY, 28f * s, 0xFFC77DFF.toInt(), sdx, sdy)
-                    buffY += 36f * s
-                }
-                if (game.boostTime > 0f) {
-                    pixText(canvas, "冲刺 ${game.boostLeft()}s", 36f * s, buffY, 28f * s, 0xFF4DE8FF.toInt(), sdx, sdy)
-                    buffY += 36f * s
-                }
-                if (game.riding != null) {
-                    pixText(canvas, "滑索中", 36f * s, buffY, 28f * s, 0xFF7DEBA0.toInt(), sdx, sdy)
-                    buffY += 36f * s
-                }
-            }
+            // 左上角 buff：原本一档一行最多堆六行，现在压成一行彩色短标。
+            // 保留颜色编码（每种 buff 一个固定色），扫一眼就知道身上挂着什么。
+            if (game.state == Game.State.RUNNING) drawBuffRow(canvas, top + 46f * s, s, sdx, sdy)
 
-            // 顶部中央：本局发现文物（与头盔提示同高）
-            if (game.state == Game.State.RUNNING && game.runRelics > 0) {
-                textPaint.textAlign = Paint.Align.CENTER
-                pixText(
-                    canvas, "文物 ×${game.runRelics}", w / 2f, buffStartY, 26f * s,
-                    0xFFC77DFF.toInt(), sdx, sdy
-                )
-            }
-
-            // 顶部中央：当前宇宙（文物计数上方一行）
-            if (game.state == Game.State.RUNNING && game.universe != Game.UNI_MEADOW) {
-                textPaint.textAlign = Paint.Align.CENTER
-                pixText(
-                    canvas, "· ${Game.UNIVERSE_NAMES[game.universe]} ·", w / 2f,
-                    buffStartY - 40f * s, 26f * s,
-                    UNI_HUD[game.universe % UNI_HUD.size], sdx, sdy
-                )
-            }
-
-            // 局内任务（竖屏时抬高避开手势条）
-            if (game.state == Game.State.RUNNING) {
-                textPaint.textAlign = Paint.Align.LEFT
-                var qy = h - (if (portrait) 84f else 36f) * s
-                for (i in game.quests.indices.reversed()) {
-                    val q = game.quests[i]
-                    val color = if (q.done) 0xFF7DEBA0.toInt() else 0xDDFFFFFF.toInt()
-                    val mark = if (q.done) "√" else "·"
-                    pixText(
-                        canvas, "$mark ${q.label} ${q.progress}/${q.target}",
-                        36f * s, qy, 24f * s, color, sdx, sdy
-                    )
-                    qy -= 32f * s
-                }
-            }
-
-            // 飘分：收拢到右上角计分区下方，不遮挡赛道视线走廊
+            // 飘分：右上角里程/连击之下，是拾取与击倒唯一的即时反馈，保留
             if (game.state == Game.State.RUNNING && game.floatFlash > 0f && game.lastFloat.isNotEmpty()) {
                 val alpha = (min(1f, game.floatFlash / 0.55f) * 255).toInt()
                 val rise = (1.7f - game.floatFlash) * 14f * s
-                // 连击行占着 178 那一行时再往下让一行，否则上飘途中会压在它身上
-                val floatBase = top + (if (game.combo > 0) 220f else 182f) * s
+                val floatBase = top + (if (game.combo > 0) 148f else 110f) * s
                 textPaint.textAlign = Paint.Align.RIGHT
                 pixText(
                     canvas, game.lastFloat, w - 36f * s, floatBase - rise, 26f * s,
@@ -1161,6 +1035,32 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 ((fade * 255).toInt() shl 24) or 0x00FFFFFF, sdx, sdy
             )
         }
+    }
+
+    /**
+     * 身上挂着的增益压成左上角一行短标：`盾x2 磁9 倍5 冲3`。
+     *
+     * 一档一行时最多六行文字贴着屏幕左上，跑起来根本读不完；压成一行后
+     * 只靠**颜色 + 一个字**辨认，剩下的数字是秒数。颜色沿用各 buff 拾取时
+     * 飘分用的那一个，两处对得上就不用再记图例。
+     */
+    private fun drawBuffRow(canvas: Canvas, y: Float, s: Float, sdx: Float, sdy: Float) {
+        val size = 28f * s
+        textPaint.textAlign = Paint.Align.LEFT
+        var x = 36f * s
+        val gap = 14f * s
+
+        fun token(text: String, color: Int) {
+            pixText(canvas, text, x, y, size, color, sdx, sdy)
+            x += textPaint.measureText(text) + gap
+        }
+
+        if (game.immortalMode) token("不死", 0xFF4DE8FF.toInt())
+        if (game.helmetLayers > 0) token(if (game.helmetLayers >= 2) "盾x2" else "盾", 0xFFFFC21F.toInt())
+        if (game.magnetTime > 0f) token("磁${game.magnetLeft()}", 0xFFFF6B6B.toInt())
+        if (game.doubleTime > 0f) token("倍${game.doubleLeft()}", 0xFFC77DFF.toInt())
+        if (game.boostTime > 0f) token("冲${game.boostLeft()}", 0xFF4DE8FF.toInt())
+        if (game.riding != null) token("索", 0xFF7DEBA0.toInt())
     }
 
     private fun noticeBandTop(h: Float, s: Float): Float = h * RUN_BANNER_Y
@@ -1235,20 +1135,30 @@ class HudView(context: Context, private val game: Game) : View(context) {
                     w / 2f, h * 0.65f, 26f * s, 0xFFC77DFF.toInt(), sdx, sdy
                 )
             }
+            // 纪录榜入口：主菜单底栏的奖杯按钮已删，改成结算屏这一行。
+            // 想看排名的时刻本来就是刚死那一下，跑之前摆个按钮没人点。
             val lbHits = game.lastRunLeaderboardHits
-            if (lbHits.isNotEmpty()) {
+            val lbY = h * (if (game.runRelics > 0) 0.71f else 0.65f)
+            val lbLabel = if (lbHits.isNotEmpty()) {
                 val names = lbHits.map { game.leaderboardTitle(it) }.distinct().take(3).joinToString(" · ")
-                val suffix = if (lbHits.size > 3) "…" else ""
-                pixText(
-                    canvas, "入榜 $names$suffix",
-                    w / 2f, h * (if (game.runRelics > 0) 0.71f else 0.65f),
-                    24f * s, 0xFFFFD426.toInt(), sdx, sdy
-                )
-            }
+                "入榜 $names${if (lbHits.size > 3) "…" else ""}  ›"
+            } else "纪录榜  ›"
+            val lbSize = fittedTextSize(lbLabel, 24f * s, w * 0.86f, 16f * s)
+            pixText(canvas, lbLabel, w / 2f, lbY, lbSize, 0xFFFFD426.toInt(), sdx, sdy)
+            // pixText 刚把 textSize 设成实际字号，热区照着量出来的宽度包一圈
+            val lbHalfW = textPaint.measureText(lbLabel) / 2f + 20f * s
+            btnLeaderboard.set(w / 2f - lbHalfW, lbY - 28f * s, w / 2f + lbHalfW, lbY + 14f * s)
+
             if (game.deadTime > 0.6f) {
                 pixText(canvas, "点击屏幕再来一次", w / 2f, h * 0.82f, 28f * s, Color.WHITE, sdx, sdy)
             }
         } else {
+            btnLeaderboard.setEmpty()
+            // 第一局之前自动摊开一次玩法说明，跑过一局就再不出现——不为它留常驻的「?」按钮
+            if (game.totalRuns == 0 && !helpAutoShown) {
+                showHelp = true
+                helpAutoShown = true
+            }
             val worldTitle = "${game.characterName}的世界"
             val worldTitleSize = fittedTextSize(worldTitle, 72f * s, w * 0.64f, 36f * s)
             pixText(canvas, worldTitle, w / 2f, h * 0.30f, worldTitleSize, Color.WHITE, sdx, sdy)
@@ -1259,17 +1169,14 @@ class HudView(context: Context, private val game: Game) : View(context) {
         // 落在猫和底栏之间的空地上：等待时视线自然会扫到，又不挡任何东西
         drawRelicNote(canvas, w, h * (if (dead) 0.72f else 0.78f), s, sdx, sdy)
 
-        // 底栏：左帮助 · 中纪录 · 右家
+        // 底栏只剩「家」一个：帮助改成首局自动弹一次，纪录榜并进结算屏。
+        // 主菜单上除了这一个按钮，点哪儿都是开始跑。
         val portrait = h > w
         val rowH = if (portrait) 72f * s else 52f * s
         val margin = if (portrait) 16f * s else 28f * s
         val rowBottom = h - (if (portrait) 48f else 28f) * s
         val rowTop = rowBottom - rowH
-        btnHelp.set(margin, rowTop, margin + rowH, rowBottom)
-        btnLeaderboard.set(w / 2f - rowH / 2f, rowTop, w / 2f + rowH / 2f, rowBottom)
         btnHome.set(w - margin - rowH, rowTop, w - margin, rowBottom)
-        drawBtn(canvas, btnHelp, "?", s)
-        drawLeaderboardBtn(canvas, btnLeaderboard, s)
         drawHomeEntryBtn(canvas, btnHome, s)
 
         if (showLeaderboard) drawLeaderboardOverlay(canvas, w, h, s, sdx, sdy)
@@ -1347,22 +1254,6 @@ class HudView(context: Context, private val game: Game) : View(context) {
         if (scope == LB_SCOPE_GLOBAL && game.leaderboardRemoteEnabled()) {
             game.refreshLeaderboardRemote(leaderboardTab)
         }
-    }
-
-    /** 主菜单中央「纪录榜」：像素奖杯 */
-    private fun drawLeaderboardBtn(canvas: Canvas, r: RectF, s: Float) {
-        drawBtn(canvas, r, "", s)
-        val cx = r.centerX()
-        val cy = r.centerY()
-        btnPaint.style = Paint.Style.FILL
-        btnPaint.color = 0xFFFFD426.toInt()
-        canvas.drawRect(cx - 10f * s, cy - 16f * s, cx + 10f * s, cy - 8f * s, btnPaint)
-        canvas.drawRect(cx - 14f * s, cy - 8f * s, cx + 14f * s, cy - 2f * s, btnPaint)
-        btnPaint.color = 0xFFB8860B.toInt()
-        canvas.drawRect(cx - 4f * s, cy - 2f * s, cx + 4f * s, cy + 8f * s, btnPaint)
-        canvas.drawRect(cx - 12f * s, cy + 8f * s, cx + 12f * s, cy + 14f * s, btnPaint)
-        btnPaint.color = 0xFF8A6A20.toInt()
-        canvas.drawRect(cx - 8f * s, cy + 14f * s, cx + 8f * s, cy + 18f * s, btnPaint)
     }
 
     private fun drawLeaderboardOverlay(canvas: Canvas, w: Float, h: Float, s: Float, sdx: Float, sdy: Float) {
@@ -1585,50 +1476,15 @@ class HudView(context: Context, private val game: Game) : View(context) {
         game.selectHomeLayoutOrientation(portrait)
         homeDragHits.clear()
         val isCatTab = game.isCatHomeTab()
-        val house = if (game.homeTab == Game.HOME_TAB_HOUSE) game.homeBrowseHouse else game.houseStyle
-        val roof = if (game.homeTab == Game.HOME_TAB_ROOF) game.homeBrowseRoof else game.roofStyle
-        val ghostDeco = if (game.homeTab == Game.HOME_TAB_DECO) game.homeBrowseDeco else -1
-
-        val yardColor = when (game.homeTab) {
-            Game.HOME_TAB_COLOR -> game.shopBrowseColor
-            else -> game.catColor
-        }
-        val yardTrail = when (game.homeTab) {
-            Game.HOME_TAB_TRAIL -> game.shopBrowseTrail
-            else -> game.trailStyle
-        }
-        val yardScarf = when (game.homeTab) {
-            Game.HOME_TAB_SCARF -> game.shopBrowseScarf
-            else -> game.scarfStyle
-        }
-        val yardHat = when (game.homeTab) {
-            Game.HOME_TAB_HAT -> game.shopBrowseHat
-            else -> game.hatStyle
-        }
-        val cosmeticGhost = isCatTab && when (game.homeTab) {
-            Game.HOME_TAB_COLOR -> !game.ownsColor(game.shopBrowseColor) && game.shopBrowseColor > 0
-            Game.HOME_TAB_TRAIL -> !game.ownsTrail(game.shopBrowseTrail) && game.shopBrowseTrail > 0
-            Game.HOME_TAB_SCARF -> !game.ownsScarf(game.shopBrowseScarf) && game.shopBrowseScarf > 0
-            Game.HOME_TAB_HAT -> !game.ownsHat(game.shopBrowseHat) && game.shopBrowseHat > 0
-            else -> false
-        }
-
-        drawHomeScene(
-            canvas, w, h, s, house, roof, ghostDeco,
-            yardColor, yardTrail, yardScarf, yardHat, cosmeticGhost,
-            highlightEditing = homeEditing
-        )
+        // 「正在浏览哪一件」由渲染层直接读 game 决定（见 GameRenderer.drawHomeWorld），
+        // 这里不再算一遍——两套预览逻辑迟早会对不上
+        drawHomeScene(canvas, w, h, s)
 
         drawHomeTopBar(canvas, w, h, s, sdx, sdy, isCatTab)
 
-        if (homeEditing) {
-            drawHomeShopStrip(canvas, w, h, s, sdx, sdy)
-            val hint = if (isCatTab) "点选猫装扮分类 · 点天空收起" else "点天空收起"
-            drawDraggableUiText(
-                canvas, "editHint", hint, w / 2f, h * 0.52f,
-                20f * s, 0x99FFFFFF.toInt(), sdx, sdy
-            )
-        }
+        // 选物面板自带标题与收起提示，原来那行浮在半空的 editHint 就多余了
+        if (homeEditing) drawHomePickPanel(canvas, w, h, s, sdx, sdy)
+        else { pickChipCount = 0; pickPanelRect.setEmpty() }
 
         if (homeSubView == HOME_SUB_SCENE) {
             layoutLeaveHomeButton(w, h, s)
@@ -1641,20 +1497,15 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 drawHomeWalletPlate(canvas, homeWalletPlate, s, sdx, sdy)
                 putDragHit("wallet", homeWalletPlate)
             } else homeWalletPlate.setEmpty()
-            if (!homeEditing) {
-                drawHomeWorldSwitcher(canvas, w, h, s, sdx, sdy)
-            } else {
-                btnHomeWorldL.setEmpty(); btnHomeWorldR.setEmpty()
-            }
         } else {
             btnLeaveHome.setEmpty()
-            btnHomeWorldL.setEmpty(); btnHomeWorldR.setEmpty()
         }
 
         when (homeSubView) {
             HOME_SUB_COLLECTION -> drawCollectionOverlay(canvas, w, h, s, sdx, sdy)
             HOME_SUB_HONOR -> drawHonorOverlay(canvas, w, h, s, sdx, sdy)
         }
+        if (showHomeWorlds) drawHomeWorldsSheet(canvas, w, h, s, sdx, sdy)
         if (showStargazing) drawStargazeOverlay(canvas, w, h, s, sdx, sdy)
         drawHomeDragHighlight(canvas, s)
         if (homeSubView == HOME_SUB_SCENE) {
@@ -1688,85 +1539,130 @@ class HudView(context: Context, private val game: Game) : View(context) {
     }
 
     private fun layoutHomeLayersButton(w: Float, h: Float, s: Float) {
-        val size = 44f * s
+        val size = 56f * s
         btnHomeLayers.set(
-            w - safeR - 14f * s - size, safeT + 14f * s,
-            w - safeR - 14f * s, safeT + 14f * s + size
+            w - safeR - 12f * s - size, safeT + 10f * s,
+            w - safeR - 12f * s, safeT + 10f * s + size
         )
     }
 
     private fun drawHomeLayersButton(canvas: Canvas, s: Float) {
-        PixelUi.drawButton(
-            canvas, btnPaint, btnHomeLayers.left, btnHomeLayers.top,
-            btnHomeLayers.right, btnHomeLayers.bottom,
-            0xCC2A3444.toInt(), 0xFF6B4E28.toInt(), s, notch = 6f * s
-        )
+        val cx = btnHomeLayers.centerX()
+        val cy = btnHomeLayers.centerY()
+        val r = (btnHomeLayers.width() * 0.5f).coerceAtMost(btnHomeLayers.height() * 0.5f)
+        val pulse = 0.7f + 0.3f * (0.5f + 0.5f * kotlin.math.sin(homePhase * 1.8f))
+        val accent = withAlpha(0xFFFFD426.toInt(), (pulse * 255).toInt())
+        PixelUi.drawTinyWoodBtn(canvas, btnPaint, cx, cy, r * 0.92f, s, accent)
+
+        val stackX = cx - 8f * s
+        val stackY = cy - 4f * s
+        btnPaint.style = Paint.Style.FILL
+        btnPaint.color = 0xFFFFF0D0.toInt()
+        canvas.drawRect(stackX, stackY + 6f * s, stackX + 16f * s, stackY + 9f * s, btnPaint)
+        canvas.drawRect(stackX + 2f * s, stackY + 3f * s, stackX + 14f * s, stackY + 6f * s, btnPaint)
+        canvas.drawRect(stackX + 4f * s, stackY, stackX + 12f * s, stackY + 3f * s, btnPaint)
+
         pixText(
-            canvas, "图层", btnHomeLayers.centerX(), btnHomeLayers.centerY() + 6f * s,
-            18f * s, Color.WHITE, 1f, 1f
+            canvas, "图层", cx, cy + 14f * s,
+            16f * s, 0xFFFFF0D0.toInt(), 0f, 0f
         )
     }
 
     private fun drawHomeLayersPanel(canvas: Canvas, w: Float, h: Float, s: Float, sdx: Float, sdy: Float) {
         homeLayerRowHits.clear()
-        val pad = 16f * s
-        val panelW = min(w * 0.88f, 420f * s)
-        val panelH = min(h * 0.82f, 680f * s)
+        val pad = 18f * s
+        val panelW = min(w * 0.88f, 440f * s)
+        val panelH = min(h * 0.82f, 700f * s)
         val left = (w - panelW) / 2f
         val top = (h - panelH) / 2f
         homeLayerPanel.set(left, top, left + panelW, top + panelH)
         btnPaint.style = Paint.Style.FILL
-        btnPaint.color = 0xCC000000.toInt()
+        btnPaint.color = 0xBB000000.toInt()
         canvas.drawRect(0f, 0f, w, h, btnPaint)
-        PixelUi.drawRect(
+
+        PixelUi.drawPanel(
             canvas, btnPaint, left, top, left + panelW, top + panelH,
-            0xF01C2634.toInt(), s, bevel = PixelUi.Bevel.INSET, edge = 0x55FFFFFF
+            0xF01C2634.toInt(), 0xFFFFD426.toInt(), s, 12f * s, edgeW = 2.5f * s
         )
-        val titleY = top + 28f * s
+
+        val titleBarT = top + 6f * s
+        val titleBarH = 46f * s
+        val titleBarB = titleBarT + titleBarH
+        PixelUi.drawPanel(
+            canvas, btnPaint, left + 8f * s, titleBarT, left + panelW - 8f * s, titleBarB,
+            0xFF2C3A4E.toInt(), 0xFFFFD426.toInt(), s, 8f * s, edgeW = 1.5f * s, shadow = false
+        )
         textPaint.textAlign = Paint.Align.CENTER
-        pixText(canvas, "家园图层", left + panelW / 2f, titleY, 22f * s, Color.WHITE, sdx, sdy)
-        val btnH = 34f * s
-        val btnW = 88f * s
-        btnHomeLayersShowAll.set(left + pad, top + pad, left + pad + btnW, top + pad + btnH)
-        btnHomeLayersClose.set(left + panelW - pad - btnW, top + pad, left + panelW - pad, top + pad + btnH)
-        drawBtn(canvas, btnHomeLayersShowAll, "全显示", s * 0.85f)
-        drawBtn(canvas, btnHomeLayersClose, "完成", s * 0.85f)
-        val listTop = top + pad + btnH + 14f * s
-        val listBottom = top + panelH - pad
-        val rowH = 36f * s
+        pixText(canvas, "家园图层", left + panelW / 2f, centeredBaselineY((titleBarT + titleBarB) * 0.5f, 24f * s),
+            24f * s, 0xFFFFE8A8.toInt(), sdx, sdy)
+
+        val btnH = 36f * s
+        val btnW = 92f * s
+        val btnY = titleBarB + 14f * s
+        btnHomeLayersShowAll.set(left + pad, btnY, left + pad + btnW, btnY + btnH)
+        btnHomeLayersClose.set(left + panelW - pad - btnW, btnY, left + panelW - pad, btnY + btnH)
+        PixelUi.drawButton(
+            canvas, btnPaint, btnHomeLayersShowAll.left, btnHomeLayersShowAll.top,
+            btnHomeLayersShowAll.right, btnHomeLayersShowAll.bottom,
+            0xFF3A5468.toInt(), 0xFF6B8E9E.toInt(), s * 0.9f, notch = 6f * s
+        )
+        pixText(canvas, "全显示", btnHomeLayersShowAll.centerX(),
+            centeredBaselineY(btnHomeLayersShowAll.centerY(), 18f * s), 18f * s, Color.WHITE, 0f, 0f)
+        PixelUi.drawButton(
+            canvas, btnPaint, btnHomeLayersClose.left, btnHomeLayersClose.top,
+            btnHomeLayersClose.right, btnHomeLayersClose.bottom,
+            0xFF5A4A2E.toInt(), 0xFFB08A48.toInt(), s * 0.9f, notch = 6f * s
+        )
+        pixText(canvas, "完成", btnHomeLayersClose.centerX(),
+            centeredBaselineY(btnHomeLayersClose.centerY(), 18f * s), 18f * s, 0xFFFFF0D0.toInt(), 0f, 0f)
+
+        val listTop = btnY + btnH + 14f * s
+        val listBottom = top + panelH - pad - 10f * s
+        val rowH = 40f * s
         val contentH = PlayerHomeLayout.ELEMENTS.size * rowH
         val maxScroll = (contentH - (listBottom - listTop)).coerceAtLeast(0f)
         homeLayerScroll = homeLayerScroll.coerceIn(0f, maxScroll)
+
+        PixelUi.drawDivider(canvas, btnPaint, left + pad, listTop - 6f * s, left + panelW - pad, s, 0x44FFD426.toInt())
+
         canvas.save()
         canvas.clipRect(left + pad, listTop, left + panelW - pad, listBottom)
         var y = listTop - homeLayerScroll
         for (el in PlayerHomeLayout.ELEMENTS) {
             val rowTop = y
-            val rowBottom = y + rowH - 4f * s
+            val rowBottom = y + rowH - 6f * s
             if (rowBottom >= listTop && rowTop <= listBottom) {
                 val on = homeShown(el.id)
-                val rowL = left + pad + 4f * s
-                val rowR = left + panelW - pad - 4f * s
+                val rowL = left + pad + 2f * s
+                val rowR = left + panelW - pad - 2f * s
                 PixelUi.drawRect(
                     canvas, btnPaint, rowL, rowTop, rowR, rowBottom,
-                    if (on) 0xFF3A4A5E.toInt() else 0xFF2A3038.toInt(), s,
-                    bevel = PixelUi.Bevel.INSET
+                    if (on) 0xFF324458.toInt() else 0xFF242C36.toInt(), s,
+                    bevel = if (on) PixelUi.Bevel.RAISED else PixelUi.Bevel.INSET,
+                    edge = if (on) 0x6690B8D0.toInt() else 0x33405060.toInt(),
+                    edgeW = 1.5f * s, shadow = on
                 )
-                val box = 18f * s
-                val boxL = rowL + 10f * s
+                val box = 22f * s
+                val boxL = rowL + 12f * s
                 val boxCy = (rowTop + rowBottom) * 0.5f
                 PixelUi.drawRect(
                     canvas, btnPaint, boxL, boxCy - box / 2f, boxL + box, boxCy + box / 2f,
-                    if (on) 0xFF3F9E5A.toInt() else 0xFF4A5563.toInt(), s
+                    if (on) 0xFF3F9E5A.toInt() else 0xFF3A4552.toInt(), s,
+                    bevel = if (on) PixelUi.Bevel.RAISED else PixelUi.Bevel.INSET,
+                    edge = if (on) 0xFF5FC87A.toInt() else 0xFF506070.toInt(),
+                    edgeW = 1.5f * s
                 )
                 if (on) {
-                    btnPaint.color = Color.WHITE
-                    canvas.drawRect(boxL + 4f * s, boxCy - 1.5f * s, boxL + box - 4f * s, boxCy + 1.5f * s, btnPaint)
+                    btnPaint.color = 0xFFF0FFF4.toInt()
+                    canvas.drawRect(boxL + 5f * s, boxCy - 2f * s, boxL + box - 7f * s, boxCy, btnPaint)
+                    canvas.drawRect(boxL + 5f * s, boxCy, boxL + box - 11f * s, boxCy + 2f * s, btnPaint)
+                    btnPaint.color = 0xFFD0FFE0.toInt()
+                    canvas.drawRect(boxL + 6f * s, boxCy - 2f * s, boxL + 8f * s, boxCy - 1f * s, btnPaint)
                 }
                 textPaint.textAlign = Paint.Align.LEFT
                 pixText(
-                    canvas, el.label, boxL + box + 12f * s, boxCy + 6f * s,
-                    18f * s, if (on) Color.WHITE else 0xFF8899AA.toInt(), sdx, sdy
+                    canvas, el.label, boxL + box + 14f * s, centeredBaselineY(boxCy, 18f * s),
+                    18f * s, if (on) 0xFFF0F4FF.toInt() else 0xFF708094.toInt(), 0f, 0f
                 )
                 homeLayerRowHits.add(el.id to RectF(rowL, rowTop, rowR, rowBottom))
             }
@@ -1886,9 +1782,9 @@ class HudView(context: Context, private val game: Game) : View(context) {
         } else hitHomeEnergy.setEmpty()
         y += energyH + afterEnergy
 
-        // 第 3 行：奖励说明（芯片完全落在本行内）
+        // 第 3 行：奖励说明（精致切角芯片）
         textPaint.textSize = rewardSize
-        val rewardChipW = min(w * 0.88f, textPaint.measureText(rewardLine) + 28f * s)
+        val rewardChipW = min(w * 0.86f, textPaint.measureText(rewardLine) + 36f * s)
         val rewardTop = y
         val rewardBottom = y + rewardH
         val rewardCy = (rewardTop + rewardBottom) * 0.5f
@@ -1905,15 +1801,20 @@ class HudView(context: Context, private val game: Game) : View(context) {
         putDragHit("reward", hitHomeReward)
         if (homeShown("reward")) {
             canvas.save(); canvas.scale(rewardSc, rewardSc, rewardCx, rewardCyScaled)
-            PixelUi.drawRect(
-                canvas, btnPaint, w / 2f - rewardChipW / 2f + rdx, rewardTop + rdy,
-                w / 2f + rewardChipW / 2f + rdx, rewardBottom + rdy,
-                0x88101820.toInt(), s, bevel = PixelUi.Bevel.INSET,
-                edge = 0x44FFFFFF, edgeW = max(1f, 1.5f * s)
+            val rl = w / 2f - rewardChipW / 2f + rdx
+            val rr = w / 2f + rewardChipW / 2f + rdx
+            val rt = rewardTop + rdy
+            val rb = rewardBottom + rdy
+            PixelUi.drawPanel(
+                canvas, btnPaint, rl, rt, rr, rb,
+                0x99203048.toInt(), 0x5590B8D0.toInt(), s, 7f * s, edgeW = 1.2f * s, shadow = false
             )
+            val sparkle = 0.6f + 0.4f * kotlin.math.sin(homePhase * 2f)
+            btnPaint.color = withAlpha(0xFFFFFFFF.toInt(), (30 * sparkle).toInt())
+            canvas.drawRect(rl + 8f * s, rt + 3f * s, rr - 8f * s, rt + 5f * s, btnPaint)
             pixText(
                 canvas, rewardLine, w / 2f + rdx, centeredBaselineY(rewardCy, rewardSize) + rdy,
-                rewardSize, 0xCCE8F4FF.toInt(), sdx, sdy
+                rewardSize, 0xDDD0E8FF.toInt(), 0f, 0f
             )
             canvas.restore()
         } else hitHomeReward.setEmpty()
@@ -1985,30 +1886,28 @@ class HudView(context: Context, private val game: Game) : View(context) {
 
     private fun drawHomeWalletPlate(canvas: Canvas, r: RectF, s: Float, sdx: Float, sdy: Float) {
         val pulse = 0.72f + 0.28f * (0.5f + 0.5f * kotlin.math.sin(homePhase * 2.4f))
-        val accent = withAlpha(0xFFFFC21F.toInt(), (pulse * 255).toInt())
+        val accent = withAlpha(0xFFFFD426.toInt(), (pulse * 255).toInt())
         PixelUi.drawWoodPlaque(
             canvas, btnPaint, r.left, r.top, r.right, r.bottom, s,
             PixelUi.WOOD_WALLET, accent, PixelUi.AccentSide.RIGHT
         )
 
-        // 金币 + 数字作为整体居中，短数字也不会偏在一边
         val labelSize = homeWalletLabelSize
         textPaint.textSize = labelSize
         val textW = textPaint.measureText("${game.wallet}")
-        val contentL = r.centerX() - (22f * s + 10f * s + textW) * 0.5f
-        val cx = contentL + 11f * s
+        val coinR = 13f * s
+        val gap = 10f * s
+        val contentW = coinR * 2f + gap + textW
+        val contentL = r.centerX() - contentW * 0.5f
         val cy = r.centerY()
-        btnPaint.color = 0xFFFFC21F.toInt()
-        canvas.drawRect(cx - 11f * s, cy - 11f * s, cx + 11f * s, cy + 11f * s, btnPaint)
-        btnPaint.color = 0xFFFFE878.toInt()
-        canvas.drawRect(cx - 7f * s, cy - 7f * s, cx + 7f * s, cy + 7f * s, btnPaint)
-        btnPaint.color = 0xFFB8860B.toInt()
-        canvas.drawRect(cx - 3f * s, cy - 7f * s, cx + 3f * s, cy + 7f * s, btnPaint)
+        val coinCx = contentL + coinR
+
+        PixelUi.drawCoin(canvas, btnPaint, coinCx, cy, coinR, pulse)
 
         textPaint.textAlign = Paint.Align.LEFT
         pixText(
-            canvas, "${game.wallet}", contentL + 32f * s, centeredBaselineY(cy, labelSize),
-            labelSize, 0xFFFFD75E.toInt(), sdx, sdy
+            canvas, "${game.wallet}", contentL + coinR * 2f + gap, centeredBaselineY(cy, labelSize),
+            labelSize, 0xFFFFE088.toInt(), sdx, sdy
         )
         textPaint.textAlign = Paint.Align.CENTER
     }
@@ -2024,15 +1923,29 @@ class HudView(context: Context, private val game: Game) : View(context) {
 
     private fun drawTinyHouseIcon(canvas: Canvas, cx: Float, cy: Float, s: Float) {
         btnPaint.style = Paint.Style.FILL
+        btnPaint.color = 0xFF8A5E32.toInt()
+        canvas.drawRect(cx - 10f * s, cy - 1f * s, cx + 10f * s, cy + 11f * s, btnPaint)
         btnPaint.color = 0xFFB07A45.toInt()
-        canvas.drawRect(cx - 9f * s, cy - 1f * s, cx + 9f * s, cy + 10f * s, btnPaint)
+        canvas.drawRect(cx - 9f * s, cy, cx + 9f * s, cy + 10f * s, btnPaint)
+        btnPaint.color = 0xFFC89460.toInt()
+        canvas.drawRect(cx - 9f * s, cy, cx + 9f * s, cy + 2f * s, btnPaint)
         btnPaint.color = 0xFFD9483B.toInt()
-        canvas.drawRect(cx - 12f * s, cy - 8f * s, cx + 12f * s, cy - 1f * s, btnPaint)
-        canvas.drawRect(cx - 8f * s, cy - 13f * s, cx + 8f * s, cy - 8f * s, btnPaint)
+        canvas.drawRect(cx - 13f * s, cy - 7f * s, cx + 13f * s, cy, btnPaint)
+        btnPaint.color = 0xFFE8685B.toInt()
+        canvas.drawRect(cx - 12f * s, cy - 7f * s, cx + 12f * s, cy - 5f * s, btnPaint)
+        canvas.drawRect(cx - 9f * s, cy - 14f * s, cx + 9f * s, cy - 7f * s, btnPaint)
+        btnPaint.color = 0xFFF08070.toInt()
+        canvas.drawRect(cx - 8f * s, cy - 14f * s, cx + 8f * s, cy - 12f * s, btnPaint)
+        btnPaint.color = 0xFF5A3E22.toInt()
+        canvas.drawRect(cx + 2f * s, cy + 1f * s, cx + 7f * s, cy + 10f * s, btnPaint)
         btnPaint.color = 0xFF6B4A2B.toInt()
-        canvas.drawRect(cx + 2f * s, cy + 1f * s, cx + 6f * s, cy + 10f * s, btnPaint)
+        canvas.drawRect(cx + 3f * s, cy + 2f * s, cx + 6f * s, cy + 9f * s, btnPaint)
         btnPaint.color = 0xFFFFD75E.toInt()
-        canvas.drawRect(cx - 6f * s, cy + 1f * s, cx - 2f * s, cy + 5f * s, btnPaint)
+        canvas.drawRect(cx - 6f * s, cy + 2f * s, cx - 2f * s, cy + 6f * s, btnPaint)
+        btnPaint.color = 0xFFFFEBAA.toInt()
+        canvas.drawRect(cx - 5f * s, cy + 2f * s, cx - 3f * s, cy + 3f * s, btnPaint)
+        btnPaint.color = 0xFFFFE8A0.toInt()
+        canvas.drawRect(cx - 1f * s, cy - 10f * s, cx + 1f * s, cy - 6f * s, btnPaint)
     }
 
     private fun drawHomeEnergyMeter(
@@ -2043,121 +1956,162 @@ class HudView(context: Context, private val game: Game) : View(context) {
         textPaint.textAlign = Paint.Align.LEFT
         textPaint.textSize = labelSize
         val labelW = textPaint.measureText(label)
-        val pip = 12f * s
-        val pipGap = 5f * s
+        val pipW = 16f * s
+        val pipH = 18f * s
+        val pipGap = 6f * s
         val lvLabel = "Lv$lv"
         textPaint.textSize = 18f * s
         val lvW = textPaint.measureText(lvLabel)
-        val totalW = labelW + 10f * s + 3f * (pip + pipGap) + 8f * s + lvW
+        val totalW = labelW + 12f * s + 3f * (pipW + pipGap) - pipGap + 10f * s + lvW
         var x = cx - totalW / 2f
 
         pixText(canvas, label, x, centeredBaselineY(cy, labelSize), labelSize, 0xFF9AD9A0.toInt(), sdx, sdy)
-        x += labelW + 10f * s
+        x += labelW + 12f * s
 
-        val glow = 0.7f + 0.3f * (0.5f + 0.5f * kotlin.math.sin(homePhase * 2.6f))
+        val glow = 0.75f + 0.25f * (0.5f + 0.5f * kotlin.math.sin(homePhase * 2.4f))
         for (i in 0 until 3) {
-            val filled = i < lv
-            btnPaint.style = Paint.Style.FILL
-            if (filled) {
-                PixelUi.drawRect(
-                    canvas, btnPaint, x, cy - pip * 0.5f, x + pip, cy + pip * 0.5f,
-                    withAlpha(0xFF7DEBA0.toInt(), (glow * 255).toInt()), s,
-                    bevel = PixelUi.Bevel.RAISED, shadow = false
-                )
-                btnPaint.color = 0xFFB8FFD0.toInt()
-                canvas.drawRect(x + 2f * s, cy - pip * 0.5f + 2f * s, x + pip * 0.55f, cy - 1f * s, btnPaint)
-            } else {
-                PixelUi.drawRect(
-                    canvas, btnPaint, x, cy - pip * 0.5f, x + pip, cy + pip * 0.5f,
-                    0xFF2A3848.toInt(), s, bevel = PixelUi.Bevel.INSET,
-                    edge = 0x663A5068.toInt(), edgeW = 1.5f * s
-                )
-            }
-            x += pip + pipGap
+            val pipCx = x + pipW / 2f
+            PixelUi.drawCrystalPip(canvas, btnPaint, pipCx, cy, pipW, pipH, s, 0xFF7DEBA0.toInt(), i < lv, glow)
+            x += pipW + pipGap
         }
 
         textPaint.textAlign = Paint.Align.LEFT
         pixText(
-            canvas, lvLabel, x + 8f * s, centeredBaselineY(cy, 18f * s), 18f * s,
+            canvas, lvLabel, x + 4f * s, centeredBaselineY(cy, 18f * s), 18f * s,
             if (lv > 0) 0xFF7DEBA0.toInt() else 0xFF8899AA.toInt(), sdx, sdy
         )
         textPaint.textAlign = Paint.Align.CENTER
     }
 
-    /** 家页底部中央：世界切换条，左右箭头在已解锁世界的家之间穿梭 */
-    private fun drawHomeWorldSwitcher(canvas: Canvas, w: Float, h: Float, s: Float, sdx: Float, sdy: Float) {
-        val portrait = h > w
-        val world = game.homeWorld.coerceIn(0, Game.UNIVERSE_COUNT - 1)
-        val multi = game.homeWorldsUnlockedCount() > 1
-        // 摆在「出门」/ 钱包那一行的上方，竖屏时才不会与两块牌子挤在一起
-        val bottomPad = if (portrait) 44f * s else 26f * s
-        val plateH = if (portrait) 68f * s else 56f * s
-        val chipH = if (portrait) 40f * s else 36f * s
-        val cy = h - bottomPad - plateH - 12f * s - chipH * 0.5f
-        val cx = w / 2f
-        val label = "${Game.UNIVERSE_NAMES[world]}的家"
-        val labelSize = fittedTextSize(label, 18f * s, w * 0.30f, 13f * s)
-        textPaint.textAlign = Paint.Align.CENTER
-        textPaint.textSize = labelSize
-        val chipW = textPaint.measureText(label) + 30f * s
-        val wdx = game.homeUiDX("worldLabel")
-        val wdy = game.homeUiDY("worldLabel")
-        val cx2 = cx + wdx
-        val cy2 = cy + wdy
-        val accent = UNI_HUD[world]
-        if (homeShown("worldLabel")) {
+    private fun drawHomeWorldsSheet(canvas: Canvas, w: Float, h: Float, s: Float, sdx: Float, sdy: Float) {
+        dim(canvas, w, h)
+        homeWorldRowCount = 0
+        for (i in 0 until Game.UNIVERSE_COUNT) {
+            if (game.homeWorldUnlocked(i)) homeWorldRowIds[homeWorldRowCount++] = i
+        }
+        val lonely = homeWorldRowCount <= 1
+        val rowH = 60f * s
+        val titleH = 58f * s
+        val pw = min(w * 0.78f, 480f * s)
+        val ph = 18f * s + titleH + 16f * s + rowH * homeWorldRowCount + (if (lonely) 56f * s else 18f * s)
+        val l = w / 2f - pw / 2f
+        val t = h / 2f - ph / 2f
+        PixelUi.drawPanel(
+            canvas, btnPaint, l, t, l + pw, t + ph,
+            0xF21C2634.toInt(), 0xFFFFD426.toInt(), s, 14f * s, edgeW = 2.5f * s
+        )
+
+        val titleBarT = t + 10f * s
+        val titleBarB = titleBarT + titleH
+        PixelUi.drawPanel(
+            canvas, btnPaint, l + 10f * s, titleBarT, l + pw - 10f * s, titleBarB,
+            0xFF2C3A4E.toInt(), 0xFFFFD426.toInt(), s, 8f * s, edgeW = 1.5f * s, shadow = false
+        )
+        pixText(canvas, "去哪个家", w / 2f, centeredBaselineY((titleBarT + titleBarB) * 0.5f, 28f * s),
+            28f * s, 0xFFFFE8A8.toInt(), sdx, sdy)
+
+        var ry = titleBarB + 16f * s
+        for (n in 0 until homeWorldRowCount) {
+            val i = homeWorldRowIds[n]
+            val here = i == game.homeWorld
+            val r = homeWorldRowHits[n]
+            val rowPad = 8f * s
+            r.set(l + 16f * s, ry, l + pw - 16f * s, ry + rowH - 8f * s)
+
+            val fillColor = if (here) 0xFF344860.toInt() else 0xFF1C2636.toInt()
+            val edgeColor = withAlpha(UNI_HUD[i], if (here) 0xFF else 0x88)
             PixelUi.drawRect(
-                canvas, btnPaint, cx2 - chipW / 2f, cy2 - chipH / 2f, cx2 + chipW / 2f, cy2 + chipH / 2f,
-                0xCC101820.toInt(), s, bevel = PixelUi.Bevel.INSET,
-                edge = withAlpha(accent, 0xAA), edgeW = max(1f, 1.5f * s)
+                canvas, btnPaint, r.left, r.top, r.right, r.bottom,
+                fillColor, s,
+                bevel = if (here) PixelUi.Bevel.PRESSED else PixelUi.Bevel.RAISED,
+                edge = edgeColor, edgeW = max(1.5f, if (here) 2.5f else 1.5f) * s,
+                shadow = here
             )
-            pixText(canvas, label, cx2, centeredBaselineY(cy2, labelSize), labelSize, 0xFFF4F8FF.toInt(), sdx, sdy)
-            dragHitScratch.set(cx2 - chipW / 2f, cy2 - chipH / 2f, cx2 + chipW / 2f, cy2 + chipH / 2f)
-            putDragHit("worldLabel", dragHitScratch)
+
+            if (here) {
+                btnPaint.style = Paint.Style.FILL
+                btnPaint.color = withAlpha(UNI_HUD[i], 50)
+                canvas.drawRect(r.left + 3f * s, r.top + 3f * s, r.right - 3f * s, r.top + 6f * s, btnPaint)
+            }
+
+            val dotCx = r.left + 24f * s
+            val dotCy = r.centerY()
+            val dotR = 8f * s
+            btnPaint.color = UNI_HUD[i]
+            canvas.drawCircle(dotCx, dotCy, dotR, btnPaint)
+            btnPaint.color = PixelUi.lighten(UNI_HUD[i], 0.5f)
+            canvas.drawCircle(dotCx - dotR * 0.3f, dotCy - dotR * 0.3f, dotR * 0.4f, btnPaint)
+
+            textPaint.textAlign = Paint.Align.LEFT
+            val textX = dotCx + dotR + 14f * s
+            pixText(
+                canvas, Game.UNIVERSE_NAMES[i], textX, centeredBaselineY(r.centerY(), 24f * s),
+                24f * s, if (here) 0xFFFFE8A8.toInt() else 0xFFE8EEF8.toInt(), 0f, 0f
+            )
+
+            if (here) {
+                textPaint.textAlign = Paint.Align.RIGHT
+                pixText(
+                    canvas, "在住", r.right - 18f * s, centeredBaselineY(r.centerY(), 18f * s),
+                    18f * s, UNI_HUD[i], 0f, 0f
+                )
+            }
+            textPaint.textAlign = Paint.Align.CENTER
+            ry += rowH
         }
-        if (multi) {
-            val a = chipH
-            val gap = 8f * s
-            if (homeShown("worldL")) {
-                btnHomeWorldL.set(cx2 - chipW / 2f - gap - a, cy2 - a / 2f, cx2 - chipW / 2f - gap, cy2 + a / 2f)
-                applyUiOverride("worldL", w, h, s, btnHomeWorldL)
-                drawBtn(canvas, btnHomeWorldL, "<", s)
-            } else btnHomeWorldL.setEmpty()
-            if (homeShown("worldR")) {
-                btnHomeWorldR.set(cx2 + chipW / 2f + gap, cy2 - a / 2f, cx2 + chipW / 2f + gap + a, cy2 + a / 2f)
-                applyUiOverride("worldR", w, h, s, btnHomeWorldR)
-                drawBtn(canvas, btnHomeWorldR, ">", s)
-            } else btnHomeWorldR.setEmpty()
-        } else {
-            btnHomeWorldL.setEmpty()
-            btnHomeWorldR.setEmpty()
-            drawDraggableUiText(
-                canvas, "worldUnlockHint", "穿越传送门可解锁新世界的家",
-                cx, cy - chipH / 2f - 8f * s, 12f * s, 0x88FFFFFF.toInt(), sdx, sdy
+        if (lonely) {
+            pixText(
+                canvas, "跑酷时穿越传送门，就能解锁那个世界的家",
+                w / 2f, ry + 30f * s, 17f * s, 0x88CCE0FF.toInt(), 0f, 0f
             )
         }
-        putDragHit("worldL", btnHomeWorldL)
-        putDragHit("worldR", btnHomeWorldR)
     }
 
-    private fun switchHomeWorldWithToast(dir: Int) {
-        val name = game.switchHomeWorld(dir)
-        if (name.isNotEmpty()) showToast("来到${name}的家")
+    private fun handleHomeWorldsTap(x: Float, y: Float) {
+        for (n in 0 until homeWorldRowCount) {
+            if (!homeWorldRowHits[n].contains(x, y)) continue
+            val name = game.setHomeWorld(homeWorldRowIds[n])
+            if (name.isNotEmpty()) showToast("来到${name}的家")
+            showHomeWorlds = false
+            invalidate()
+            return
+        }
+        showHomeWorlds = false   // 点空处即关闭
+        invalidate()
     }
 
-    /** 主菜单右下角「家」入口：像素小房子 */
+    /** 主菜单右下角「家」入口：更精致的像素小房子 */
     private fun drawHomeEntryBtn(canvas: Canvas, r: RectF, s: Float) {
-        drawBtn(canvas, r, "", s)
+        PixelUi.drawWoodPlaque(
+            canvas, btnPaint, r.left, r.top, r.right, r.bottom, s,
+            PixelUi.WOOD_NAME, 0xFFFFD426.toInt(), PixelUi.AccentSide.BOTH
+        )
         val cx = r.centerX()
-        val cy = r.centerY()
+        val cy = r.centerY() + 1f * s
         btnPaint.style = Paint.Style.FILL
+        btnPaint.color = 0xFF8A5E32.toInt()
+        canvas.drawRect(cx - 15f * s, cy + 1f * s, cx + 15f * s, cy + 17f * s, btnPaint)
         btnPaint.color = 0xFFB07A45.toInt()
-        canvas.drawRect(cx - 14f * s, cy + 2f * s, cx + 14f * s, cy + 18f * s, btnPaint)
+        canvas.drawRect(cx - 14f * s, cy + 2f * s, cx + 14f * s, cy + 16f * s, btnPaint)
+        btnPaint.color = 0xFFC89460.toInt()
+        canvas.drawRect(cx - 14f * s, cy + 2f * s, cx + 14f * s, cy + 4f * s, btnPaint)
         btnPaint.color = 0xFFD9483B.toInt()
-        canvas.drawRect(cx - 18f * s, cy - 10f * s, cx + 18f * s, cy + 2f * s, btnPaint)
-        canvas.drawRect(cx - 12f * s, cy - 18f * s, cx + 12f * s, cy - 10f * s, btnPaint)
+        canvas.drawRect(cx - 19f * s, cy - 9f * s, cx + 19f * s, cy + 2f * s, btnPaint)
+        btnPaint.color = 0xFFE8685B.toInt()
+        canvas.drawRect(cx - 18f * s, cy - 9f * s, cx + 18f * s, cy - 6f * s, btnPaint)
+        canvas.drawRect(cx - 13f * s, cy - 18f * s, cx + 13f * s, cy - 9f * s, btnPaint)
+        btnPaint.color = 0xFFF08070.toInt()
+        canvas.drawRect(cx - 12f * s, cy - 18f * s, cx + 12f * s, cy - 15f * s, btnPaint)
+        btnPaint.color = 0xFF5A3E22.toInt()
+        canvas.drawRect(cx + 5f * s, cy + 3f * s, cx + 11f * s, cy + 16f * s, btnPaint)
         btnPaint.color = 0xFF6B4A2B.toInt()
-        canvas.drawRect(cx + 4f * s, cy + 2f * s, cx + 10f * s, cy + 18f * s, btnPaint)
+        canvas.drawRect(cx + 6f * s, cy + 4f * s, cx + 10f * s, cy + 15f * s, btnPaint)
+        btnPaint.color = 0xFFFFD75E.toInt()
+        canvas.drawRect(cx - 7f * s, cy + 4f * s, cx - 2f * s, cy + 9f * s, btnPaint)
+        btnPaint.color = 0xFFFFEBAA.toInt()
+        canvas.drawRect(cx - 6f * s, cy + 4f * s, cx - 4f * s, cy + 5f * s, btnPaint)
+        btnPaint.color = 0xFFFFE8A0.toInt()
+        canvas.drawRect(cx - 1f * s, cy - 13f * s, cx + 1f * s, cy - 8f * s, btnPaint)
     }
 
     /** 家页左下角「出门」：木牌胶囊 + 像素门与箭头 */
@@ -2180,208 +2134,367 @@ class HudView(context: Context, private val game: Game) : View(context) {
             PixelUi.WOOD_LEAVE, accent, PixelUi.AccentSide.LEFT
         )
 
-        val doorCx = r.left + 34f * s
+        val doorCx = r.left + 36f * s
         val doorCy = r.centerY()
-        btnPaint.color = 0xFF6B4A2B.toInt()
-        canvas.drawRect(doorCx - 10f * s, doorCy - 14f * s, doorCx + 10f * s, doorCy + 14f * s, btnPaint)
-        btnPaint.color = 0xFF553A20.toInt()
-        canvas.drawRect(doorCx - 6f * s, doorCy - 10f * s, doorCx + 6f * s, doorCy + 14f * s, btnPaint)
-        btnPaint.color = 0xFFFFD75E.toInt()
-        canvas.drawRect(doorCx + 2f * s, doorCy, doorCx + 5f * s, doorCy + 4f * s, btnPaint)
+        val doorW = 11f * s
+        val doorH = 16f * s
 
-        val ax = doorCx + 22f * s
-        btnPaint.color = 0xFF7DEBA0.toInt()
-        canvas.drawRect(ax, doorCy - 2f * s, ax + 14f * s, doorCy + 2f * s, btnPaint)
-        canvas.drawRect(ax + 10f * s, doorCy - 6f * s, ax + 14f * s, doorCy + 6f * s, btnPaint)
-        canvas.drawRect(ax + 6f * s, doorCy - 4f * s, ax + 10f * s, doorCy - 2f * s, btnPaint)
-        canvas.drawRect(ax + 6f * s, doorCy + 2f * s, ax + 10f * s, doorCy + 4f * s, btnPaint)
+        btnPaint.style = Paint.Style.FILL
+        btnPaint.color = 0xFF4A3A28.toInt()
+        canvas.drawRect(doorCx - doorW - 1f * s, doorCy - doorH - 1f * s, doorCx + doorW + 1f * s, doorCy + doorH + 1f * s, btnPaint)
+        btnPaint.color = 0xFF6B4A2B.toInt()
+        canvas.drawRect(doorCx - doorW, doorCy - doorH, doorCx + doorW, doorCy + doorH, btnPaint)
+        btnPaint.color = 0xFF8A6A44.toInt()
+        canvas.drawRect(doorCx - doorW + 2f * s, doorCy - doorH + 2f * s, doorCx - doorW + 4f * s, doorCy + doorH - 2f * s, btnPaint)
+        btnPaint.color = 0xFF553A20.toInt()
+        canvas.drawRect(doorCx - 2f * s, doorCy - doorH, doorCx + doorW - 2f * s, doorCy + doorH, btnPaint)
+        btnPaint.color = 0xFF6B4A2B.toInt()
+        canvas.drawRect(doorCx - doorW, doorCy - doorH, doorCx + doorW, doorCy - doorH + 4f * s, btnPaint)
+
+        val knobGlow = 0.7f + 0.3f * kotlin.math.sin(homePhase * 3.2f)
+        btnPaint.color = withAlpha(0xFFFFD426.toInt(), (knobGlow * 255).toInt())
+        canvas.drawCircle(doorCx + doorW - 4f * s, doorCy + 1f * s, 3f * s, btnPaint)
+        btnPaint.color = withAlpha(0xFFFFF0B0.toInt(), (knobGlow * 200).toInt())
+        canvas.drawCircle(doorCx + doorW - 5f * s, doorCy - 0.5f * s, 1.5f * s, btnPaint)
+
+        val arrowBaseX = doorCx + doorW + 12f * s
+        val arrowColor = withAlpha(0xFF7DEBA0.toInt(), (180 + 75 * pulse).toInt())
+        btnPaint.color = arrowColor
+        val arrowW = 16f * s
+        val shaftY = doorCy
+        canvas.drawRect(arrowBaseX, shaftY - 2f * s, arrowBaseX + arrowW - 4f * s, shaftY + 2f * s, btnPaint)
+        val headX = arrowBaseX + arrowW - 4f * s
+        canvas.drawRect(headX - 2f * s, shaftY - 6f * s, headX + 2f * s, shaftY - 3f * s, btnPaint)
+        canvas.drawRect(headX, shaftY - 3f * s, headX + 4f * s, shaftY, btnPaint)
+        canvas.drawRect(headX, shaftY, headX + 4f * s, shaftY + 3f * s, btnPaint)
+        canvas.drawRect(headX - 2f * s, shaftY + 3f * s, headX + 2f * s, shaftY + 6f * s, btnPaint)
+        btnPaint.color = withAlpha(0xFFB8FFD0.toInt(), (knobGlow * 180).toInt())
+        canvas.drawRect(arrowBaseX, shaftY - 2f * s, arrowBaseX + arrowW * 0.5f, shaftY, btnPaint)
 
         textPaint.textAlign = Paint.Align.LEFT
         val labelSize = min(28f * s, r.height() * 0.38f).coerceAtLeast(22f * s)
-        pixText(canvas, "出门", r.left + 72f * s, centeredBaselineY(r.centerY(), labelSize), labelSize, Color.WHITE, 1f, 1f)
+        pixText(canvas, "出门", r.left + 76f * s, centeredBaselineY(r.centerY(), labelSize), labelSize, 0xFFF0F8FF.toInt(), 0.5f, 0.5f)
         textPaint.textAlign = Paint.Align.CENTER
     }
 
-    private fun drawHomeShopStrip(canvas: Canvas, w: Float, h: Float, s: Float, sdx: Float, sdy: Float) {
+    /**
+     * 就地选物：点院子里的物件，底下升起这一格挑选面板。
+     *
+     * 替掉了原先的商店条——7 个分类 tab + 左右翻页箭头 + 购买按钮 + 名称/价格/状态
+     * 三段文字，一共 12 个控件，只为一次挑一件。现在**一屏摊开所有货**：
+     * 一行一个分类，格子里就是货名，点哪个换哪个。
+     *
+     * 两种点击语义（不再需要单独的「购买」按钮）：
+     * - 已拥有 → 点一下直接换上；反正不花钱，没有误触成本
+     * - 未拥有 → 第一下只把它套到场景里预览（幽灵），同一格再点一下才扣钱
+     */
+    private fun drawHomePickPanel(canvas: Canvas, w: Float, h: Float, s: Float, sdx: Float, sdy: Float) {
+        pickChipCount = 0
         val portrait = h > w
-        val stripTop = h * (if (portrait) 0.74f else 0.78f)
-        val by = h * (if (portrait) 0.80f else 0.83f)
-        btnPaint.style = Paint.Style.FILL
-        btnPaint.color = 0xCC1C2634.toInt()
+        val rows = pickRowsFor(game.homeTab)
+        val rowH = if (portrait) 64f * s else 54f * s
+        val padH = 18f * s
+        val labelW = 60f * s
+        val pw = min(w * 0.94f, 640f * s)
+        val titleH = 50f * s
+        val footerH = 34f * s
+        val ph = titleH + rows.size * rowH + footerH + 8f * s
+        val l = w / 2f - pw / 2f
+        val b = h - (if (portrait) 120f else 90f) * s
+        val t = b - ph
+        pickPanelRect.set(l, t, l + pw, b)
 
-        if (game.isCatHomeTab()) {
-            val tabGap = 8f * s
-            val tabH = if (portrait) 40f * s else 34f * s
-            val tabW = if (portrait) min(88f * s, (w * 0.92f - 3f * tabGap) / 4f) else 76f * s
-            val tabY = stripTop + 12f * s
-            val tabIds = arrayOf("tabColor", "tabTrail", "tabScarf", "tabHat")
-            for (i in CAT_COSMETIC_TABS.indices) {
-                val cx = w / 2f + (i - 1.5f) * (tabW + tabGap)
-                val tabIdx = i + Game.HOME_TAB_COLOR
-                val selected = game.homeTab == tabIdx
-                btnHomeTabs[i].set(cx - tabW / 2f, tabY, cx + tabW / 2f, tabY + tabH)
-                applyUiOverride(tabIds[i], w, h, s, btnHomeTabs[i])
-                if (!homeShown(tabIds[i])) {
-                    btnHomeTabs[i].setEmpty()
-                    continue
-                }
-                val tab = btnHomeTabs[i]
-                PixelUi.drawButton(
-                    canvas, btnPaint, tab.left, tab.top, tab.right, tab.bottom,
-                    if (selected) 0xFFFFF0D0.toInt() else 0xFF4A5A6E.toInt(),
-                    if (selected) 0xFF8A5A18.toInt() else 0xFF6B4E28.toInt(),
-                    s,
-                    bevel = if (selected) PixelUi.Bevel.PRESSED else PixelUi.Bevel.RAISED,
-                    shadow = !selected,
-                    notch = 6f * s
-                )
-                pixText(
-                    canvas, CAT_COSMETIC_TABS[i], tab.centerX(), tab.centerY() + 7f * s, 22f * s,
-                    if (selected) 0xFFFFD426.toInt() else Color.WHITE, 1f, 1f
-                )
-            }
-        }
-
-        val arrowHalf = if (portrait) 36f * s else 28f * s
-        val arrowH = if (portrait) 28f * s else 22f * s
-        btnHomeL.set(w * 0.16f - arrowHalf, by - arrowH, w * 0.16f + arrowHalf, by + arrowH)
-        btnHomeR.set(w * 0.84f - arrowHalf, by - arrowH, w * 0.84f + arrowHalf, by + arrowH)
-        applyUiOverride("arrowL", w, h, s, btnHomeL)
-        applyUiOverride("arrowR", w, h, s, btnHomeR)
-        if (homeShown("arrowL")) drawBtn(canvas, btnHomeL, "<", s) else btnHomeL.setEmpty()
-        if (homeShown("arrowR")) drawBtn(canvas, btnHomeR, ">", s) else btnHomeR.setEmpty()
-        val (name, price, status, action) = homeBrowseRow()
-        val rowY = by + 6f * s
-        val nameSize = fittedTextSize(name, 24f * s, w * 0.28f, 18f * s)
-        val priceStr = "价格 $price"
-        val showPrice = status.isEmpty()
-        val showStatus = status.isNotEmpty()
-        textPaint.textSize = nameSize
-        val nw = textPaint.measureText(name)
-        val pw = if (showPrice) textPaint.measureText(priceStr) else 0f
-        val sw = if (showStatus) textPaint.measureText(status) else 0f
-        val gap = 10f * s
-        val totalW = nw + (if (showPrice) gap + pw else 0f) + (if (showStatus) gap + sw else 0f)
-        val startX = w / 2f - totalW / 2f
-        drawDraggableUiText(
-            canvas, "shopName", name, startX, rowY, nameSize, Color.WHITE, sdx, sdy,
-            align = Paint.Align.LEFT, padH = 8f * s, padV = 6f * s
+        PixelUi.drawPanel(
+            canvas, btnPaint, l, t, l + pw, b,
+            0xF01C2634.toInt(), 0xFFFFD426.toInt(), s, 12f * s, edgeW = 2.5f * s
         )
-        if (showPrice) {
-            drawDraggableUiText(
-                canvas, "shopPrice", priceStr, startX + nw + gap, rowY, nameSize, Color.WHITE, sdx, sdy,
-                align = Paint.Align.LEFT, padH = 8f * s, padV = 6f * s
+
+        val titleBarT = t + 6f * s
+        val titleBarB = t + titleH
+        PixelUi.drawPanel(
+            canvas, btnPaint, l + 8f * s, titleBarT, l + pw - 8f * s, titleBarB,
+            0xFF2C3A4E.toInt(), 0xFFFFD426.toInt(), s, 8f * s, edgeW = 1.5f * s, shadow = false
+        )
+
+        val title = pickTitleFor(game.homeTab)
+        textPaint.textAlign = Paint.Align.LEFT
+        pixText(canvas, title, l + padH + 4f * s, centeredBaselineY((titleBarT + titleBarB) * 0.5f, 22f * s),
+            22f * s, 0xFFFFE8A8.toInt(), sdx, sdy)
+
+        val coinPulse = 0.75f + 0.25f * kotlin.math.sin(homePhase * 2.8f)
+        val coinCx = l + pw - padH - 10f * s
+        val coinCy = (titleBarT + titleBarB) * 0.5f
+        PixelUi.drawCoin(canvas, btnPaint, coinCx - 28f * s, coinCy, 10f * s, coinPulse)
+        textPaint.textAlign = Paint.Align.RIGHT
+        pixText(canvas, "${game.wallet}", l + pw - padH, centeredBaselineY(coinCy, 20f * s),
+            20f * s, 0xFFFFD75E.toInt(), sdx, sdy)
+        textPaint.textAlign = Paint.Align.CENTER
+
+        val dividerY = titleBarB + 6f * s
+        PixelUi.drawDivider(canvas, btnPaint, l + padH, dividerY, l + pw - padH, s, 0x66FFD426.toInt())
+
+        var ry = titleBarB + 12f * s
+        for (row in rows) {
+            textPaint.textAlign = Paint.Align.LEFT
+            pixText(
+                canvas, row.label, l + padH, centeredBaselineY(ry + rowH / 2f, 18f * s),
+                18f * s, 0xBBBBCCDD.toInt(), sdx, sdy
             )
-        }
-        if (showStatus) {
-            drawDraggableUiText(
-                canvas, "shopStatus", status, startX + nw + gap, rowY, nameSize, Color.WHITE, sdx, sdy,
-                align = Paint.Align.LEFT, padH = 8f * s, padV = 6f * s
-            )
+            textPaint.textAlign = Paint.Align.CENTER
+
+            val gap = 8f * s
+            val trackL = l + padH + labelW
+            val trackR = l + pw - padH
+            val n = pickItemCount(row.tab)
+            if (n > 0) {
+                val cw = (trackR - trackL - gap * (n - 1)) / n
+                var slot = 0
+                for (i in 0 until pickIndexCount(row.tab)) {
+                    if (!pickItemVisible(row.tab, i)) continue
+                    if (pickChipCount >= pickChipRects.size) break
+                    val cl = trackL + slot * (cw + gap)
+                    drawPickChip(canvas, row.tab, i, cl, ry + 4f * s, cl + cw, ry + rowH - 6f * s, s, sdx, sdy)
+                    slot++
+                }
+            }
+            ry += rowH
         }
 
-        if (action.isNotEmpty()) {
-            val buyH = if (portrait) 52f * s else 44f * s
-            val buyW = if (portrait) min(150f * s, w * 0.34f) else 120f * s
-            val buyTop = by + 34f * s
-            btnHomeBuy.set(w / 2f - buyW, buyTop, w / 2f + buyW, buyTop + buyH)
-            applyUiOverride("buy", w, h, s, btnHomeBuy)
-            if (homeShown("buy")) drawBtn(canvas, btnHomeBuy, action, s) else btnHomeBuy.setEmpty()
-        } else {
-            btnHomeBuy.setEmpty()
-        }
-        putDragHit("arrowL", btnHomeL)
-        putDragHit("arrowR", btnHomeR)
-        if (!btnHomeBuy.isEmpty) putDragHit("buy", btnHomeBuy)
-        if (game.isCatHomeTab()) {
-            val tabIds = arrayOf("tabColor", "tabTrail", "tabScarf", "tabHat")
-            for (i in tabIds.indices) putDragHit(tabIds[i], btnHomeTabs[i])
-        }
+        val hint = if (pickArmedTab >= 0) "再点一次买下  ·  点别处收起" else "点别处收起"
+        val hintAlpha = (0.55f + 0.25f * (0.5f + 0.5f * kotlin.math.sin(homePhase * 1.6f))).coerceIn(0.4f, 1f)
+        pixText(canvas, hint, w / 2f, b - 12f * s, 16f * s, withAlpha(0xCCDDEEFF.toInt(), (hintAlpha * 255).toInt()), 0f, 0f)
     }
 
-    private fun homeBrowseRow(): HomeRow = when (game.homeTab) {
-        Game.HOME_TAB_HOUSE -> {
-            val i = game.homeBrowseHouse
-            HomeRow(
-                game.homeHouseName(i), Game.HOUSE_PRICES[i],
-                when {
-                    game.houseStyle == i -> "${Game.UNIVERSE_NAMES[game.homeWorld]}居住中"
-                    game.ownsHouse(i) -> "已拥有"
-                    else -> ""
-                },
-                if (game.ownsHouse(i)) "入住" else "购买"
+    private fun drawPickChip(
+        canvas: Canvas, tab: Int, i: Int,
+        cl: Float, ct: Float, cr: Float, cb: Float, s: Float, sdx: Float, sdy: Float
+    ) {
+        val owned = pickOwned(tab, i)
+        val equipped = pickEquipped(tab, i)
+        val armed = pickArmedTab == tab && pickArmedIdx == i
+        val price = pickPrice(tab, i)
+        val afford = owned || game.wallet >= price
+        val swatch = pickSwatch(tab, i)
+
+        val chipPad = 2f * s
+        val fill = when {
+            swatch != 0 -> if (afford) swatch else withAlpha(swatch, 0x55)
+            equipped -> 0xFF3C5070.toInt()
+            afford -> 0xFF253244.toInt()
+            else -> 0xFF181E28.toInt()
+        }
+        val edge = when {
+            equipped -> 0xFFFFD426.toInt()
+            armed -> withAlpha(0xFFFFD426.toInt(), (150 + 105 * (0.5f + 0.5f * kotlin.math.sin(homePhase * 7f))).toInt())
+            owned -> 0x99D4E4FF.toInt()
+            afford -> 0x55A0B4CC.toInt()
+            else -> 0x33506078.toInt()
+        }
+        val edgeW = max(1.5f, if (equipped || armed) 2.5f else 1.5f) * s
+
+        PixelUi.drawRect(
+            canvas, btnPaint, cl + chipPad, ct + chipPad, cr - chipPad, cb - chipPad, fill, s,
+            bevel = if (equipped || armed) PixelUi.Bevel.PRESSED else PixelUi.Bevel.RAISED,
+            edge = edge, edgeW = edgeW, shadow = equipped
+        )
+
+        if (equipped) {
+            btnPaint.style = Paint.Style.FILL
+            btnPaint.color = withAlpha(0xFFFFD426.toInt(), 60)
+            canvas.drawRect(cl + chipPad + 2f * s, ct + chipPad + 2f * s, cr - chipPad - 2f * s, ct + chipPad + 5f * s, btnPaint)
+        }
+
+        val cx = (cl + cr) / 2f
+        val cy = (ct + cb) / 2f
+        val maxW = (cr - cl) - 12f * s
+        val name = pickName(tab, i)
+
+        if (swatch != 0) {
+            if (!afford) {
+                btnPaint.style = Paint.Style.FILL
+                btnPaint.color = 0x66101820.toInt()
+                canvas.drawRect(cl + chipPad + 1f * s, ct + chipPad + 1f * s, cr - chipPad - 1f * s, cb - chipPad - 1f * s, btnPaint)
+            }
+            val ns = fittedTextSize(name, 14f * s, maxW, 10f * s)
+            val bgH = ns + 5f * s
+            btnPaint.color = withAlpha(0xFF101820.toInt(), 180)
+            canvas.drawRect(cl + chipPad + 1f * s, cb - chipPad - bgH - 2f * s, cr - chipPad - 1f * s, cb - chipPad - 1f * s, btnPaint)
+            pixText(canvas, name, cx, cb - chipPad - bgH / 2f + ns * 0.35f, ns,
+                if (afford) 0xFFFFF0D0.toInt() else 0xFF8090A0.toInt(), 0f, 0f)
+        } else {
+            val nameY = if (owned) cy else cy - 6f * s
+            val ns = fittedTextSize(name, 18f * s, maxW, 12f * s)
+            pixText(
+                canvas, name, cx, centeredBaselineY(nameY, ns), ns,
+                if (afford) 0xFFF0F4FF.toInt() else 0xFF606E80.toInt(), sdx * 0.5f, sdy * 0.5f
             )
         }
-        Game.HOME_TAB_ROOF -> {
-            val i = game.homeBrowseRoof
-            HomeRow(
-                Game.ROOF_NAMES[i], Game.ROOF_PRICES[i],
-                when {
-                    game.roofStyle == i -> "${Game.UNIVERSE_NAMES[game.homeWorld]}使用中"
-                    game.ownsRoof(i) -> "已拥有"
-                    else -> ""
-                },
-                if (game.ownsRoof(i)) "换上" else "购买"
+
+        if (owned && equipped) {
+            val checkSize = 11f * s
+            val checkX = cr - chipPad - checkSize - 3f * s
+            val checkY = ct + chipPad + 4f * s
+            btnPaint.style = Paint.Style.FILL
+            btnPaint.color = 0xFF3F9E5A.toInt()
+            canvas.drawRect(checkX, checkY, checkX + checkSize, checkY + checkSize, btnPaint)
+            btnPaint.color = 0xFFFFFFFF.toInt()
+            canvas.drawRect(checkX + 2f * s, checkY + 5f * s, checkX + 4.5f * s, checkY + 9f * s, btnPaint)
+            canvas.drawRect(checkX + 4.5f * s, checkY + 7f * s, checkX + 8.5f * s, checkY + 9.5f * s, btnPaint)
+        }
+
+        if (!owned) {
+            val ps = fittedTextSize("$price", 14f * s, maxW, 10f * s)
+            val priceH = ps + 5f * s
+            btnPaint.color = withAlpha(
+                if (afford) 0xFF2A1F08.toInt() else 0xFF2A1010.toInt(),
+                190
+            )
+            canvas.drawRect(cl + chipPad + 2f * s, cb - chipPad - priceH - 1f * s, cr - chipPad - 2f * s, cb - chipPad - 1f * s, btnPaint)
+            pixText(
+                canvas, "$price", cx, cb - chipPad - priceH / 2f + ps * 0.35f, ps,
+                if (afford) 0xFFFFD75E.toInt() else 0xFFE07060.toInt(),
+                0f, 0f
             )
         }
-        Game.HOME_TAB_DECO -> {
-            val i = game.homeBrowseDeco
-            HomeRow(
-                game.homeDecoName(i), Game.DECO_PRICES[i],
-                if (game.ownsDeco(i)) "已摆放" else "",
-                // 摆件一旦拥有就直接摆进院子，没有再点一次的意义；
-                // action 留空表示这行不需要按钮，避免和上面的状态文字重复
-                if (game.ownsDeco(i)) "" else "购买"
-            )
+
+        if (armed) {
+            btnPaint.style = Paint.Style.STROKE
+            btnPaint.strokeWidth = 2f * s
+            btnPaint.color = withAlpha(0xFFFFD426.toInt(),
+                (80 + 80 * (0.5f + 0.5f * kotlin.math.sin(homePhase * 6f))).toInt())
+            canvas.drawRect(cl, ct, cr, cb, btnPaint)
+            btnPaint.style = Paint.Style.FILL
         }
-        Game.HOME_TAB_COLOR -> {
-            val i = game.shopBrowseColor
-            HomeRow(
-                Game.COLOR_NAMES[i], Game.COLOR_PRICES[i],
-                when {
-                    game.catColor == i -> "已装备"
-                    game.ownsColor(i) -> "已拥有"
-                    else -> ""
-                },
-                if (game.ownsColor(i)) "装备" else "购买"
-            )
+
+        val r = pickChipRects[pickChipCount]
+        r.set(cl, ct, cr, cb)
+        pickChipTab[pickChipCount] = tab
+        pickChipIdx[pickChipCount] = i
+        pickChipCount++
+    }
+
+    /**
+     * @return true 表示这一下归选物面板，已消费。
+     *
+     * 落在面板外就收起面板但**不消费**——让这一下继续往下走到常规热区。
+     * 于是「点房子 → 点猫」这种连着换品类的操作还是一下一个，不用先点空白关一次；
+     * 而点在什么都没有的地方就单纯是关掉。原先靠 hitSky 一个矩形来关，
+     * 天空之外（如远景山、地面）点了没反应，收不起来。
+     */
+    private fun handlePickTap(x: Float, y: Float): Boolean {
+        if (!pickPanelRect.contains(x, y)) {
+            closeHomePick()
+            return false
         }
-        Game.HOME_TAB_TRAIL -> {
-            val i = game.shopBrowseTrail
-            HomeRow(
-                Game.TRAIL_NAMES[i], Game.TRAIL_PRICES[i],
-                when {
-                    game.trailStyle == i -> "已装备"
-                    game.ownsTrail(i) -> "已拥有"
-                    else -> ""
-                },
-                if (game.ownsTrail(i)) "装备" else "购买"
-            )
+        for (n in 0 until pickChipCount) {
+            if (!pickChipRects[n].contains(x, y)) continue
+            val tab = pickChipTab[n]
+            val i = pickChipIdx[n]
+            val armed = pickArmedTab == tab && pickArmedIdx == i
+            game.switchHomeTab(tab)          // 会把游标复位成当前在用的那件
+            game.setHomeBrowse(tab, i)       // 所以紧接着才把游标挪到点中的这件
+            if (pickOwned(tab, i) || armed) {
+                showToast(game.buyOrEquipHome())
+                pickArmedTab = -1
+                pickArmedIdx = -1
+            } else {
+                // 先套上看看：场景里出的是幽灵预览，钱还没动
+                pickArmedTab = tab
+                pickArmedIdx = i
+                showToast("${pickName(tab, i)} · ${pickPrice(tab, i)} 金币，再点一次买下")
+            }
+            invalidate()
+            return true
         }
-        Game.HOME_TAB_SCARF -> {
-            val i = game.shopBrowseScarf
-            HomeRow(
-                Game.SCARF_NAMES[i], Game.SCARF_PRICES[i],
-                when {
-                    game.scarfStyle == i -> "已戴上"
-                    game.ownsScarf(i) -> "已拥有"
-                    else -> ""
-                },
-                if (game.ownsScarf(i)) "戴上" else "购买"
-            )
-        }
-        else -> {
-            val i = game.shopBrowseHat
-            HomeRow(
-                Game.HAT_NAMES[i], Game.HAT_PRICES[i],
-                when {
-                    game.hatStyle == i -> "已戴上"
-                    game.ownsHat(i) -> "已拥有"
-                    else -> ""
-                },
-                if (game.ownsHat(i)) "戴上" else "购买"
-            )
-        }
+        return true   // 点在面板底板上：什么也不做，但别漏给下面的院子
+    }
+
+    private class PickRow(val tab: Int, val label: String)
+
+    /**
+     * 一个入口摊开一族货：点房子出「小屋 + 屋顶」，点猫出四行装扮。
+     * 分类不再是要先点的 tab，而是面板上的行号——少一层点击。
+     */
+    private fun pickRowsFor(tab: Int): Array<PickRow> = when {
+        tab == Game.HOME_TAB_DECO -> PICK_ROWS_DECO
+        game.isCatHomeTab(tab) -> PICK_ROWS_CAT
+        else -> PICK_ROWS_HOUSE
+    }
+
+    private fun pickTitleFor(tab: Int): String = when {
+        tab == Game.HOME_TAB_DECO -> "院子里摆点什么"
+        game.isCatHomeTab(tab) -> "给猫换身行头"
+        else -> "翻修一下房子"
+    }
+
+    /** 该分类共有几件（含本世界不供应的），用于遍历上界 */
+    private fun pickIndexCount(tab: Int): Int = when (tab) {
+        Game.HOME_TAB_HOUSE -> Game.HOUSE_NAMES.size
+        Game.HOME_TAB_ROOF -> Game.ROOF_NAMES.size
+        Game.HOME_TAB_DECO -> Game.DECO_NAMES.size
+        Game.HOME_TAB_COLOR -> Game.COLOR_NAMES.size
+        Game.HOME_TAB_TRAIL -> Game.TRAIL_NAMES.size
+        Game.HOME_TAB_SCARF -> Game.SCARF_NAMES.size
+        else -> Game.HAT_NAMES.size
+    }
+
+    /** 摆件按世界供应，别的分类全世界通用 */
+    private fun pickItemVisible(tab: Int, i: Int): Boolean =
+        tab != Game.HOME_TAB_DECO || HomeWorldContent.decoAvailable(game.homeWorld, i)
+
+    private fun pickItemCount(tab: Int): Int {
+        var n = 0
+        for (i in 0 until pickIndexCount(tab)) if (pickItemVisible(tab, i)) n++
+        return n
+    }
+
+    private fun pickName(tab: Int, i: Int): String = when (tab) {
+        Game.HOME_TAB_HOUSE -> game.homeHouseName(i)
+        Game.HOME_TAB_ROOF -> Game.ROOF_NAMES[i]
+        Game.HOME_TAB_DECO -> game.homeDecoName(i)
+        Game.HOME_TAB_COLOR -> Game.COLOR_NAMES[i]
+        Game.HOME_TAB_TRAIL -> Game.TRAIL_NAMES[i]
+        Game.HOME_TAB_SCARF -> Game.SCARF_NAMES[i]
+        else -> Game.HAT_NAMES[i]
+    }
+
+    private fun pickPrice(tab: Int, i: Int): Int = when (tab) {
+        Game.HOME_TAB_HOUSE -> Game.HOUSE_PRICES[i]
+        Game.HOME_TAB_ROOF -> Game.ROOF_PRICES[i]
+        Game.HOME_TAB_DECO -> Game.DECO_PRICES[i]
+        Game.HOME_TAB_COLOR -> Game.COLOR_PRICES[i]
+        Game.HOME_TAB_TRAIL -> Game.TRAIL_PRICES[i]
+        Game.HOME_TAB_SCARF -> Game.SCARF_PRICES[i]
+        else -> Game.HAT_PRICES[i]
+    }
+
+    private fun pickOwned(tab: Int, i: Int): Boolean = when (tab) {
+        Game.HOME_TAB_HOUSE -> game.ownsHouse(i)
+        Game.HOME_TAB_ROOF -> game.ownsRoof(i)
+        Game.HOME_TAB_DECO -> game.ownsDeco(i)
+        Game.HOME_TAB_COLOR -> game.ownsColor(i)
+        Game.HOME_TAB_TRAIL -> game.ownsTrail(i)
+        Game.HOME_TAB_SCARF -> game.ownsScarf(i)
+        else -> game.ownsHat(i)
+    }
+
+    /** 摆件没有「换上」一说，买了就一直摆着，故拥有即视为在用 */
+    private fun pickEquipped(tab: Int, i: Int): Boolean = when (tab) {
+        Game.HOME_TAB_HOUSE -> game.houseStyle == i
+        Game.HOME_TAB_ROOF -> game.roofStyle == i
+        Game.HOME_TAB_DECO -> game.ownsDeco(i)
+        Game.HOME_TAB_COLOR -> game.catColor == i
+        Game.HOME_TAB_TRAIL -> game.trailStyle == i
+        Game.HOME_TAB_SCARF -> game.scarfStyle == i
+        else -> game.hatStyle == i
+    }
+
+    /** 货本身就是个颜色时返回它，格子直接刷成这个色；0 表示该用文字 */
+    private fun pickSwatch(tab: Int, i: Int): Int = when (tab) {
+        Game.HOME_TAB_ROOF -> HomePalette.ROOF_CHIPS[i % HomePalette.ROOF_CHIPS.size]
+        Game.HOME_TAB_COLOR -> COLOR_CHIPS[i % COLOR_CHIPS.size]
+        Game.HOME_TAB_TRAIL -> TRAIL_CHIPS[i % TRAIL_CHIPS.size]
+        else -> 0
     }
 
     private fun openStargazing() {
@@ -2433,550 +2546,36 @@ class HudView(context: Context, private val game: Game) : View(context) {
         stargazeDoneHint = ""
     }
 
-    private data class HomeRow(val name: String, val price: Int, val status: String, val action: String)
 
-    /** Canvas 像素画家场景；ghostDeco 为浏览中未购买装饰的半透明预览 */
-    /** 竖直线性渐变填充矩形；画完清空 shader，避免污染后续像素绘制 */
-    private fun fillVGrad(canvas: Canvas, l: Float, t: Float, r: Float, b: Float, colors: IntArray, stops: FloatArray) {
-        btnPaint.style = Paint.Style.FILL
-        btnPaint.isDither = true
-        btnPaint.shader = LinearGradient(0f, t, 0f, b, colors, stops, Shader.TileMode.CLAMP)
-        canvas.drawRect(l, t, r, b, btnPaint)
-        btnPaint.shader = null
-        btnPaint.isDither = false
-    }
-
-    /** 接地软阴影：压扁的半透明椭圆，把物体「钉」在草地上，制造立体纵深 */
-    /** 绕锚点缩放矩形，用于布局缩放与点击热区对齐 */
+    /** 绕锚点缩放矩形，用于顶栏文字的缩放与点击热区对齐 */
     private fun scaleRectAround(px: Float, py: Float, l: Float, t: Float, r: Float, b: Float, sc: Float, out: RectF) {
         out.set(px + (l - px) * sc, py + (t - py) * sc, px + (r - px) * sc, py + (b - py) * sc)
+    }
+
+    /** 把屏幕点打到院子地面上作为叫猫的落点；打不到（指到天上了）返回 false */
+    private fun aimHandAt(screenX: Float, screenY: Float): Boolean {
+        if (!HomeYard.screenToGround(screenX, screenY, width.toFloat(), height.toFloat(), groundHit)) return false
+        handTargetX = groundHit[0].coerceIn(-HomeYard.WALK_HALF_X, HomeYard.WALK_HALF_X)
+        handTargetZ = groundHit[1].coerceIn(HomeYard.WALK_FAR_Z, HomeYard.WALK_NEAR_Z)
+        handMarkerLife = 2.5f
+        return true
     }
 
     private fun snapDragPx(v: Float): Float =
         kotlin.math.round(v / HOME_DRAG_SNAP_PX) * HOME_DRAG_SNAP_PX
 
-    private fun snapDragSceneDelta(d: Float): Float {
-        val step = HOME_DRAG_SNAP_PX / yardSceneS.coerceAtLeast(0.5f)
-        return kotlin.math.round(d / step) * step
-    }
-
-    /** 装饰锚点：屏幕坐标接地点 + 缩放，与 drawDeco 单点缩放绘制一致 */
-    private data class DecoAnchor(val pivotX: Float, val footY: Float, val sc: Float, val pivotIsCx: Boolean = false)
-
-    private fun decoAnchor(deco: Int, cx: Float, gy: Float, s: Float): DecoAnchor? = when (deco) {
-        0 -> DecoAnchor(cx + game.yardGardenX() * s, gy + game.yardGardenY() * s, LayoutConfig.cur.gardenS)
-        1 -> DecoAnchor(cx, gy + game.yardFenceY() * s, LayoutConfig.cur.fenceS, pivotIsCx = true)
-        2 -> DecoAnchor(cx + game.yardMailboxX() * s, gy + game.yardMailboxY() * s, LayoutConfig.cur.mailboxS)
-        3 -> DecoAnchor(cx + game.yardSwingX() * s, gy + game.yardSwingY() * s, LayoutConfig.cur.swingS)
-        4 -> DecoAnchor(cx + game.yardPerchX() * s, gy + game.yardPerchY() * s, LayoutConfig.cur.perchS)
-        6 -> DecoAnchor(cx + game.yardTelescopeX() * s, gy + game.yardTelescopeY() * s, LayoutConfig.cur.telescopeS)
-        else -> null
-    }
-
-    /** 庭院道具拖放热区（屏幕坐标；仅已购装饰注册，避免预览 ghost 挡住真物件） */
-    private fun registerOwnedDecoDragHits(world: Int, cx: Float, gy: Float, half: Float, s: Float) {
-        for (deco in Game.DECO_NAMES.indices) {
-            if (!HomeWorldContent.decoAvailable(world, deco) || !game.ownsDeco(deco)) continue
-            registerDecoDragHit(world, deco, cx, gy, half, s)
-        }
-    }
-
-    private fun registerDecoDragHit(world: Int, deco: Int, cx: Float, gy: Float, half: Float, s: Float) {
-        if (!HomeWorldContent.decoAvailable(world, deco)) return
-        val pad = 4f * s
-        fun yardHit(id: String, ax: Float, footY: Float, sc: Float, l: Float, t: Float, r: Float, b: Float) {
-            scaleRectAround(
-                ax, footY,
-                ax + (l * s - pad), footY + (t * s - pad),
-                ax + (r * s + pad), footY + (b * s + pad),
-                sc, dragHitScratch
-            )
-            putDragHit(id, dragHitScratch)
-        }
-        when (deco) {
-            1 -> {
-                val a = decoAnchor(1, cx, gy, s) ?: return
-                val b = HomeWorldDraw.decoDragBounds(world, deco, half)
-                // 栅栏横向 half 为屏幕像素，纵向为场景单位
-                scaleRectAround(
-                    a.pivotX, a.footY,
-                    a.pivotX + b[0] - pad, a.footY + (b[1] * s - pad),
-                    a.pivotX + b[2] + pad, a.footY + (b[3] * s + pad),
-                    a.sc, dragHitScratch
-                )
-                putDragHit("fence", dragHitScratch)
-            }
-            0, 2, 3, 4, 6 -> {
-                val a = decoAnchor(deco, cx, gy, s) ?: return
-                val b = HomeWorldDraw.decoDragBounds(world, deco, half)
-                yardHit(ownedDecoDragId[deco], a.pivotX, a.footY, a.sc, b[0], b[1], b[2], b[3])
-                if (deco == 6) {
-                    if (homeShown("telescope")) yardTelescopeHit.set(dragHitScratch)
-                    else yardTelescopeHit.setEmpty()
-                }
-            }
-            5 -> {
-                val pool = game.yardPool()
-                dragHitScratch.set(
-                    cx + pool.l * s - 6f * s, gy + pool.t * s - 6f * s,
-                    cx + pool.r * s + 6f * s, gy + pool.b * s + 6f * s
-                )
-                putDragHit("pool", dragHitScratch)
-            }
-        }
-    }
-
-    private fun groundShadow(canvas: Canvas, cx: Float, baseY: Float, halfW: Float, s: Float) {
-        val aa = btnPaint.isAntiAlias
-        btnPaint.isAntiAlias = true
-        btnPaint.style = Paint.Style.FILL
-        btnPaint.shader = null
-        btnPaint.color = 0x22000000
-        canvas.drawOval(cx - halfW * 1.16f, baseY - 3f * s, cx + halfW * 1.16f, baseY + 9f * s, btnPaint)
-        btnPaint.color = 0x33000000
-        canvas.drawOval(cx - halfW, baseY - 2f * s, cx + halfW, baseY + 7f * s, btnPaint)
-        btnPaint.isAntiAlias = aa
-    }
-
-    /** 黄金时刻立体感：顶/右描暖高光、左/底描冷投影，让扁平方块受光更立体（太阳在右上） */
-    private fun boxShade(canvas: Canvas, l: Float, t: Float, r: Float, b: Float, s: Float) {
-        btnPaint.style = Paint.Style.FILL
-        btnPaint.shader = null
-        val e = 3f * s
-        btnPaint.color = 0x2AFFF4D8            // 暖白高光
-        canvas.drawRect(l, t, r, t + e, btnPaint)
-        canvas.drawRect(r - e, t, r, b, btnPaint)
-        btnPaint.color = 0x24202C3C            // 冷投影
-        canvas.drawRect(l, t, l + e, b, btnPaint)
-        canvas.drawRect(l, b - e, r, b, btnPaint)
-    }
-
-    /** 暖阳：几层同心圆叠出柔光晕 + 亮核，替代生硬的黄色方块 */
-    private fun drawSoftSun(canvas: Canvas, cx: Float, cy: Float, r: Float) {
-        btnPaint.style = Paint.Style.FILL
-        btnPaint.shader = null
-        val aa = btnPaint.isAntiAlias
-        btnPaint.isAntiAlias = true
-        btnPaint.color = 0x30FFF0C0
-        canvas.drawCircle(cx, cy, r * 2.1f, btnPaint)
-        btnPaint.color = 0x55FFEBAE
-        canvas.drawCircle(cx, cy, r * 1.5f, btnPaint)
-        btnPaint.color = 0xFFFFE49B.toInt()
-        canvas.drawCircle(cx, cy, r, btnPaint)
-        btnPaint.color = 0xFFFFF3CE.toInt()
-        canvas.drawCircle(cx - r * 0.25f, cy - r * 0.25f, r * 0.5f, btnPaint)
-        btnPaint.isAntiAlias = aa
-    }
-
-    /** 家园右上角天体：各世界一款——暖阳 / 水面光斑 / 高空烈日 / 熔岩浊日 / 棒棒糖太阳 / 星环行星 */
-    private fun drawHomeCelestial(canvas: Canvas, w: Float, s: Float, world: Int) {
-        val cx = w - 78f * s
-        val cy = 60f * s
-        val r = 30f * s
-        btnPaint.style = Paint.Style.FILL
-        btnPaint.shader = null
-        val aa = btnPaint.isAntiAlias
-        btnPaint.isAntiAlias = true
-        when (world) {
-            Game.UNI_WATER -> {
-                // 从水面漏下来的光斑：大而弱的青白光晕
-                btnPaint.color = 0x2ACFF6FF
-                canvas.drawCircle(cx, cy, r * 2.6f, btnPaint)
-                btnPaint.color = 0x40BDEFFF
-                canvas.drawCircle(cx, cy, r * 1.6f, btnPaint)
-                btnPaint.color = 0x66E4FAFF
-                canvas.drawCircle(cx, cy, r * 0.9f, btnPaint)
-            }
-            Game.UNI_LAVA -> {
-                // 被烟尘滤过的浊日：暗橙光核 + 红光晕
-                btnPaint.color = 0x30FF5A2A
-                canvas.drawCircle(cx, cy, r * 2.1f, btnPaint)
-                btnPaint.color = 0x55FF7A3A
-                canvas.drawCircle(cx, cy, r * 1.4f, btnPaint)
-                btnPaint.color = 0xFFE86A2E.toInt()
-                canvas.drawCircle(cx, cy, r * 0.85f, btnPaint)
-                btnPaint.color = 0xFFFFA25A.toInt()
-                canvas.drawCircle(cx - r * 0.2f, cy - r * 0.2f, r * 0.4f, btnPaint)
-            }
-            Game.UNI_CANDY -> {
-                // 棒棒糖太阳：奶白底 + 粉色糖圈
-                btnPaint.color = 0x40FFE9F4
-                canvas.drawCircle(cx, cy, r * 1.8f, btnPaint)
-                btnPaint.color = 0xFFFFF4E4.toInt()
-                canvas.drawCircle(cx, cy, r, btnPaint)
-                btnPaint.style = Paint.Style.STROKE
-                btnPaint.strokeWidth = 5f * s
-                btnPaint.color = 0xFFFF8FBE.toInt()
-                canvas.drawCircle(cx, cy, r * 0.66f, btnPaint)
-                canvas.drawCircle(cx, cy, r * 0.28f, btnPaint)
-                btnPaint.style = Paint.Style.FILL
-            }
-            Game.UNI_SPACE -> {
-                // 星环行星：紫青星球 + 斜向星环
-                btnPaint.color = 0x2E9C7CFF
-                canvas.drawCircle(cx, cy, r * 1.7f, btnPaint)
-                btnPaint.color = 0xFF7C6BD9.toInt()
-                canvas.drawCircle(cx, cy, r * 0.85f, btnPaint)
-                btnPaint.color = 0xFF9C8CEF.toInt()
-                canvas.drawCircle(cx - r * 0.25f, cy - r * 0.22f, r * 0.45f, btnPaint)
-                btnPaint.style = Paint.Style.STROKE
-                btnPaint.strokeWidth = 4f * s
-                btnPaint.color = 0xCCFFD8A8.toInt()
-                canvas.save()
-                canvas.rotate(-18f, cx, cy)
-                canvas.drawOval(cx - r * 1.45f, cy - r * 0.34f, cx + r * 1.45f, cy + r * 0.34f, btnPaint)
-                canvas.restore()
-                btnPaint.style = Paint.Style.FILL
-            }
-            else -> drawSoftSun(canvas, cx, cy, r)   // 草原 / 天空世界都是明亮的太阳
-        }
-        btnPaint.isAntiAlias = aa
-    }
-
-    /** 家园天空里的世界氛围景物：气泡游鱼 / 云海彩虹 / 火山飞烬 / 糖果云 / 星野流星 */
-    private fun drawHomeWorldAmbience(canvas: Canvas, w: Float, s: Float, gy: Float, world: Int) {
-        btnPaint.style = Paint.Style.FILL
-        btnPaint.shader = null
-        val aa = btnPaint.isAntiAlias
-        when (world) {
-            Game.UNI_WATER -> {
-                btnPaint.isAntiAlias = true
-                // 上浮的气泡
-                for (i in 0 until 8) {
-                    val bx = w * ((i * 0.137f + 0.05f) % 1f)
-                    val speed = (22f + (i % 3) * 8f) * s
-                    val range = gy - 26f * s
-                    val by = gy - 8f * s - ((homePhase * speed + i * 91f * s) % range)
-                    val br = (2.2f + (i % 3)) * s
-                    btnPaint.color = 0x55CFF2FF
-                    canvas.drawCircle(bx, by, br, btnPaint)
-                }
-                // 两条远处游鱼：来回巡游，身体 + 小尾巴
-                for (i in 0 until 2) {
-                    val dir = if (i == 0) 1f else -1f
-                    val span = w + 120f * s
-                    val fx = ((homePhase * (30f + i * 12f) * s + i * span * 0.5f) % span) *
-                        dir + (if (dir < 0f) w + 60f * s else -60f * s)
-                    val fy = gy * (0.30f + i * 0.16f) + kotlin.math.sin(homePhase * 1.1f + i * 2f) * 9f * s
-                    val fc = if (i == 0) 0x995AC8E8.toInt() else 0x9980D8C8.toInt()
-                    btnPaint.color = fc
-                    canvas.drawOval(fx - 12f * s, fy - 5f * s, fx + 12f * s, fy + 5f * s, btnPaint)
-                    val tailX = fx + 12f * s * dir
-                    canvas.drawRect(tailX, fy - 6f * s, tailX + 7f * s * dir, fy + 6f * s, btnPaint)
-                }
-            }
-            Game.UNI_SKY -> {
-                btnPaint.isAntiAlias = true
-                // 慢慢漂移的云团（三球一朵）
-                for (i in 0 until 3) {
-                    val span = w + 200f * s
-                    val cx = span - ((homePhase * (7f + i * 3f) * s + i * span * 0.37f) % span) - 100f * s
-                    val cy = gy * (0.22f + i * 0.17f)
-                    val cr = (16f + (i % 2) * 6f) * s
-                    btnPaint.color = 0xE6FFFFFF.toInt()
-                    canvas.drawCircle(cx, cy, cr, btnPaint)
-                    canvas.drawCircle(cx - cr * 0.9f, cy + cr * 0.25f, cr * 0.72f, btnPaint)
-                    canvas.drawCircle(cx + cr * 0.9f, cy + cr * 0.25f, cr * 0.72f, btnPaint)
-                }
-                // 地平线小彩虹拱
-                val rbx = w * 0.16f
-                val rby = gy
-                val rcols = intArrayOf(0x88FF6B6B.toInt(), 0x88FFD54A.toInt(), 0x8867D98A.toInt())
-                btnPaint.style = Paint.Style.STROKE
-                btnPaint.strokeWidth = 5f * s
-                for (i in rcols.indices) {
-                    btnPaint.color = rcols[i]
-                    val rr = (52f - i * 7f) * s
-                    canvas.drawArc(rbx - rr, rby - rr, rbx + rr, rby + rr, 180f, 180f, false, btnPaint)
-                }
-                btnPaint.style = Paint.Style.FILL
-            }
-            Game.UNI_LAVA -> {
-                // 远景火山：阶梯状黑山 + 山口红光
-                val vx = w * 0.20f
-                pyramidRoof(canvas, vx, gy, 92f * s, 74f * s, 0xFF3A2B28.toInt(), 0xFF2C201E.toInt(), s)
-                btnPaint.isAntiAlias = true
-                val glow = 0.6f + 0.4f * (0.5f + 0.5f * kotlin.math.sin(homePhase * 2.8f))
-                btnPaint.color = withAlpha(0xFFFF7A2A.toInt(), (glow * 200).toInt())
-                canvas.drawCircle(vx, gy - 74f * s, 10f * s, btnPaint)
-                btnPaint.color = withAlpha(0xFFFF5A2A.toInt(), (glow * 90).toInt())
-                canvas.drawCircle(vx, gy - 74f * s, 22f * s, btnPaint)
-                // 上升的飞烬
-                for (i in 0 until 6) {
-                    val ex = w * ((i * 0.163f + 0.08f) % 1f)
-                    val range = gy - 30f * s
-                    val ey = gy - 10f * s - ((homePhase * (26f + (i % 3) * 10f) * s + i * 83f * s) % range)
-                    val flick = 0.5f + 0.5f * kotlin.math.sin(homePhase * 5f + i * 1.7f)
-                    btnPaint.color = withAlpha(0xFFFFA25A.toInt(), (60 + 150 * flick).toInt())
-                    val er = (1.6f + (i % 2)) * s
-                    canvas.drawRect(ex - er, ey - er, ex + er, ey + er, btnPaint)
-                }
-            }
-            Game.UNI_CANDY -> {
-                btnPaint.isAntiAlias = true
-                // 粉白棉花糖云
-                for (i in 0 until 3) {
-                    val span = w + 200f * s
-                    val cx = span - ((homePhase * (6f + i * 3f) * s + i * span * 0.41f) % span) - 100f * s
-                    val cy = gy * (0.24f + i * 0.16f)
-                    val cr = (15f + (i % 2) * 6f) * s
-                    btnPaint.color = if (i % 2 == 0) 0xE6FFF2F8.toInt() else 0xE6FFD9EA.toInt()
-                    canvas.drawCircle(cx, cy, cr, btnPaint)
-                    canvas.drawCircle(cx - cr * 0.9f, cy + cr * 0.25f, cr * 0.7f, btnPaint)
-                    canvas.drawCircle(cx + cr * 0.9f, cy + cr * 0.25f, cr * 0.7f, btnPaint)
-                }
-                // 飘落的彩色糖屑
-                val sprinkle = intArrayOf(0xCCFF8FBE.toInt(), 0xCC7ADBC8.toInt(), 0xCCFFD54A.toInt(), 0xCC9C8CEF.toInt())
-                for (i in 0 until 7) {
-                    val sx = w * ((i * 0.149f + 0.06f) % 1f) + kotlin.math.sin(homePhase * 1.3f + i) * 10f * s
-                    val range = gy - 24f * s
-                    val sy = 12f * s + ((homePhase * (14f + (i % 3) * 6f) * s + i * 77f * s) % range)
-                    btnPaint.color = sprinkle[i % sprinkle.size]
-                    canvas.drawRect(sx - 1.6f * s, sy - 4f * s, sx + 1.6f * s, sy + 4f * s, btnPaint)
-                }
-            }
-            Game.UNI_SPACE -> {
-                // 满天星：位置固定，亮度按各自节奏呼吸
-                for (i in 0 until 42) {
-                    val sx = w * ((i * 0.6180f + 0.03f) % 1f)
-                    val sy = (gy - 26f * s) * ((i * 0.3770f + 0.02f) % 1f)
-                    val tw = 0.5f + 0.5f * kotlin.math.sin(homePhase * (1.2f + (i % 5) * 0.35f) + i * 1.3f)
-                    val col = if (i % 7 == 0) 0xFFB8D4FF.toInt() else 0xFFFFFFFF.toInt()
-                    btnPaint.color = withAlpha(col, (70 + 150 * tw).toInt())
-                    val sr = if (i % 9 == 0) 2.2f * s else 1.3f * s
-                    canvas.drawRect(sx - sr, sy - sr, sx + sr, sy + sr, btnPaint)
-                }
-                // 偶发流星：每 7 秒划过一次
-                val p = homePhase % 7f
-                if (p < 0.8f) {
-                    val t = p / 0.8f
-                    val mx = w * (0.15f + 0.5f * t)
-                    val my = gy * (0.10f + 0.30f * t)
-                    btnPaint.isAntiAlias = true
-                    btnPaint.strokeWidth = 2.5f * s
-                    btnPaint.style = Paint.Style.STROKE
-                    btnPaint.color = withAlpha(0xFFFFFFFF.toInt(), ((1f - t) * 220).toInt())
-                    canvas.drawLine(mx - 26f * s, my - 14f * s, mx, my, btnPaint)
-                    btnPaint.style = Paint.Style.FILL
-                }
-            }
-        }
-        btnPaint.isAntiAlias = aa
-    }
-
-    private fun drawHomeScene(
-        canvas: Canvas, w: Float, h: Float, s: Float,
-        house: Int, roof: Int, ghostDeco: Int,
-        yardColor: Int = game.catColor,
-        yardTrail: Int = game.trailStyle,
-        yardScarf: Int = game.scarfStyle,
-        yardHat: Int = game.hatStyle,
-        cosmeticGhost: Boolean = false,
-        highlightEditing: Boolean = false
-    ) {
-        val cx = w / 2f
-        val top = 0f
-        val gy = h * 0.58f
-        val bottom = h
-        val half = min(w * 0.49f, 420f * s)
-        fun rc(l: Float, t: Float, r: Float, b: Float, color: Int) {
-            btnPaint.style = Paint.Style.FILL
-            btnPaint.color = color
-            canvas.drawRect(l, t, r, b, btnPaint)
-        }
-        // 全屏天空 / 草地（遮住 GL 层，独立页面）：配色与景物随当前家所在世界切换
-        val world = game.homeWorld.coerceIn(0, Game.UNIVERSE_COUNT - 1)
-        fillVGrad(canvas, 0f, top, w, gy, HOME_SKY_GRAD[world], floatArrayOf(0f, 0.55f, 1f))
-        drawHomeCelestial(canvas, w, s, world)
-        drawHomeWorldAmbience(canvas, w, s, gy, world)
-        // 地面：草原草坪 / 海底沙地 / 云海地台 / 玄武岩 / 软糖草坪 / 星尘水晶地
-        val grassPal = HOME_GRASS[world]
-        fillVGrad(
-            canvas, 0f, gy, w, bottom,
-            intArrayOf(grassPal[0], grassPal[1]),
-            floatArrayOf(0f, 1f)
-        )
-        rc(0f, gy, w, gy + 8f * s, grassPal[2])
-
-        // 远景草坪 + 两座地标：藏品馆 / 荣誉墙。房屋与装饰画在其后，天然形成纵深。
-        // 地标高 132u，横屏天空很矮，按顶栏到地面的可用高度收缩，避免被顶栏切掉。
-        val skyRoom = (gy - (if (homeBarBottom > 0f) homeBarBottom else 300f * s) - 12f * s)
-            .coerceAtLeast(90f * s)
-        val landmarkU = min(0.92f * s, skyRoom / 200f)
-        val farGy = gy - min(126f * s, skyRoom - 132f * landmarkU)
-        // 远景草坪：贴着地平线拉出纵深，颜色随世界主题
-        rc(0f, farGy, w, gy, HOME_FAR[world][0])
-        rc(0f, farGy, w, farGy + 4f * s, HOME_FAR[world][1])
-        val farX = min(half - 78f * s, 196f * s).coerceAtLeast(150f * s)
-        val museumX = cx - farX + game.homeMuseumDX() * s
-        val museumBase = farGy + game.homeMuseumDY() * s
-        if (homeShown("museum")) {
-            canvas.save(); canvas.scale(LayoutConfig.cur.museumS, LayoutConfig.cur.museumS, museumX, museumBase)
-            drawMuseumBuilding(canvas, museumX, museumBase, landmarkU, s)
-            canvas.restore()
-        } else hitMuseum.setEmpty()
-        val honorX = cx + farX + game.homeHonorDX() * s
-        val honorBase = farGy + game.homeHonorDY() * s
-        if (homeShown("honor")) {
-            canvas.save(); canvas.scale(LayoutConfig.cur.honorS, LayoutConfig.cur.honorS, honorX, honorBase)
-            drawHonorWall(canvas, honorX, honorBase, landmarkU, s)
-            canvas.restore()
-        } else hitHonorWall.setEmpty()
-
-        val roofC = ROOF_CHIPS[roof]
-        val roofD = PixelUi.darken(roofC)
-        // 同一档房屋在不同世界换当地建材与灯光
-        val housePal = HOME_HOUSE_PAL[world][house.coerceIn(0, 3)]
-        val winLight = HOME_WINDOW[world]
-
-        // 房屋整体微调偏移（LayoutConfig）：平移绘制，热区随后同步偏移
-        val houseDx = game.homeHouseDX() * s
-        val houseDy = game.homeHouseDY() * s
-        if (homeShown("house")) {
-            canvas.save()
-            canvas.translate(houseDx, houseDy)
-            canvas.scale(LayoutConfig.cur.houseS, LayoutConfig.cur.houseS, cx, gy)
-            groundShadow(canvas, cx, gy, 118f * s, s)
-            HomeWorldDraw.drawHouse(
-                world, house, cx, gy, housePal, roofC, roofD, winLight, homeWorldGfx(canvas, s, gy, world)
-            )
-            drawHouseWorldTrim(canvas, world, house, cx, gy, s)
-            canvas.restore()
-        } else {
-            hitHouse.setEmpty()
-            hitRoof.setEmpty()
-        }
-
-        for (i in Game.DECO_NAMES.indices) {
-            if (!HomeWorldContent.decoAvailable(world, i)) continue
-            val owned = game.ownsDeco(i)
-            if (!owned && i != ghostDeco) continue
-            val decoId = decoElementId(i)
-            if (decoId != null && !homeShown(decoId)) continue
-            val alpha = if (owned) 255 else 110
-            drawDeco(canvas, world, i, cx, gy, half, s, alpha)
-        }
-        registerOwnedDecoDragHits(world, cx, gy, half, s)
-
-        // 可点击热区（装扮购置）
-        hitSky.set(0f, top, w, farGy)
-        val houseSc = LayoutConfig.cur.houseS
-        val hcx = cx + houseDx
-        val hgy = gy + houseDy
-        if (homeShown("house")) {
-            scaleRectAround(hcx, hgy, hcx - 118f * s, top + houseDy, hcx + 118f * s, hgy - 108f * s, houseSc, hitRoof)
-            scaleRectAround(hcx, hgy, hcx - 108f * s, hgy - 108f * s, hcx + 108f * s, hgy, houseSc, hitHouse)
-            putDragHit("house", hitHouse)
-        }
-        hitYardDeco.set(cx - half, gy - 12f * s, cx + half, bottom)
-        hitCosmeticColor.setEmpty()
-        hitCosmeticTrail.setEmpty()
-        hitCosmeticHat.setEmpty()
-
-        if (highlightEditing) {
-            val pulse = if (kotlin.math.sin(homePhase * 4f) > 0f) 0x44FFD426 else 0x22FFD426
-            btnPaint.style = Paint.Style.STROKE
-            btnPaint.strokeWidth = 2f
-            btnPaint.color = pulse
-            when (game.homeTab) {
-                Game.HOME_TAB_HOUSE -> canvas.drawRect(hitHouse, btnPaint)
-                Game.HOME_TAB_ROOF -> canvas.drawRect(hitRoof, btnPaint)
-                Game.HOME_TAB_DECO -> {
-                    for (i in ownedDecoDragId.indices) {
-                        if (!game.ownsDeco(i)) continue
-                        homeDragHits[ownedDecoDragId[i]]?.let { canvas.drawRect(it, btnPaint) }
-                    }
-                }
-                Game.HOME_TAB_COLOR, Game.HOME_TAB_TRAIL, Game.HOME_TAB_SCARF, Game.HOME_TAB_HAT ->
-                    canvas.drawRect(yardCatHit, btnPaint)
-            }
-            btnPaint.style = Paint.Style.FILL
-        }
-
-        // 庭院里的猫与偶尔飞过的蝴蝶
-        yardSceneCx = cx
-        yardSceneGy = gy
-        yardSceneS = s
-        yardSceneHalf = half
-        yardSceneHit.set(0f, top, w, bottom)
-        updateYardCat(0.016f, half / s)
-        drawYardButterfly(canvas, cx, gy, s)
-        if (homeShown("cat")) drawYardCat(canvas, cx, gy, s, yardColor, yardScarf, yardHat)
-        else yardCatHit.setEmpty()
-        if (handMarkerLife > 0f) drawHandMarker(canvas, cx, gy, s)
-        drawYardFloaters(canvas, s)
-        if (!game.ownsDeco(6)) yardTelescopeHit.setEmpty()
-    }
-
-    /** 地标牌匾上的金色描边：与铭牌同一套呼吸节奏，暗示可点 */
-    private fun landmarkPulseFrame(canvas: Canvas, l: Float, t: Float, r: Float, b: Float, s: Float) {
-        val pulse = 0.55f + 0.45f * (0.5f + 0.5f * kotlin.math.sin(homePhase * 2.2f))
-        btnPaint.style = Paint.Style.STROKE
-        btnPaint.strokeWidth = 2f * s
-        btnPaint.color = withAlpha(0xFFFFD426.toInt(), (pulse * 210).toInt())
-        canvas.drawRect(l, t, r, b, btnPaint)
-        btnPaint.style = Paint.Style.FILL
-    }
-
     /**
-     * 远景藏品馆：石阶 + 立柱 + 三角山墙，门内透出暖光，楣梁牌匾写着收集进度。
-     * base 为远景地平线，向上生长；点击整栋建筑进入藏品图鉴。
+     * 奖牌盘面：lv 0 为未解锁的灰位，1/2/3/4 对应铜 / 银 / 金 / 钻。
+     * 档位色是语义色（金牌就该是金的），不随世界换；[tint] 供远景做大气透视时统一褪色。
      */
-    private fun drawMuseumBuilding(canvas: Canvas, mx: Float, base: Float, u: Float, s: Float) {
-        fun rc(l: Float, t: Float, r: Float, b: Float, color: Int) {
-            btnPaint.style = Paint.Style.FILL
-            btnPaint.color = color
-            canvas.drawRect(l, t, r, b, btnPaint)
-        }
-        // 落地投影
-        rc(mx - 60f * u, base, mx + 60f * u, base + 5f * u, 0x33000000)
-        // 三级台阶
-        rc(mx - 58f * u, base - 6f * u, mx + 58f * u, base, 0xFFB6AC92.toInt())
-        rc(mx - 52f * u, base - 12f * u, mx + 52f * u, base - 6f * u, 0xFFDDD4BD.toInt())
-        rc(mx - 46f * u, base - 18f * u, mx + 46f * u, base - 12f * u, 0xFFB6AC92.toInt())
-        // 门厅内墙压暗，浅色立柱才立得出来
-        rc(mx - 44f * u, base - 84f * u, mx + 44f * u, base - 18f * u, 0xFFC7BDA3.toInt())
-        // 门洞与馆内暖光
-        rc(mx - 14f * u, base - 60f * u, mx + 14f * u, base - 18f * u, 0xFF4A3A28.toInt())
-        rc(mx - 11f * u, base - 56f * u, mx + 11f * u, base - 18f * u, 0xFF2E2418.toInt())
-        rc(mx - 8f * u, base - 48f * u, mx + 8f * u, base - 18f * u, 0xFFE8B45E.toInt())
-        rc(mx - 18f * u, base - 18f * u, mx + 18f * u, base - 12f * u, 0x66FFD98A)
-        // 四根立柱：柱头/柱础 + 右侧暗面
-        for (dx in intArrayOf(-34, -20, 20, 34)) {
-            val px = mx + dx * u
-            rc(px - 6f * u, base - 78f * u, px + 6f * u, base - 24f * u, 0xFFF8F3E4.toInt())
-            rc(px + 3f * u, base - 78f * u, px + 6f * u, base - 24f * u, 0xFFCDC3A8.toInt())
-            rc(px - 8f * u, base - 84f * u, px + 8f * u, base - 78f * u, 0xFFEDE7D6.toInt())
-            rc(px - 8f * u, base - 24f * u, px + 8f * u, base - 18f * u, 0xFFEDE7D6.toInt())
-        }
-        // 楣梁牌匾 + 三角山墙
-        val friezeT = base - 108f * u
-        val friezeB = base - 84f * u
-        rc(mx - 54f * u, friezeT, mx + 54f * u, friezeB, 0xFFE6DFCB.toInt())
-        rc(mx - 54f * u, friezeT, mx + 54f * u, friezeT + 3f * u, 0xFFF7F3E6.toInt())
-        pyramidRoof(canvas, mx, friezeT, 58f * u, 28f * u, 0xFFEDE7D6.toInt(), 0xFFBDB49C.toInt(), s)
-        rc(mx - 5f * u, friezeT - 16f * u, mx + 5f * u, friezeT - 8f * u, 0xFF7FA8C9.toInt())
-
-        val label = "藏品 ${game.relicsFound}/${Game.RELIC_COUNT}"
-        val size = fittedTextSize(label, min(15f * s, 17f * u), 100f * u, 12f * s)
-        val labelY = centeredBaselineY((friezeT + friezeB) * 0.5f, size)
-        if (homeShown("museumLabel")) {
-            drawDraggableUiText(
-                canvas, "museumLabel", label, mx, labelY, size, 0xFF5C3D0A.toInt(), 0f, 0f,
-                padH = 6f * s, padV = 4f * s
-            )
-        }
-        landmarkPulseFrame(canvas, mx - 54f * u, friezeT, mx + 54f * u, friezeB, s)
-
-        scaleRectAround(mx, base, mx - 60f * u, friezeT - 30f * u, mx + 60f * u, base + 6f * s, LayoutConfig.cur.museumS, hitMuseum)
-        putDragHit("museum", hitMuseum)
-    }
-
-    /** 奖牌盘面：lv 0 为未解锁的灰位，1/2/3/4 对应铜 / 银 / 金 / 钻 */
-    private fun drawMedal(canvas: Canvas, cx: Float, cy: Float, r: Float, lv: Int) {
+    private fun drawMedal(
+        canvas: Canvas, cx: Float, cy: Float, r: Float, lv: Int,
+        tint: ((Int) -> Int)? = null
+    ) {
+        fun t(c: Int) = tint?.invoke(c) ?: c
         if (lv <= 0) {
-            pixDisc(canvas, cx, cy, r, 0xFF8A7561.toInt())
-            pixDisc(canvas, cx, cy, r * 0.72f, 0xFF6B5B4B.toInt())
+            pixDisc(canvas, cx, cy, r, t(0xFF8A7561.toInt()))
+            pixDisc(canvas, cx, cy, r * 0.72f, t(0xFF6B5B4B.toInt()))
             return
         }
         val face = when (lv) {
@@ -2991,11 +2590,11 @@ class HudView(context: Context, private val game: Game) : View(context) {
             3 -> 0xFFFFEDB0.toInt()
             else -> 0xFFCBF3F9.toInt()
         }
-        pixDisc(canvas, cx, cy, r, darken(face))
-        pixDisc(canvas, cx, cy, r * 0.82f, face)
-        pixDisc(canvas, cx, cy, r * 0.44f, glow)
+        pixDisc(canvas, cx, cy, r, t(darken(face)))
+        pixDisc(canvas, cx, cy, r * 0.82f, t(face))
+        pixDisc(canvas, cx, cy, r * 0.44f, t(glow))
         btnPaint.style = Paint.Style.FILL
-        btnPaint.color = 0xCCFFFFFF.toInt()
+        btnPaint.color = t(0xCCFFFFFF.toInt())
         canvas.drawRect(cx - r * 0.62f, cy - r * 0.5f, cx - r * 0.36f, cy - r * 0.24f, btnPaint)
     }
 
@@ -3022,504 +2621,73 @@ class HudView(context: Context, private val game: Game) : View(context) {
         }
     }
 
-    /**
-     * 远景荣誉墙：砖墙上钉着奖牌，按铜/银/金上色，未解锁的是灰底空位——
-     * 不点开也能一眼看出还差几项。点击整面墙进入荣誉图鉴。
-     */
-    private fun drawHonorWall(canvas: Canvas, hx: Float, base: Float, u: Float, s: Float) {
-        fun rc(l: Float, t: Float, r: Float, b: Float, color: Int) {
-            btnPaint.style = Paint.Style.FILL
-            btnPaint.color = color
-            canvas.drawRect(l, t, r, b, btnPaint)
-        }
-        val wallL = hx - 68f * u
-        val wallR = hx + 68f * u
-        val wallT = base - 96f * u
-        val wallB = base - 8f * u
-        // 落地投影 + 墙基
-        rc(hx - 74f * u, base, hx + 74f * u, base + 5f * u, 0x33000000)
-        rc(hx - 74f * u, wallB, hx + 74f * u, base, 0xFF7A6A58.toInt())
-        // 砖墙：大块错缝，避免细纹在远景里糊成噪点
-        rc(wallL, wallT, wallR, wallB, 0xFFAD9377.toInt())
-        for (row in 0..3) {
-            val ly = wallT + row * 22f * u
-            if (ly >= wallB) break
-            rc(wallL, ly, wallR, ly + 2f * u, 0xFF937A61.toInt())
-            var bx = wallL + if (row % 2 == 0) 22f * u else 0f
-            while (bx < wallR) {
-                rc(bx, ly, min(bx + 2f * u, wallR), min(ly + 22f * u, wallB), 0xFF937A61.toInt())
-                bx += 44f * u
-            }
-        }
-        // 压顶
-        rc(hx - 76f * u, base - 106f * u, hx + 76f * u, wallT, 0xFF8B7A66.toInt())
-        rc(hx - 76f * u, base - 106f * u, hx + 76f * u, base - 103f * u, 0xFFC4B399.toInt())
-
-        // 奖牌网格：按类别数选列数，行距自适应地铺满整面墙（22 枚用 8 列 3 行）
-        val medalCols = when {
-            Game.ACHIEVE_CATS <= 10 -> 5
-            Game.ACHIEVE_CATS <= 12 -> 6
-            else -> 8
-        }
-        val medalRows = (Game.ACHIEVE_CATS + medalCols - 1) / medalCols
-        val gridTop = base - 78f * u
-        val gridBot = base - 20f * u
-        val rowStep = if (medalRows > 1) (gridBot - gridTop) / (medalRows - 1) else 0f
-        val colStep = 132f * u / medalCols
-        val vSpan = if (medalRows > 1) rowStep else 40f * u
-        val r = min(11f * u, min(colStep * 0.42f, vSpan * 0.34f))
-        for (c in 0 until Game.ACHIEVE_CATS) {
-            val row = c / medalCols
-            val col = c % medalCols
-            val itemsInRow = min(medalCols, Game.ACHIEVE_CATS - row * medalCols)
-            val px = hx + (col - (itemsInRow - 1) * 0.5f) * colStep
-            val my = if (medalRows > 1) gridTop + row * rowStep else (gridTop + gridBot) * 0.5f
-            val lv = game.achieveLevels[c]
-            drawMedalRibbon(canvas, px, my - r, r, lv)
-            drawMedal(canvas, px, my, r, lv)
-        }
-
-        // 墙顶木牌
-        val signT = base - 132f * u
-        val signB = base - 106f * u
-        rc(hx - 50f * u, signT, hx + 50f * u, signB, 0xFF6B4A2B.toInt())
-        rc(hx - 50f * u, signT, hx + 50f * u, signT + 4f * u, 0xFF97622F.toInt())
-        val label = "荣誉 ${game.achieveCount}/${Game.ACHIEVE_MAX}"
-        val size = fittedTextSize(label, min(15f * s, 17f * u), 92f * u, 12f * s)
-        val labelY = centeredBaselineY((signT + signB) * 0.5f, size)
-        if (homeShown("honorLabel")) {
-            drawDraggableUiText(
-                canvas, "honorLabel", label, hx, labelY, size, 0xFFFFF6E8.toInt(), 0f, 0f,
-                padH = 6f * s, padV = 4f * s
-            )
-        }
-        landmarkPulseFrame(canvas, hx - 50f * u, signT, hx + 50f * u, signB, s)
-
-        scaleRectAround(hx, base, hx - 76f * u, signT, hx + 76f * u, base + 6f * s, LayoutConfig.cur.honorS, hitHonorWall)
-        putDragHit("honor", hitHonorWall)
-    }
-
     private fun darken(c: Int): Int = PixelUi.darken(c)
 
     private fun withAlpha(c: Int, a: Int): Int = (a shl 24) or (c and 0x00FFFFFF)
 
-    /** 阶梯金字塔屋顶：bottomY 为屋顶底边，halfW 为半宽 */
-    private fun pyramidRoof(canvas: Canvas, cx: Float, bottomY: Float, halfW: Float, height: Float, c: Int, cd: Int, s: Float) {
-        val steps = 4
-        btnPaint.style = Paint.Style.FILL
-        for (i in 0 until steps) {
-            val t = i.toFloat() / steps
-            val hw = halfW * (1f - t * 0.82f)
-            btnPaint.color = if (i == 0) cd else c
-            canvas.drawRect(
-                cx - hw, bottomY - height * (i + 1) / steps,
-                cx + hw, bottomY - height * i / steps, btnPaint
-            )
-        }
-    }
-
-    /** 各世界门造型：木门 / 潜水舱门 / 云白拱门 / 黑曜石门 / 巧克力糖门 / 太空滑门 */
-    private fun door(canvas: Canvas, cx: Float, gy: Float, s: Float, world: Int) {
-        btnPaint.style = Paint.Style.FILL
-        btnPaint.shader = null
-        val aa = btnPaint.isAntiAlias
-        when (world) {
-            Game.UNI_WATER -> {
-                btnPaint.isAntiAlias = true
-                btnPaint.color = 0xFF3E7A8E.toInt()
-                canvas.drawOval(cx - 17f * s, gy - 66f * s, cx + 17f * s, gy - 30f * s, btnPaint)
-                canvas.drawRect(cx - 17f * s, gy - 48f * s, cx + 17f * s, gy, btnPaint)
-                btnPaint.color = 0xFF2E5A6E.toInt()
-                canvas.drawRect(cx - 17f * s, gy - 5f * s, cx + 17f * s, gy, btnPaint)
-                // 门上舷窗
-                btnPaint.color = 0xFF64998F.toInt()
-                canvas.drawCircle(cx, gy - 38f * s, 9.5f * s, btnPaint)
-                btnPaint.color = 0xFFBFF2E8.toInt()
-                canvas.drawCircle(cx, gy - 38f * s, 6.5f * s, btnPaint)
-            }
-            Game.UNI_SKY -> {
-                btnPaint.isAntiAlias = true
-                btnPaint.color = 0xFFF2C14E.toInt()
-                canvas.drawOval(cx - 17f * s, gy - 68f * s, cx + 17f * s, gy - 36f * s, btnPaint)
-                canvas.drawRect(cx - 17f * s, gy - 52f * s, cx + 17f * s, gy, btnPaint)
-                btnPaint.color = 0xFFF8F4E6.toInt()
-                canvas.drawOval(cx - 13f * s, gy - 64f * s, cx + 13f * s, gy - 38f * s, btnPaint)
-                canvas.drawRect(cx - 13f * s, gy - 50f * s, cx + 13f * s, gy, btnPaint)
-                btnPaint.color = 0xFFC9A570.toInt()
-                canvas.drawRect(cx + 5f * s, gy - 30f * s, cx + 10f * s, gy - 25f * s, btnPaint)
-            }
-            Game.UNI_LAVA -> {
-                btnPaint.color = 0xFF2E2426.toInt()
-                canvas.drawRect(cx - 17f * s, gy - 54f * s, cx + 17f * s, gy, btnPaint)
-                // 门缝里透出的岩浆光：随呼吸明暗
-                val glow = 0.55f + 0.45f * (0.5f + 0.5f * kotlin.math.sin(homePhase * 2.6f))
-                btnPaint.color = withAlpha(0xFFFF7A2A.toInt(), (glow * 255).toInt())
-                canvas.drawRect(cx - 1.5f * s, gy - 48f * s, cx + 1.5f * s, gy, btnPaint)
-                canvas.drawRect(cx - 14f * s, gy - 4f * s, cx + 14f * s, gy, btnPaint)
-                btnPaint.color = 0xFF4A3E42.toInt()
-                canvas.drawRect(cx - 17f * s, gy - 54f * s, cx + 17f * s, gy - 50f * s, btnPaint)
-            }
-            Game.UNI_CANDY -> {
-                btnPaint.isAntiAlias = true
-                btnPaint.color = 0xFFFFF8F0.toInt()
-                canvas.drawOval(cx - 17f * s, gy - 66f * s, cx + 17f * s, gy - 34f * s, btnPaint)
-                btnPaint.color = 0xFF6B4230.toInt()
-                canvas.drawOval(cx - 14f * s, gy - 62f * s, cx + 14f * s, gy - 36f * s, btnPaint)
-                canvas.drawRect(cx - 14f * s, gy - 48f * s, cx + 14f * s, gy, btnPaint)
-                btnPaint.color = 0xFF8A5A40.toInt()
-                canvas.drawRect(cx - 14f * s, gy - 26f * s, cx + 14f * s, gy - 23f * s, btnPaint)
-                btnPaint.color = 0xFFFF8FBE.toInt()
-                canvas.drawCircle(cx + 8f * s, gy - 28f * s, 3.5f * s, btnPaint)
-            }
-            Game.UNI_SPACE -> {
-                btnPaint.color = 0xFF474C60.toInt()
-                canvas.drawRect(cx - 17f * s, gy - 56f * s, cx + 17f * s, gy, btnPaint)
-                btnPaint.color = 0xFF2E3242.toInt()
-                canvas.drawRect(cx - 1.5f * s, gy - 52f * s, cx + 1.5f * s, gy, btnPaint)
-                // 门楣灯带：慢速呼吸的青光
-                val pulse = 0.5f + 0.5f * kotlin.math.sin(homePhase * 2f)
-                btnPaint.color = withAlpha(0xFF4DE8FF.toInt(), (120 + 120 * pulse).toInt())
-                canvas.drawRect(cx - 15f * s, gy - 56f * s, cx + 15f * s, gy - 52f * s, btnPaint)
-                btnPaint.color = 0xFF9AE8FF.toInt()
-                canvas.drawRect(cx + 6f * s, gy - 34f * s, cx + 12f * s, gy - 28f * s, btnPaint)
-            }
-            else -> {
-                btnPaint.color = 0xFF8A6B3F.toInt()
-                canvas.drawRect(cx - 20f * s, gy - 58f * s, cx + 20f * s, gy, btnPaint)
-                btnPaint.color = 0xFF6B4A2B.toInt()
-                canvas.drawRect(cx - 17f * s, gy - 54f * s, cx + 17f * s, gy, btnPaint)
-                // 门板拼缝 + 金门把 + 门前石阶
-                btnPaint.color = 0xFF5A3D22.toInt()
-                canvas.drawRect(cx - 1.5f * s, gy - 54f * s, cx + 1.5f * s, gy, btnPaint)
-                btnPaint.color = 0xFFFFD75E.toInt()
-                canvas.drawRect(cx + 7f * s, gy - 30f * s, cx + 12f * s, gy - 25f * s, btnPaint)
-                btnPaint.color = 0xFFC9B98F.toInt()
-                canvas.drawRect(cx - 22f * s, gy, cx + 22f * s, gy + 5f * s, btnPaint)
-            }
-        }
-        btnPaint.isAntiAlias = aa
-    }
-
-    /** 各世界窗造型：十字木窗 / 圆舷窗 / 金框云窗 / 铁框火窗 / 糖霜圆角窗 / 太空舷窗 */
-    private fun window(canvas: Canvas, cx: Float, cy: Float, s: Float, light: Int, world: Int) {
-        btnPaint.style = Paint.Style.FILL
-        btnPaint.shader = null
-        val aa = btnPaint.isAntiAlias
-        when (world) {
-            Game.UNI_WATER, Game.UNI_SPACE -> {
-                btnPaint.isAntiAlias = true
-                btnPaint.color = if (world == Game.UNI_WATER) 0xFF64998F.toInt() else 0xFF9AA2B8.toInt()
-                canvas.drawCircle(cx, cy, 16f * s, btnPaint)
-                btnPaint.color = if (world == Game.UNI_WATER) 0xFF456E66.toInt() else 0xFF6E7488.toInt()
-                canvas.drawCircle(cx, cy, 13f * s, btnPaint)
-                btnPaint.color = light
-                canvas.drawCircle(cx, cy, 11f * s, btnPaint)
-                btnPaint.color = 0x77FFFFFF
-                canvas.drawCircle(cx - 4f * s, cy - 4f * s, 3.6f * s, btnPaint)
-            }
-            Game.UNI_LAVA -> {
-                // 铁框火窗：窗外一圈岩浆光晕
-                btnPaint.color = withAlpha(0xFFFF7A2A.toInt(), 60)
-                canvas.drawRect(cx - 20f * s, cy - 20f * s, cx + 20f * s, cy + 20f * s, btnPaint)
-                btnPaint.color = 0xFF3A2C28.toInt()
-                canvas.drawRect(cx - 17f * s, cy - 17f * s, cx + 17f * s, cy + 17f * s, btnPaint)
-                btnPaint.color = light
-                canvas.drawRect(cx - 13f * s, cy - 13f * s, cx + 13f * s, cy + 13f * s, btnPaint)
-                btnPaint.color = 0xFF3A2C28.toInt()
-                canvas.drawRect(cx - 2f * s, cy - 13f * s, cx + 2f * s, cy + 13f * s, btnPaint)
-            }
-            Game.UNI_CANDY -> {
-                btnPaint.isAntiAlias = true
-                btnPaint.color = 0xFFFFF8F0.toInt()
-                canvas.drawRoundRect(cx - 18f * s, cy - 18f * s, cx + 18f * s, cy + 18f * s, 9f * s, 9f * s, btnPaint)
-                btnPaint.color = light
-                canvas.drawRoundRect(cx - 13f * s, cy - 13f * s, cx + 13f * s, cy + 13f * s, 6f * s, 6f * s, btnPaint)
-                btnPaint.color = 0x66FFFFFF
-                canvas.drawRect(cx - 10f * s, cy - 10f * s, cx - 2f * s, cy - 2f * s, btnPaint)
-            }
-            else -> {
-                val frame = if (world == Game.UNI_SKY) 0xFFC9A570.toInt() else 0xFF8A6B3F.toInt()
-                btnPaint.color = light
-                canvas.drawRect(cx - 15f * s, cy - 15f * s, cx + 15f * s, cy + 15f * s, btnPaint)
-                btnPaint.color = 0x4DFFFFFF
-                canvas.drawRect(cx - 15f * s, cy - 15f * s, cx, cy, btnPaint)
-                btnPaint.color = frame
-                canvas.drawRect(cx - 2f * s, cy - 15f * s, cx + 2f * s, cy + 15f * s, btnPaint)
-                canvas.drawRect(cx - 15f * s, cy - 2f * s, cx + 15f * s, cy + 2f * s, btnPaint)
-                // 窗台
-                canvas.drawRect(cx - 18f * s, cy + 15f * s, cx + 18f * s, cy + 19f * s, btnPaint)
-            }
-        }
-        btnPaint.isAntiAlias = aa
-    }
+    // ---------- 家园 3D 场景的交互层 ----------
 
     /**
-     * 房屋上的世界专属点缀（在房屋平移/缩放坐标系内调用）：
-     * 水下珊瑚海星 / 天空檐边风铃 / 熔岩岩浆缝 / 糖果糖霜滴边 / 星空天线霓虹。
+     * 家页面这一帧要画的**只剩交互层**：场景本身由 [GameRenderer] 在 GL 线程出图，
+     * 这里做三件事——推进庭院里那只猫、把渲染层投影出来的热区接过来、画贴在屏幕上的小东西
+     * （编辑描边 / 爱心 / 飘字）。
+     *
+     * 换句话说，HudView 不再复刻一遍院子的布局公式。热区来自「实际画出来的那个盒子」，
+     * 所以拖动、缩放、换房型、横竖屏切换全都自动对得上，不用两头改坐标。
      */
-    private fun drawHouseWorldTrim(canvas: Canvas, world: Int, house: Int, cx: Float, gy: Float, s: Float) {
-        if (world == Game.UNI_MEADOW) return
-        fun rc(l: Float, t: Float, r: Float, b: Float, color: Int) {
+    private fun drawHomeScene(canvas: Canvas, w: Float, h: Float, s: Float) {
+        val dt = 0.016f
+        yardSceneS = s
+        yardSceneHit.set(0f, 0f, w, h)
+        updateYardCat(dt)
+        syncHomeHits(w, h)
+
+        if (homeEditing) {
+            val pulse = if (kotlin.math.sin(homePhase * 4f) > 0f) 0x44FFD426 else 0x22FFD426
+            btnPaint.style = Paint.Style.STROKE
+            btnPaint.strokeWidth = 2f
+            btnPaint.color = pulse
+            when (game.homeTab) {
+                Game.HOME_TAB_HOUSE, Game.HOME_TAB_ROOF -> canvas.drawRect(hitHouse, btnPaint)
+                Game.HOME_TAB_DECO -> for (id in ownedDecoDragId) {
+                    homeDragHits[id]?.let { canvas.drawRect(it, btnPaint) }
+                }
+                Game.HOME_TAB_COLOR, Game.HOME_TAB_TRAIL, Game.HOME_TAB_SCARF, Game.HOME_TAB_HAT ->
+                    canvas.drawRect(yardCatHit, btnPaint)
+            }
             btnPaint.style = Paint.Style.FILL
-            btnPaint.color = color
-            canvas.drawRect(l, t, r, b, btnPaint)
         }
-        val halfW = when (house) { 0 -> 80f; 1 -> 100f; 2 -> 100f; else -> 85f } * s
-        val wallT = gy - when (house) { 0 -> 110f; 1 -> 122f; 2 -> 190f; else -> 150f } * s
-        val aa = btnPaint.isAntiAlias
-        when (world) {
-            Game.UNI_WATER -> {
-                // 墙上一只海星：五个像素瓣
-                val sx = cx - halfW * 0.55f
-                val sy = gy - 34f * s
-                val starC = 0xFFFF9A76.toInt()
-                rc(sx - 4f * s, sy - 10f * s, sx + 4f * s, sy + 10f * s, starC)
-                rc(sx - 10f * s, sy - 4f * s, sx + 10f * s, sy + 4f * s, starC)
-                // 屋角珊瑚枝
-                val bx = cx + halfW - 8f * s
-                rc(bx - 3f * s, gy - 30f * s, bx + 3f * s, gy, 0xFFE86A5A.toInt())
-                rc(bx - 12f * s, gy - 24f * s, bx - 3f * s, gy - 18f * s, 0xFFE86A5A.toInt())
-                rc(bx + 3f * s, gy - 16f * s, bx + 11f * s, gy - 10f * s, 0xFFD85A4A.toInt())
-                // 屋顶冒出的气泡
-                btnPaint.isAntiAlias = true
-                for (i in 0 until 3) {
-                    val range = 46f * s
-                    val by = wallT - 8f * s - ((homePhase * 16f * s + i * 18f * s) % range)
-                    btnPaint.color = 0x55CFF2FF
-                    canvas.drawCircle(cx + halfW * 0.4f + kotlin.math.sin(homePhase * 2f + i) * 4f * s, by, (2f + i % 2) * s, btnPaint)
-                }
-            }
-            Game.UNI_SKY -> {
-                // 檐下金边
-                rc(cx - halfW, wallT, cx + halfW, wallT + 4f * s, 0xFFF2C14E.toInt())
-                // 檐角风铃：吊绳 + 两片随风摆的铃片
-                val hx = cx + halfW - 12f * s
-                val sway = kotlin.math.sin(homePhase * 1.8f) * 3f * s
-                rc(hx - 1f * s, wallT + 4f * s, hx + 1f * s, wallT + 22f * s, 0xFFC9A570.toInt())
-                rc(hx - 5f * s + sway, wallT + 22f * s, hx + 5f * s + sway, wallT + 30f * s, 0xFFF2C14E.toInt())
-                rc(hx - 2f * s + sway * 1.4f, wallT + 30f * s, hx + 2f * s + sway * 1.4f, wallT + 36f * s, 0xFFFFE08A.toInt())
-            }
-            Game.UNI_LAVA -> {
-                // 墙上两道岩浆缝：呼吸发光
-                val glow = 0.55f + 0.45f * (0.5f + 0.5f * kotlin.math.sin(homePhase * 2.6f))
-                val lavaC = withAlpha(0xFFFF7A2A.toInt(), (glow * 255).toInt())
-                val vx = cx - halfW * 0.35f
-                rc(vx - 1.5f * s, gy - 46f * s, vx + 1.5f * s, gy - 20f * s, lavaC)
-                rc(vx - 8f * s, gy - 24f * s, vx + 1.5f * s, gy - 21f * s, lavaC)
-                val vx2 = cx + halfW * 0.5f
-                rc(vx2 - 1.5f * s, gy - 30f * s, vx2 + 1.5f * s, gy - 8f * s, lavaC)
-                // 墙基余温
-                rc(cx - halfW, gy - 4f * s, cx + halfW, gy, withAlpha(0xFFFF5A2A.toInt(), (glow * 120).toInt()))
-            }
-            Game.UNI_CANDY -> {
-                // 檐下糖霜滴边：一排小圆齿
-                btnPaint.isAntiAlias = true
-                btnPaint.style = Paint.Style.FILL
-                btnPaint.color = 0xFFFFF8F0.toInt()
-                var fx = cx - halfW + 8f * s
-                while (fx < cx + halfW - 4f * s) {
-                    canvas.drawCircle(fx, wallT + 4f * s, 5f * s, btnPaint)
-                    fx += 12f * s
-                }
-                // 门旁棒棒糖
-                val lx = cx - halfW + 14f * s
-                rc(lx - 2f * s, gy - 26f * s, lx + 2f * s, gy, 0xFFF2E8D8.toInt())
-                btnPaint.color = 0xFFFF8FBE.toInt()
-                canvas.drawCircle(lx, gy - 32f * s, 9f * s, btnPaint)
-                btnPaint.color = 0xFFFFF2DC.toInt()
-                canvas.drawCircle(lx, gy - 32f * s, 4f * s, btnPaint)
-            }
-            Game.UNI_SPACE -> {
-                // 屋侧天线 + 闪烁航标灯
-                val ax = cx + halfW - 14f * s
-                rc(ax - 1.5f * s, wallT - 34f * s, ax + 1.5f * s, wallT, 0xFF9AA2B8.toInt())
-                rc(ax - 7f * s, wallT - 22f * s, ax + 7f * s, wallT - 19f * s, 0xFF9AA2B8.toInt())
-                val blink = (kotlin.math.sin(homePhase * 4f) > 0.2f)
-                btnPaint.isAntiAlias = true
-                btnPaint.color = if (blink) 0xFFFF5A5A.toInt() else 0x66FF5A5A
-                canvas.drawCircle(ax, wallT - 38f * s, 3.5f * s, btnPaint)
-                // 墙基霓虹条：慢慢呼吸的青光
-                val pulse = 0.5f + 0.5f * kotlin.math.sin(homePhase * 2f)
-                rc(cx - halfW, gy - 6f * s, cx + halfW, gy - 3f * s, withAlpha(0xFF4DE8FF.toInt(), (100 + 130 * pulse).toInt()))
-            }
+
+        if (catState == CAT_PET && !yardCatHit.isEmpty) {
+            drawPetHearts(canvas, yardCatHit.centerX(), yardCatHit.top, s)
         }
-        btnPaint.isAntiAlias = aa
+        drawYardFloaters(canvas, s)
     }
 
-    private fun homeWorldGfx(canvas: Canvas, s: Float, gy: Float, world: Int, alpha: Int = 255): HomeWorldDraw.Gfx {
-        return HomeWorldDraw.Gfx(
-            canvas, btnPaint, s, homePhase,
-            rc = { l, t, r, b, color ->
-                btnPaint.style = Paint.Style.FILL
-                btnPaint.color = withAlpha(color, alpha)
-                canvas.drawRect(l, t, r, b, btnPaint)
-            },
-            boxShade = { l, t, r, b -> boxShade(canvas, l, t, r, b, s) },
-            pyramidRoof = { rcx, bottomY, halfW, height, c, cd ->
-                pyramidRoof(canvas, rcx, bottomY, halfW, height, c, cd, s)
-            },
-            door = { doorCx -> door(canvas, doorCx, gy, s, world) },
-            window = { wcx, wcy, light -> window(canvas, wcx, wcy, s, light, world) },
-            groundShadow = { scx, baseY, halfW -> groundShadow(canvas, scx, baseY, halfW, s) },
-            withAlpha = { c, a -> withAlpha(c, a) }
-        )
-    }
-
-    private fun drawDeco(canvas: Canvas, world: Int, deco: Int, cx: Float, gy: Float, half: Float, s: Float, alpha: Int) {
-        val pool = game.yardPool()
-        val anchor = decoAnchor(deco, cx, gy, s)
-        canvas.save()
-        if (anchor != null) canvas.scale(anchor.sc, anchor.sc, anchor.pivotX, anchor.footY)
-        val drawCx = if (anchor?.pivotIsCx == true) cx else anchor?.pivotX ?: cx
-        val drawGy = anchor?.footY ?: gy
-        HomeWorldDraw.drawDeco(
-            world, deco, drawCx, drawGy, half, alpha,
-            HOME_FLOWERS[world], HOME_FLOWER_STEM[world], HOME_FENCE[world],
-            HOME_POOL_WATER[world], HOME_FLAGS[world],
-            homeWorldGfx(canvas, s, drawGy, world, alpha),
-            0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f,
-            pool.l, pool.r, pool.t, pool.b,
-            0f, 0f
-        )
-        canvas.restore()
-    }
-
-    // ---------- 庭院猫 ----------
-    /**
-     * 状态机：站立张望 → 走向目标（散步点或已购装饰）→ 互动 → 继续。
-     * 互动：花坛嗅花 / 信箱抬头张望 / 秋千跟着荡 / 猫爬架两段跳上顶层蹲坐 / 跳进泳池游泳；
-     * 拥有的装饰越多，行为越丰富。
-     */
-    private fun updateYardCat(dt: Float, bound: Float) {
-        updateYardTouch(dt)
-        catTimer -= dt
-        yardEventTimer -= dt
-        if (butterflyVisible) {
-            butterflyLife -= dt
-            butterflyX += butterflyDir * 18f * dt
-            val butterflyBound = (bound - 40f).coerceAtLeast(30f)
-            if (abs(butterflyX) >= butterflyBound) {
-                butterflyX = butterflyX.coerceIn(-butterflyBound, butterflyBound)
-                butterflyDir = -butterflyDir
-            }
-            if (butterflyLife <= 0f) {
-                butterflyVisible = false
-                butterflySpawnTimer = 15f + catRnd.nextFloat() * 20f
-                if (catState == CAT_CHASE) {
-                    catState = CAT_IDLE
-                    catTimer = 1f + catRnd.nextFloat()
-                }
-            }
-        } else {
-            butterflySpawnTimer -= dt
-            if (butterflySpawnTimer <= 0f && catState == CAT_IDLE) {
-                val butterflyBound = (bound - 60f).coerceAtLeast(20f)
-                butterflyVisible = true
-                butterflyLife = 6f + catRnd.nextFloat() * 4f
-                butterflyX = (catRnd.nextFloat() * 2f - 1f) * butterflyBound
-                butterflyHeight = 48f + catRnd.nextFloat() * 48f
-                butterflyDir = if (catRnd.nextBoolean()) 1f else -1f
-                catDeco = -1
-                catState = CAT_CHASE
-            }
-        }
-        when (catState) {
-            CAT_IDLE -> if (catTimer <= 0f) pickYardGoal(bound)
-            CAT_WALK -> {
-                val d = catTarget - catX
-                catDir = if (d >= 0f) 1f else -1f
-                val step = 60f * dt
-                if (abs(d) <= step) {
-                    catX = catTarget
-                    if (pendingYardEvent != YARD_EVENT_NONE) {
-                        resolveYardEvent()
-                        catState = CAT_IDLE
-                        catTimer = 1.2f + catRnd.nextFloat() * 1.5f
-                    } else if (catDeco >= 0) {
-                        catState = CAT_PLAY
-                        catStage = 0
-                        catStageT = 0f
-                        catTimer = when (catDeco) {
-                            3 -> 4.5f      // 秋千
-                            4 -> 99f       // 爬架由分段控制
-                            5 -> 7f        // 泳池由分段控制
-                            else -> 3.2f
-                        }
-                        catDir = if (catDeco == 0) -1f else 1f   // 面向装饰
-                    } else {
-                        catState = CAT_IDLE
-                        catTimer = 1f + catRnd.nextFloat() * 2f
-                    }
-                } else {
-                    catX += step * catDir
-                }
-            }
-            CAT_PLAY -> {
-                catStageT += dt
-                if (catDeco == 4) {
-                    // 猫爬架：跳下层 → 停留 → 跳顶层 → 蹲坐甩尾 → 跳下
-                    val stageEnd = floatArrayOf(0.45f, 1.2f, 0.45f, 2.8f, 0.5f)
-                    if (catStageT > stageEnd[catStage]) {
-                        catStageT = 0f
-                        catStage++
-                        if (catStage > 4) endYardPlay()
-                    }
-                } else if (catDeco == 5) {
-                    // 泳池：跃入 → 来回划水 → 爬回岸边；跃入瞬间偶有溅起金币
-                    if (catStage == 0 && catStageT >= 0.5f) {
-                        catStage = 1
-                        if (catRnd.nextFloat() < 0.4f) {
-                            val n = 1 + catRnd.nextInt(4)
-                            showToast(game.grantYardCoins(n, "游泳溅起了 $n 枚金币！"))
-                        }
-                    }
-                    if (catStageT > 6.5f) endYardPlay()
-                } else if (catTimer <= 0f) {
-                    endYardPlay()
-                }
-            }
-            CAT_NAP -> if (catTimer <= 0f) {
-                catState = CAT_IDLE
-                catTimer = 0.5f
-            }
-            CAT_CHASE -> if (butterflyVisible) {
-                val d = butterflyX - catX
-                catDir = if (d >= 0f) 1f else -1f
-                if (abs(d) > 16f) catX += 82f * dt * catDir
-            }
-            CAT_CHASE_HAND -> {
-                val d = handTargetX - catX
-                catDir = if (d >= 0f) 1f else -1f
-                val step = 96f * dt
-                if (abs(d) <= step) {
-                    catX = handTargetX
-                    catState = CAT_PET
-                    petTimer = 1.4f
-                    petCount = 2
-                    game.yardPet()
-                    showToast("追到手啦！")
-                    spawnYardFloater(
-                        yardSceneCx + (catX + game.homeCatDX()) * yardSceneS,
-                        yardSceneGy - 44f * yardSceneS, YardFloater.HEART
-                    )
-                } else {
-                    catX += step * catDir
-                }
-            }
-            CAT_PET -> if (!strokeActive) {
-                petTimer -= dt
-                if (petTimer <= 0f) {
-                    catState = CAT_IDLE
-                    catTimer = 0.6f + catRnd.nextFloat() * 1.2f
-                    petCount = 0
-                }
-            }
+    /** 把渲染层投影出来的屏幕矩形接成热区与拖放目标 */
+    private fun syncHomeHits(w: Float, h: Float) {
+        if (!HomeYard.ready()) return
+        HomeYard.hit(HomeYard.HOUSE, w, h, hitHouse)
+        HomeYard.hit(HomeYard.DOOR, w, h, hitDoor)
+        HomeYard.hit(HomeYard.MUSEUM, w, h, hitMuseum)
+        HomeYard.hit(HomeYard.HONOR, w, h, hitHonorWall)
+        HomeYard.hit(HomeYard.CAT, w, h, yardCatHit)
+        HomeYard.hit(HomeYard.BUTTERFLY, w, h, butterflyHit)
+        HomeYard.hit(HomeYard.TELESCOPE, w, h, yardTelescopeHit)
+        if (!hitHouse.isEmpty) putDragHit(HomeYard.HOUSE, hitHouse)
+        if (!hitDoor.isEmpty) putDragHit(HomeYard.DOOR, hitDoor)
+        if (!hitHonorWall.isEmpty) putDragHit(HomeYard.HONOR, hitHonorWall)
+        if (!hitMuseum.isEmpty) putDragHit(HomeYard.MUSEUM, hitMuseum)
+        if (!yardCatHit.isEmpty) putDragHit(HomeYard.CAT, yardCatHit)
+        for (id in ownedDecoDragId) {
+            if (HomeYard.hit(id, w, h, dragHitScratch)) putDragHit(id, dragHitScratch)
         }
     }
 
     private fun updateYardTouch(dt: Float) {
         strokeCoinCooldown = max(0f, strokeCoinCooldown - dt)
         handMarkerLife = max(0f, handMarkerLife - dt)
+        HomeYard.handLife = handMarkerLife
         var fi = yardFloaters.size - 1
         while (fi >= 0) {
             val f = yardFloaters[fi]
@@ -3545,29 +2713,380 @@ class HudView(context: Context, private val game: Game) : View(context) {
         }
     }
 
-    private fun screenToSceneX(screenX: Float): Float {
-        val bound = yardSceneHalf / yardSceneS
-        return ((screenX - yardSceneCx) / yardSceneS).coerceIn(-bound + 28f, bound - 28f)
+    /**
+     * 庭院猫的状态机：站立张望 → 走向目标（散步点或某件已购装饰）→ 互动 → 继续。
+     *
+     * 3D 化之后它在 x/z 两个方向上走，而不再是沿一条横线滑动——「绕到花坛那边去闻一闻」
+     * 这件事只有在有纵深的院子里才成立。位置与姿势每帧发布给 [HomeYard]，渲染层照着画。
+     */
+    private fun updateYardCat(dt: Float) {
+        updateYardTouch(dt)
+        catTimer -= dt
+        yardEventTimer -= dt
+        updateButterfly(dt)
+
+        when (catState) {
+            CAT_IDLE -> if (catTimer <= 0f) pickYardGoal()
+            CAT_WALK -> {
+                if (stepToward(catTargetX, catTargetZ, 1.9f, dt)) {
+                    if (pendingYardEvent != YARD_EVENT_NONE) {
+                        resolveYardEvent()
+                        catState = CAT_IDLE
+                        catTimer = 1.2f + catRnd.nextFloat() * 1.5f
+                    } else if (catDeco >= 0) {
+                        catState = CAT_PLAY
+                        catStage = 0
+                        catStageT = 0f
+                        catTimer = when (catDeco) {
+                            3 -> 4.5f      // 秋千
+                            4 -> 99f       // 爬架由分段控制
+                            5 -> 7f        // 泳池由分段控制
+                            else -> 3.2f
+                        }
+                        faceTo(decoX(catDeco), decoZ(catDeco))
+                    } else {
+                        catState = CAT_IDLE
+                        catTimer = 1f + catRnd.nextFloat() * 2f
+                    }
+                }
+            }
+            CAT_PLAY -> {
+                catStageT += dt
+                when (catDeco) {
+                    3 -> {   // 秋千：坐上去跟着荡
+                        val sx = HomeYard.posX(game, HomeYard.SWING)
+                        val sz = HomeYard.posZ(game, HomeYard.SWING)
+                        val sway = kotlin.math.sin(homePhase * 1.6f)
+                        catX = sx
+                        catZ = sz + sway * 0.55f
+                        catY = 1.75f - kotlin.math.abs(sway) * 0.12f
+                        catYaw = 180f
+                        if (catTimer <= 0f) endYardPlay()
+                    }
+                    4 -> {   // 猫爬架：跳下层 → 停留 → 跳顶层 → 蹲坐甩尾 → 跳下
+                        val px = HomeYard.posX(game, HomeYard.PERCH)
+                        val pz = HomeYard.posZ(game, HomeYard.PERCH)
+                        val stageEnd = floatArrayOf(0.45f, 1.2f, 0.45f, 2.8f, 0.5f)
+                        val t = (catStageT / stageEnd[catStage]).coerceIn(0f, 1f)
+                        val hop = kotlin.math.sin(t * Math.PI.toFloat()) * 0.5f
+                        when (catStage) {
+                            0 -> { catX = px - 0.45f + 0.2f * t; catZ = pz + 0.9f - 0.5f * t; catY = 1.25f * t + hop }
+                            1 -> { catY = 1.25f }
+                            2 -> { catX = px - 0.25f + 0.5f * t; catY = 1.25f + 1.35f * t + hop }
+                            3 -> { catY = 2.6f }
+                            else -> { catX = px + 0.25f + 1.4f * t; catZ = pz + 1.2f * t; catY = 2.6f * (1f - t * t) }
+                        }
+                        catYaw = 180f
+                        if (catStageT > stageEnd[catStage]) {
+                            catStageT = 0f
+                            catStage++
+                            if (catStage > 4) { catY = 0f; endYardPlay() }
+                        }
+                    }
+                    5 -> {   // 泳池：跃入 → 来回划水 → 爬回岸边；跃入瞬间偶有溅起金币
+                        val poolX = HomeYard.posX(game, HomeYard.POOL)
+                        val poolZ = HomeYard.posZ(game, HomeYard.POOL)
+                        when {
+                            catStageT < 0.5f -> {
+                                val t = catStageT / 0.5f
+                                catX = poolX - 3.2f + 1.5f * t
+                                catZ = poolZ + 1.9f - 0.6f * t
+                                catY = -0.25f * t + kotlin.math.sin(t * Math.PI.toFloat()) * 0.7f
+                                if (catStage == 0 && catStageT >= 0.45f) {
+                                    catStage = 1
+                                    if (catRnd.nextFloat() < 0.4f) {
+                                        val n = 1 + catRnd.nextInt(4)
+                                        showToast(game.grantYardCoins(n, "游泳溅起了 $n 枚金币！"))
+                                    }
+                                }
+                            }
+                            catStageT < 6f -> {
+                                val st = catStageT - 0.5f
+                                val swim = kotlin.math.sin(st * 1.1f)
+                                catX = poolX + swim * 1.5f
+                                catZ = poolZ + kotlin.math.cos(st * 0.7f) * 0.7f
+                                catY = -0.25f
+                                catYaw = if (kotlin.math.cos(st * 1.1f) >= 0f) 90f else 270f
+                            }
+                            else -> {
+                                val t = ((catStageT - 6f) / 0.5f).coerceIn(0f, 1f)
+                                catX = poolX + (poolX - 3.2f - poolX) * t
+                                catZ = poolZ + 1.9f * t
+                                catY = -0.25f + 0.25f * t + kotlin.math.sin(t * Math.PI.toFloat()) * 0.6f
+                            }
+                        }
+                        if (catStageT > 6.5f) { catY = 0f; endYardPlay() }
+                    }
+                    else -> if (catTimer <= 0f) endYardPlay()
+                }
+            }
+            CAT_NAP -> if (catTimer <= 0f) {
+                catState = CAT_IDLE
+                catTimer = 0.5f
+            }
+            CAT_CHASE -> if (butterflyVisible) {
+                stepToward(butterflyX, butterflyZ, 3.1f, dt, stopAt = 0.8f)
+            }
+            CAT_CHASE_HAND -> if (stepToward(handTargetX, handTargetZ, 3.6f, dt)) {
+                catState = CAT_PET
+                petTimer = 1.4f
+                petCount = 2
+                game.yardPet()
+                showToast("追到手啦！")
+                spawnCatFloater(YardFloater.HEART)
+            }
+            CAT_PET -> if (!strokeActive) {
+                petTimer -= dt
+                if (petTimer <= 0f) {
+                    catState = CAT_IDLE
+                    catTimer = 0.6f + catRnd.nextFloat() * 1.2f
+                    petCount = 0
+                }
+            }
+        }
+
+        HomeYard.catX = catX
+        HomeYard.catZ = catZ
+        HomeYard.catY = catY
+        HomeYard.catYaw = catYaw
+        HomeYard.catPose = when {
+            catState == CAT_PLAY && catDeco == 0 -> HomeScene3D.POSE_SNIFF
+            catState == CAT_PLAY && catDeco == 2 -> HomeScene3D.POSE_LOOKUP
+            catState == CAT_PLAY && catDeco == 3 -> HomeScene3D.POSE_SIT
+            catState == CAT_PLAY && catDeco == 4 ->
+                if (catStage == 1 || catStage == 3) HomeScene3D.POSE_SIT else HomeScene3D.POSE_JUMP
+            catState == CAT_PLAY && catDeco == 5 ->
+                if (catStageT in 0.5f..6f) HomeScene3D.POSE_SWIM else HomeScene3D.POSE_JUMP
+            catState == CAT_WALK || catState == CAT_CHASE || catState == CAT_CHASE_HAND -> HomeScene3D.POSE_WALK
+            catState == CAT_NAP -> HomeScene3D.POSE_NAP
+            catState == CAT_PET -> HomeScene3D.POSE_PET
+            else -> HomeScene3D.POSE_STAND
+        }
+        HomeYard.handX = handTargetX
+        HomeYard.handZ = handTargetZ
     }
 
-    private fun screenToSceneY(screenY: Float): Float =
-        (screenY - yardSceneGy) / yardSceneS
+    /** 朝目标走一步；到了返回 true。顺带把朝向转到行进方向上 */
+    private fun stepToward(tx: Float, tz: Float, speed: Float, dt: Float, stopAt: Float = 0f): Boolean {
+        val dx = tx - catX
+        val dz = tz - catZ
+        val dist = kotlin.math.hypot(dx, dz)
+        if (dist <= stopAt) { faceTo(tx, tz); return true }
+        val step = speed * dt
+        if (dist <= step) {
+            catX = tx; catZ = tz
+            faceTo(tx, tz)
+            return true
+        }
+        catX += dx / dist * step
+        catZ += dz / dist * step
+        faceTo(tx, tz)
+        return false
+    }
 
+    /** 模型正面朝 -z，所以朝向角是 atan2(-dx, -dz) */
+    private fun faceTo(tx: Float, tz: Float) {
+        val dx = tx - catX
+        val dz = tz - catZ
+        if (kotlin.math.abs(dx) < 1e-3f && kotlin.math.abs(dz) < 1e-3f) return
+        catYaw = Math.toDegrees(kotlin.math.atan2(-dx.toDouble(), -dz.toDouble())).toFloat()
+    }
+
+    private fun decoX(deco: Int) = HomeYard.decoId(deco)?.let { HomeYard.posX(game, it) } ?: 0f
+    private fun decoZ(deco: Int) = HomeYard.decoId(deco)?.let { HomeYard.posZ(game, it) } ?: 0f
+
+    private fun updateButterfly(dt: Float) {
+        // 蝴蝶只出现在有花草的世界：水下 / 熔岩 / 星空的家没有
+        val w = game.homeWorld
+        val allowed = w != Game.UNI_WATER && w != Game.UNI_LAVA && w != Game.UNI_SPACE
+        if (!allowed) {
+            butterflyVisible = false
+            HomeYard.butterflyOn = false
+            return
+        }
+        if (butterflyVisible) {
+            butterflyLife -= dt
+            butterflyX += butterflyDir * 1.4f * dt
+            butterflyZ += kotlin.math.sin(homePhase * 0.7f) * 0.6f * dt
+            if (kotlin.math.abs(butterflyX) >= HomeYard.WALK_HALF_X) {
+                butterflyX = butterflyX.coerceIn(-HomeYard.WALK_HALF_X, HomeYard.WALK_HALF_X)
+                butterflyDir = -butterflyDir
+            }
+            butterflyY = 1.6f + kotlin.math.sin(homePhase * 1.8f) * 0.5f
+            if (butterflyLife <= 0f) {
+                butterflyVisible = false
+                butterflySpawnTimer = 15f + catRnd.nextFloat() * 20f
+                if (catState == CAT_CHASE) {
+                    catState = CAT_IDLE
+                    catTimer = 1f + catRnd.nextFloat()
+                }
+            }
+        } else {
+            butterflySpawnTimer -= dt
+            if (butterflySpawnTimer <= 0f && catState == CAT_IDLE) {
+                butterflyVisible = true
+                butterflyLife = 6f + catRnd.nextFloat() * 4f
+                butterflyX = (catRnd.nextFloat() * 2f - 1f) * HomeYard.WALK_HALF_X * 0.8f
+                butterflyZ = HomeYard.WALK_FAR_Z + catRnd.nextFloat() * (HomeYard.WALK_NEAR_Z - HomeYard.WALK_FAR_Z)
+                butterflyDir = if (catRnd.nextBoolean()) 1f else -1f
+                catDeco = -1
+                catState = CAT_CHASE
+            }
+        }
+        HomeYard.butterflyOn = butterflyVisible
+        HomeYard.butterflyX = butterflyX
+        HomeYard.butterflyY = HomeYard.DECK_Y + butterflyY
+        HomeYard.butterflyZ = butterflyZ
+    }
+
+    private fun pickYardGoal() {
+        if (yardEventTimer <= 0f) {
+            pendingYardEvent = YARD_EVENT_COINS
+            catDeco = -1
+            randomWalkGoal()
+            catState = CAT_WALK
+            return
+        }
+        // 候选：散步（权重 2）、打盹（1）、每个已购可互动装饰（1）
+        val opts = ArrayList<Int>()
+        opts.add(-1); opts.add(-1)
+        opts.add(-2)
+        for (i in intArrayOf(0, 2, 3, 4, 5)) if (game.ownsDeco(i)) opts.add(i)
+        when (val pick = opts[catRnd.nextInt(opts.size)]) {
+            -2 -> {
+                catState = CAT_NAP
+                catTimer = 2.5f + catRnd.nextFloat() * 2.5f
+            }
+            -1 -> {
+                catDeco = -1
+                randomWalkGoal()
+                catState = CAT_WALK
+            }
+            else -> {
+                catDeco = pick
+                // 停在装饰旁边而不是踩上去：站位统一取「朝镜头这一侧一步远」
+                catTargetX = decoX(pick) + when (pick) {
+                    0 -> 1.6f
+                    2 -> -1.2f
+                    4 -> -1.4f
+                    5 -> -3.2f
+                    else -> 0f
+                }
+                catTargetZ = decoZ(pick) + when (pick) {
+                    0 -> 1.1f
+                    2 -> 0.9f
+                    3 -> 1.1f
+                    4 -> 0.9f
+                    else -> 1.9f
+                }
+                catState = CAT_WALK
+            }
+        }
+    }
+
+    private fun randomWalkGoal() {
+        catTargetX = (catRnd.nextFloat() * 2f - 1f) * HomeYard.WALK_HALF_X
+        catTargetZ = HomeYard.WALK_FAR_Z + catRnd.nextFloat() * (HomeYard.WALK_NEAR_Z - HomeYard.WALK_FAR_Z)
+    }
+
+    /** 在猫头顶冒一个飘字：位置取渲染层给的屏幕热区，3D 里怎么动这儿就怎么跟 */
+    private fun spawnCatFloater(kind: Int) {
+        if (yardCatHit.isEmpty) return
+        spawnYardFloater(
+            yardCatHit.centerX() + (catRnd.nextFloat() * 2f - 1f) * 10f * yardSceneS,
+            yardCatHit.top - 6f * yardSceneS, kind
+        )
+    }
+
+    // ---------- 拖放：屏幕位移 → 地面世界坐标 ----------
+
+    /** 会落在院子地面上、按世界坐标存偏移的元素；其余（顶栏文字、按钮）仍按屏幕像素挪 */
+    private fun isYardDragId(id: String) = when (id) {
+        HomeYard.HOUSE, HomeYard.MUSEUM, HomeYard.CAT, HomeYard.GARDEN, HomeYard.FENCE,
+        HomeYard.MAILBOX, HomeYard.SWING, HomeYard.PERCH, HomeYard.POOL, HomeYard.TELESCOPE -> true
+        else -> false
+    }
+
+    /**
+     * 命中判定：**盖住这个点的最小的那个矩形赢**。
+     *
+     * 2D 时代热区是按元素顺序排的，因为每个热区都贴着画出来的轮廓、彼此几乎不重叠。
+     * 3D 之后热区是包围盒投影出来的矩形，大件会整个罩住小件：门在房子里、奖章墙在藏馆里、
+     * 猫可能站在房子前面。固定顺序在这种情况下必然误判——按面积取最小的那个，
+     * 「点小的那件」永远符合直觉，也不用为每对元素手工排优先级。
+     */
     private fun hitHomeDraggable(x: Float, y: Float): String? {
-        for (id in homeYardDragOrder) {
-            if (!canHomeDrag(id)) continue
-            homeDragHits[id]?.let { if (it.contains(x, y)) return id }
+        var best: String? = null
+        var bestArea = Float.MAX_VALUE
+        for ((id, r) in homeDragHits) {
+            if (r.isEmpty || !r.contains(x, y)) continue
+            if (!canHomeDrag(id) && !isTapOnlyId(id)) continue
+            val area = r.width() * r.height()
+            if (area < bestArea) { bestArea = area; best = id }
         }
-        for (id in homeDragOrder) {
-            if (!canHomeDrag(id)) continue
-            homeDragHits[id]?.let { if (it.contains(x, y)) return id }
-        }
-        for (id in homeUiTextDragOrder) {
-            if (!canHomeDrag(id)) continue
-            homeDragHits[id]?.let { if (it.contains(x, y)) return id }
-        }
-        return null
+        return best
     }
+
+    /** 不能拖、但可以点开的东西：门（换世界）、荣誉奖章墙 */
+    private fun isTapOnlyId(id: String) = id == HomeYard.DOOR || id == HomeYard.HONOR
+
+    private fun beginHomeDrag(id: String, screenX: Float, screenY: Float) {
+        homeDragStartFingerX = screenX
+        homeDragStartFingerY = screenY
+        if (HomeYard.screenToGround(screenX, screenY, width.toFloat(), height.toFloat(), groundHit)) {
+            homeDragStartSceneX = groundHit[0]
+            homeDragStartSceneY = groundHit[1]
+        }
+        val po = game.homeLayout()
+        when {
+            isYardDragId(id) -> {
+                homeDragStartOff[0] = game.homeYardOffX(id)
+                homeDragStartOff[1] = game.homeYardOffZ(id)
+            }
+            id == "name" -> { homeDragStartOff[0] = po.nameDX; homeDragStartOff[1] = po.nameDY }
+            id == "energy" -> { homeDragStartOff[0] = po.energyDX; homeDragStartOff[1] = po.energyDY }
+            id == "reward" -> { homeDragStartOff[0] = po.rewardDX; homeDragStartOff[1] = po.rewardDY }
+            else -> {
+                homeDragStartOff[0] = game.homeUiDX(id)
+                homeDragStartOff[1] = game.homeUiDY(id)
+            }
+        }
+    }
+
+    /**
+     * 拖动。院子里的东西走地面射线：手指落在地上的哪一点，东西就摆到哪一点——
+     * 近处挪一寸、远处挪一尺，透视自然成立，这是 2D 版按屏幕像素平移做不到的。
+     */
+    private fun updateHomeDrag(screenX: Float, screenY: Float) {
+        val id = homeDragId ?: return
+        val po = game.homeLayout()
+        val pixDx = snapDragPx(screenX - homeDragStartFingerX)
+        val pixDy = snapDragPx(screenY - homeDragStartFingerY)
+        if (isYardDragId(id)) {
+            if (!HomeYard.screenToGround(screenX, screenY, width.toFloat(), height.toFloat(), groundHit)) return
+            val nx = snapWorld(homeDragStartOff[0] + (groundHit[0] - homeDragStartSceneX))
+            val nz = snapWorld(homeDragStartOff[1] + (groundHit[1] - homeDragStartSceneY))
+            game.setHomeYardOff(
+                id,
+                HomeYard.clampX(HomeYard.anchorX(id) + nx) - HomeYard.anchorX(id),
+                HomeYard.clampZ(HomeYard.anchorZ(id) + nz) - HomeYard.anchorZ(id)
+            )
+            return
+        }
+        val s = hudScale(width.toFloat(), height.toFloat())
+        when (id) {
+            "name" -> { po.nameDX = homeDragStartOff[0] + pixDx / s; po.nameDY = homeDragStartOff[1] + pixDy / s }
+            "energy" -> { po.energyDX = homeDragStartOff[0] + pixDx / s; po.energyDY = homeDragStartOff[1] + pixDy / s }
+            "reward" -> { po.rewardDX = homeDragStartOff[0] + pixDx / s; po.rewardDY = homeDragStartOff[1] + pixDy / s }
+            else -> {
+                po.uiDX[id] = homeDragStartOff[0] + pixDx
+                po.uiDY[id] = homeDragStartOff[1] + pixDy
+            }
+        }
+    }
+
+    /** 摆放吸附到 0.25 个世界单位：手不稳也能摆整齐，又比整格自由 */
+    private fun snapWorld(v: Float) = kotlin.math.round(v * 4f) / 4f
 
     private fun canHomeDrag(id: String): Boolean = when (id) {
         "garden" -> game.ownsDeco(0)
@@ -3577,150 +3096,48 @@ class HudView(context: Context, private val game: Game) : View(context) {
         "perch" -> game.ownsDeco(4)
         "pool" -> game.ownsDeco(5)
         "telescope" -> game.ownsDeco(6)
-        "buy", "arrowL", "arrowR" -> homeEditing
-        "shopName", "shopPrice", "shopStatus", "editHint" -> homeEditing
-        "homeHint", "worldLabel" -> !homeEditing
-        "worldUnlockHint" -> !homeEditing && game.homeWorldsUnlockedCount() <= 1
-        "museumLabel", "honorLabel" -> true
-        "worldL", "worldR" -> !homeEditing && game.homeWorldsUnlockedCount() > 1
-        "tabColor", "tabTrail", "tabScarf", "tabHat" -> homeEditing && game.isCatHomeTab()
+        "homeHint" -> !homeEditing
+        // 门与荣誉侧墙是房屋 / 藏馆剪影的一部分，只能点开、不能单独搬走
+        "honor", "door" -> false
+        "museumLabel" -> true
         else -> true
-    }
-
-    private fun beginHomeDrag(id: String, screenX: Float, screenY: Float) {
-        homeDragStartFingerX = screenX
-        homeDragStartFingerY = screenY
-        homeDragStartSceneX = screenToSceneX(screenX)
-        homeDragStartSceneY = screenToSceneY(screenY)
-        val po = game.homeLayout()
-        when (id) {
-            "garden" -> { homeDragStartOff[0] = po.gardenX; homeDragStartOff[1] = po.gardenY }
-            "fence" -> homeDragStartOff[1] = po.fenceY
-            "mailbox" -> { homeDragStartOff[0] = po.mailboxX; homeDragStartOff[1] = po.mailboxY }
-            "swing" -> { homeDragStartOff[0] = po.swingX; homeDragStartOff[1] = po.swingY }
-            "perch" -> { homeDragStartOff[0] = po.perchX; homeDragStartOff[1] = po.perchY }
-            "pool" -> { homeDragStartOff[0] = po.poolDX; homeDragStartOff[1] = po.poolDY }
-            "telescope" -> { homeDragStartOff[0] = po.telescopeX; homeDragStartOff[1] = po.telescopeY }
-            "house" -> { homeDragStartOff[0] = po.houseDX; homeDragStartOff[1] = po.houseDY }
-            "museum" -> { homeDragStartOff[0] = po.museumDX; homeDragStartOff[1] = po.museumDY }
-            "honor" -> { homeDragStartOff[0] = po.honorDX; homeDragStartOff[1] = po.honorDY }
-            "name" -> { homeDragStartOff[0] = po.nameDX; homeDragStartOff[1] = po.nameDY }
-            "energy" -> { homeDragStartOff[0] = po.energyDX; homeDragStartOff[1] = po.energyDY }
-            "reward" -> { homeDragStartOff[0] = po.rewardDX; homeDragStartOff[1] = po.rewardDY }
-            "cat" -> { homeDragStartOff[0] = po.catDX; homeDragStartOff[1] = po.catDY }
-            else -> {
-                homeDragStartOff[0] = game.homeUiDX(id)
-                homeDragStartOff[1] = game.homeUiDY(id)
-            }
-        }
-    }
-
-    private fun updateHomeDrag(screenX: Float, screenY: Float) {
-        val id = homeDragId ?: return
-        val po = game.homeLayout()
-        val bound = (yardSceneHalf / yardSceneS).coerceAtLeast(80f)
-        val sceneDx = snapDragSceneDelta(screenToSceneX(screenX) - homeDragStartSceneX)
-        val sceneDy = snapDragSceneDelta(screenToSceneY(screenY) - homeDragStartSceneY)
-        val pixDx = snapDragPx(screenX - homeDragStartFingerX)
-        val pixDy = snapDragPx(screenY - homeDragStartFingerY)
-        when (id) {
-            "garden" -> {
-                po.gardenX = (homeDragStartOff[0] + sceneDx).coerceIn(-bound, bound)
-                po.gardenY = (homeDragStartOff[1] + sceneDy).coerceIn(-220f, 220f)
-            }
-            "fence" -> po.fenceY = (homeDragStartOff[1] + sceneDy).coerceIn(-220f, 220f)
-            "mailbox" -> {
-                po.mailboxX = (homeDragStartOff[0] + sceneDx).coerceIn(-bound, bound)
-                po.mailboxY = (homeDragStartOff[1] + sceneDy).coerceIn(-220f, 220f)
-            }
-            "swing" -> {
-                po.swingX = (homeDragStartOff[0] + sceneDx).coerceIn(-bound, bound)
-                po.swingY = (homeDragStartOff[1] + sceneDy).coerceIn(-220f, 220f)
-            }
-            "perch" -> {
-                po.perchX = (homeDragStartOff[0] + sceneDx).coerceIn(-bound, bound)
-                po.perchY = (homeDragStartOff[1] + sceneDy).coerceIn(-220f, 220f)
-            }
-            "pool" -> {
-                po.poolDX = (homeDragStartOff[0] + sceneDx).coerceIn(-bound, bound)
-                po.poolDY = (homeDragStartOff[1] + sceneDy).coerceIn(-220f, 220f)
-            }
-            "telescope" -> {
-                po.telescopeX = (homeDragStartOff[0] + sceneDx).coerceIn(-bound, bound)
-                po.telescopeY = (homeDragStartOff[1] + sceneDy).coerceIn(-220f, 220f)
-            }
-            "house" -> {
-                po.houseDX = (homeDragStartOff[0] + sceneDx).coerceIn(-bound, bound)
-                po.houseDY = (homeDragStartOff[1] + sceneDy).coerceIn(-220f, 220f)
-            }
-            "museum" -> {
-                po.museumDX = (homeDragStartOff[0] + sceneDx).coerceIn(-bound, bound)
-                po.museumDY = (homeDragStartOff[1] + sceneDy).coerceIn(-220f, 220f)
-            }
-            "honor" -> {
-                po.honorDX = (homeDragStartOff[0] + sceneDx).coerceIn(-bound, bound)
-                po.honorDY = (homeDragStartOff[1] + sceneDy).coerceIn(-220f, 220f)
-            }
-            "name" -> {
-                po.nameDX = (homeDragStartOff[0] + sceneDx).coerceIn(-bound, bound)
-                po.nameDY = (homeDragStartOff[1] + sceneDy).coerceIn(-220f, 220f)
-            }
-            "energy" -> {
-                po.energyDX = (homeDragStartOff[0] + sceneDx).coerceIn(-bound, bound)
-                po.energyDY = (homeDragStartOff[1] + sceneDy).coerceIn(-220f, 220f)
-            }
-            "reward" -> {
-                po.rewardDX = (homeDragStartOff[0] + sceneDx).coerceIn(-bound, bound)
-                po.rewardDY = (homeDragStartOff[1] + sceneDy).coerceIn(-220f, 220f)
-            }
-            "cat" -> {
-                po.catDX = (homeDragStartOff[0] + sceneDx).coerceIn(-bound, bound)
-                po.catDY = (homeDragStartOff[1] + sceneDy).coerceIn(-220f, 220f)
-            }
-            else -> {
-                po.uiDX[id] = homeDragStartOff[0] + pixDx
-                po.uiDY[id] = homeDragStartOff[1] + pixDy
-            }
-        }
     }
 
     private fun dispatchHomeDragTap(id: String, x: Float, y: Float) {
         when (id) {
+            "door" -> { showHomeWorlds = true; closeHomePick() }
             "telescope" -> if (game.canUseTelescope()) openStargazing()
             "museum" -> {
                 museumPage = 0; museumDetailId = -1; homeSubView = HOME_SUB_COLLECTION
+                game.markRelicsSeen()
             }
-            "honor" -> { honorPage = 0; homeSubView = HOME_SUB_HONOR }
-            "house" -> selectHomeCategory(Game.HOME_TAB_HOUSE)
+            "honor" -> { honorPage = 0; homeSubView = HOME_SUB_HONOR; game.markHonorsSeen() }
+            // 门套在房子的热区里，而拖放这条链路比 handleTap 先跑，
+            // 所以门要在这儿先分流出去，否则永远是「翻修房子」把它吃掉
+            "house" -> if (hitDoor.contains(x, y)) {
+                showHomeWorlds = true
+                closeHomePick()
+            } else selectHomeCategory(Game.HOME_TAB_HOUSE)
             "roof" -> selectHomeCategory(Game.HOME_TAB_ROOF)
             "garden", "fence", "mailbox", "swing", "perch", "pool" -> selectHomeCategory(Game.HOME_TAB_DECO)
-            "cat" -> if (homeEditing && game.isCatHomeTab()) {
-                selectHomeCategory(Game.HOME_TAB_COLOR)
-            } else {
+            // 点猫 = 摸一把 + 摊开装扮面板。原先只在「已经处在猫装扮分类里」时才开面板，
+            // 而进那个分类唯一的入口就是商店条的 tab——tab 删掉后就成了死循环，装扮再也点不到。
+            // 长按撸猫（startStrokeCat）不受影响，那才是持续给币的那个动作。
+            "cat" -> {
                 petYardCat()
+                selectHomeCategory(Game.HOME_TAB_COLOR)
             }
             "name" -> showRenameDialog(firstTime = false)
             "leave" -> leaveHomePage()
-            "tabColor" -> if (homeEditing) game.switchHomeTab(Game.HOME_TAB_COLOR)
-            "tabTrail" -> if (homeEditing) game.switchHomeTab(Game.HOME_TAB_TRAIL)
-            "tabScarf" -> if (homeEditing) game.switchHomeTab(Game.HOME_TAB_SCARF)
-            "tabHat" -> if (homeEditing) game.switchHomeTab(Game.HOME_TAB_HAT)
-            "arrowL" -> if (homeEditing) game.browseHome(-1)
-            "arrowR" -> if (homeEditing) game.browseHome(1)
-            "worldL" -> switchHomeWorldWithToast(-1)
-            "worldR" -> switchHomeWorldWithToast(1)
-            "buy" -> if (homeEditing) showToast(game.buyOrEquipHome())
-            "energy", "reward", "wallet",
-            "shopName", "shopPrice", "shopStatus", "editHint", "homeHint",
-            "worldLabel", "worldUnlockHint", "museumLabel", "honorLabel" -> { }
+            "energy", "reward", "wallet", "homeHint",
+            "museumLabel", "honorLabel" -> { }
         }
     }
 
-    /** 双击庭院：小猫追向手指落点 */
-    private fun startChaseHand(screenX: Float) {
+    /** 双击庭院：小猫追向手指落点（落点是地面上的一个真实位置，不是屏幕上的一条横坐标） */
+    private fun startChaseHand(screenX: Float, screenY: Float) {
         removeCallbacks(yardSingleTapRunnable)
-        handTargetX = screenToSceneX(screenX)
-        handMarkerLife = 2.5f
+        if (!aimHandAt(screenX, screenY)) return
         catDeco = -1
         pendingYardEvent = YARD_EVENT_NONE
         butterflyVisible = false
@@ -3737,7 +3154,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         removeCallbacks(yardSingleTapRunnable)
         if (isDouble) {
             yardLastTapTime = 0L
-            startChaseHand(x)
+            startChaseHand(x, y)
             return
         }
         yardLastTapX = x
@@ -3751,7 +3168,10 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private fun handleYardSingleTap(x: Float, y: Float) {
         when {
             butterflyHit.contains(x, y) && butterflyVisible -> pokeButterfly()
-            yardCatHit.contains(x, y) -> petYardCat()
+            yardCatHit.contains(x, y) -> {
+                petYardCat()
+                selectHomeCategory(Game.HOME_TAB_COLOR)
+            }
         }
     }
 
@@ -3761,11 +3181,9 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val helpingChase = catState == CAT_CHASE
         butterflyVisible = false
         butterflySpawnTimer = 12f + catRnd.nextFloat() * 16f
-        spawnYardFloater(
-            yardSceneCx + butterflyX * yardSceneS,
-            yardSceneGy - butterflyHeight * yardSceneS,
-            YardFloater.HEART
-        )
+        if (!butterflyHit.isEmpty) {
+            spawnYardFloater(butterflyHit.centerX(), butterflyHit.top, YardFloater.HEART)
+        }
         when {
             helpingChase -> {
                 catState = CAT_IDLE
@@ -3821,11 +3239,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
             strokeCoinTimer = STROKE_COIN_INTERVAL
             game.yardPet()
             showToast(game.grantYardCoins(1, "撸猫 +1"))
-            spawnYardFloater(
-                yardSceneCx + (catX + game.homeCatDX()) * yardSceneS + (catRnd.nextFloat() * 2f - 1f) * 12f * yardSceneS,
-                yardSceneGy - 38f * yardSceneS,
-                YardFloater.COIN
-            )
+            spawnCatFloater(YardFloater.COIN)
         }
     }
 
@@ -3868,10 +3282,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         petTimer = if (extending) min(petTimer + 0.6f, 2.8f) else 1.9f
         petCount = (petCount + 1).coerceAtMost(6)
         game.yardPet()
-        spawnYardFloater(
-            yardSceneCx + (catX + game.homeCatDX()) * yardSceneS,
-            yardSceneGy - 40f * yardSceneS, YardFloater.HEART
-        )
+        spawnCatFloater(YardFloater.HEART)
         if (!extending || catRnd.nextFloat() < 0.35f) {
             val msg = when (catRnd.nextInt(4)) {
                 0 -> "呼噜～"
@@ -3889,50 +3300,6 @@ class HudView(context: Context, private val game: Game) : View(context) {
         catTimer = 0.8f + catRnd.nextFloat() * 1.5f
     }
 
-    private fun pickYardGoal(bound: Float) {
-        if (yardEventTimer <= 0f) {
-            pendingYardEvent = YARD_EVENT_COINS
-            catDeco = -1
-            val eventRange = (bound - 70f).coerceAtLeast(20f)
-            catTarget = (catRnd.nextFloat() * 2f - 1f) * eventRange
-            catState = CAT_WALK
-            return
-        }
-
-        // 候选：散步（权重 2）、打盹（1）、每个已购可互动装饰（1）
-        val opts = ArrayList<Int>()
-        opts.add(-1); opts.add(-1)
-        opts.add(-2)
-        for (i in intArrayOf(0, 2, 3, 4, 5)) if (game.ownsDeco(i)) opts.add(i)
-        when (val pick = opts[catRnd.nextInt(opts.size)]) {
-            -2 -> {
-                catState = CAT_NAP
-                catTimer = 2.5f + catRnd.nextFloat() * 2.5f
-            }
-            -1 -> {
-                catDeco = -1
-                catTarget = (catRnd.nextFloat() * 2f - 1f) * (bound - 60f)
-                catState = CAT_WALK
-            }
-            else -> {
-                catDeco = pick
-                catTarget = when (pick) {
-                    0 -> game.yardGardenX() + 36f    // 花坛旁
-                    2 -> game.yardMailboxX() - 32f   // 信箱旁
-                    3 -> game.yardSwingX()           // 秋千下
-                    4 -> game.yardPerchX() - 32f     // 爬架起跳点
-                    else -> game.yardPool().edge     // 泳池左沿
-                }
-                // 窄屏时目标在场景外就改为散步
-                if (abs(catTarget) > bound - 30f) {
-                    catDeco = -1
-                    catTarget = 0f
-                }
-                catState = CAT_WALK
-            }
-        }
-    }
-
     private fun resolveYardEvent() {
         val message = when (pendingYardEvent) {
             YARD_EVENT_COINS -> game.grantYardCoins(2 + catRnd.nextInt(5))
@@ -3941,142 +3308,6 @@ class HudView(context: Context, private val game: Game) : View(context) {
         pendingYardEvent = YARD_EVENT_NONE
         yardEventTimer = 18f + catRnd.nextFloat() * 18f
         showToast(message)
-    }
-
-    private fun drawYardButterfly(canvas: Canvas, cx: Float, gy: Float, s: Float) {
-        // 蝴蝶只出现在有花草的世界：水下 / 熔岩 / 星空的家没有
-        val bw = game.homeWorld
-        if (!butterflyVisible ||
-            bw == Game.UNI_WATER || bw == Game.UNI_LAVA || bw == Game.UNI_SPACE
-        ) {
-            butterflyHit.setEmpty()
-            return
-        }
-        val x = cx + butterflyX * s
-        val y = gy - butterflyHeight * s + kotlin.math.sin(homePhase * 4f) * 8f * s
-        butterflyHit.set(x - 16f * s, y - 12f * s, x + 16f * s, y + 12f * s)
-        val wing = if (kotlin.math.sin(homePhase * 12f) > 0f) 7f else 4f
-        btnPaint.style = Paint.Style.FILL
-        btnPaint.color = 0xFFFF8FCB.toInt()
-        canvas.drawRect(x - wing * s, y - 5f * s, x - 1f * s, y + 3f * s, btnPaint)
-        canvas.drawRect(x + 1f * s, y - 5f * s, x + wing * s, y + 3f * s, btnPaint)
-        btnPaint.color = 0xFFFFD75E.toInt()
-        canvas.drawRect(x - 1f * s, y - 3f * s, x + 1f * s, y + 5f * s, btnPaint)
-    }
-
-    private fun drawYardCat(
-        canvas: Canvas, cx: Float, gy: Float, s: Float,
-        colorIdx: Int = game.catColor, scarf: Int = game.scarfStyle, hat: Int = game.hatStyle
-    ) {
-        val catOffX = game.homeCatDX()
-        val catOffY = game.homeCatDY()
-        var x = cx + (catX + catOffX) * s
-        var footY = gy + catOffY * s
-        var pose = when (catState) {
-            CAT_WALK, CAT_CHASE, CAT_CHASE_HAND -> POSE_WALK
-            CAT_NAP -> POSE_NAP
-            CAT_PET -> POSE_PET
-            else -> POSE_STAND
-        }
-        if (catState == CAT_PLAY) {
-            when (catDeco) {
-                0 -> pose = POSE_SNIFF
-                2 -> pose = POSE_LOOKUP
-                5 -> { // 跳进泳池游泳：跃入 → 来回划水 → 爬回岸边
-                    val pool = game.yardPool()
-                    val edgeX = pool.edge
-                    val left = pool.cx - pool.swimHalf
-                    val right = pool.cx + pool.swimHalf
-                    val surfaceY = gy + pool.surface * s
-                    when {
-                        catStageT < 0.5f -> {          // 从池边跃入水中
-                            val p = (catStageT / 0.5f).coerceIn(0f, 1f)
-                            x = cx + (edgeX + (left - edgeX) * p) * s
-                            footY = gy + (surfaceY - gy) * p -
-                                kotlin.math.sin(p * Math.PI.toFloat()) * 22f * s
-                            pose = POSE_JUMP
-                        }
-                        catStageT < 6f -> {            // 在水里来回划水
-                            val st = catStageT - 0.5f
-                            val swim = kotlin.math.sin(st * 1.1f) * 0.5f + 0.5f
-                            x = cx + (left + (right - left) * swim) * s
-                            catDir = if (kotlin.math.cos(st * 1.1f) >= 0f) 1f else -1f
-                            footY = surfaceY
-                            pose = POSE_SWIM
-                        }
-                        else -> {                      // 爬回岸边
-                            val p = ((catStageT - 6f) / 0.5f).coerceIn(0f, 1f)
-                            val fromX = left + (right - left) *
-                                (kotlin.math.sin(5.5f * 1.1f) * 0.5f + 0.5f)
-                            x = cx + (fromX + (edgeX - fromX) * p) * s
-                            footY = surfaceY + (gy - surfaceY) * p -
-                                kotlin.math.sin(p * Math.PI.toFloat()) * 22f * s
-                            pose = POSE_JUMP
-                            catDir = -1f
-                        }
-                    }
-                    catX = (x - cx) / s - catOffX
-                }
-                3 -> { // 坐上秋千跟着荡
-                    val sway = kotlin.math.sin(homePhase * 1.6f) * 10f * s
-                    x = cx + game.yardSwingX() * s + sway * 1.2f
-                    footY = gy + game.yardSwingY() * s - 34f * s
-                    pose = POSE_SIT
-                    catX = (x - cx) / s - catOffX
-                }
-                4 -> { // 猫爬架：与 drawDeco 的平台位置对齐
-                    val perchX = game.yardPerchX()
-                    val perchOff = game.yardPerchY() * s
-                    val lowY = gy + perchOff - 64f * s
-                    val topY = gy + perchOff - 102f * s
-                    when (catStage) {
-                        0 -> {
-                            val t = (catStageT / 0.45f).coerceIn(0f, 1f)
-                            x = cx + (perchX - 32f + 22f * t) * s
-                            footY = gy + (lowY - gy) * t -
-                                kotlin.math.sin(t * Math.PI.toFloat()) * 18f * s
-                            pose = POSE_JUMP
-                        }
-                        1 -> { x = cx + (perchX - 10f) * s; footY = lowY; pose = POSE_STAND }
-                        2 -> {
-                            val t = (catStageT / 0.45f).coerceIn(0f, 1f)
-                            x = cx + (perchX - 10f + 20f * t) * s
-                            footY = lowY + (topY - lowY) * t -
-                                kotlin.math.sin(t * Math.PI.toFloat()) * 16f * s
-                            pose = POSE_JUMP
-                        }
-                        3 -> { x = cx + (perchX + 10f) * s; footY = topY; pose = POSE_SIT }
-                        else -> {
-                            val t = (catStageT / 0.5f).coerceIn(0f, 1f)
-                            x = cx + (perchX + 10f + 40f * t) * s
-                            footY = topY + (gy - topY) * t * t
-                            pose = POSE_JUMP
-                        }
-                    }
-                    catX = (x - cx) / s - catOffX   // 同步位置，动作衔接不瞬移
-                }
-            }
-        }
-        // 接地阴影：仅当真正踩在草地上才画（排除秋千 / 爬架 / 泳池 / 跳跃的悬空态）
-        if (pose != POSE_JUMP && kotlin.math.abs(footY - (gy + catOffY * s)) < 2f * s) {
-            val shW = when (pose) {
-                POSE_NAP -> 30f * s
-                POSE_PET -> 18f * s
-                else -> 22f * s
-            }
-            groundShadow(canvas, x, gy, shW, s)
-        }
-        val catSc = LayoutConfig.cur.catS
-        canvas.save(); canvas.scale(catSc, catSc, x, footY)
-        drawPixelCat(canvas, x, footY, s, catDir, pose, colorIdx, scarf, hat)
-        canvas.restore()
-        if (catState == CAT_PET) drawPetHearts(canvas, x, footY, s)
-        // 点击热区：覆盖当前姿势下的猫身（随 catS 缩放）
-        val hitW = if (pose == POSE_NAP) 44f else 36f
-        val hitH = if (pose == POSE_NAP) 28f else if (pose == POSE_PET) 52f else 46f
-        val hitTop = if (pose == POSE_NAP) 18f else hitH
-        scaleRectAround(x, footY, x - hitW * s, footY - hitTop * s, x + hitW * s, footY + 6f * s, catSc, yardCatHit)
-        putDragHit("cat", yardCatHit)
     }
 
     private fun drawPetHearts(canvas: Canvas, x: Float, footY: Float, s: Float) {
@@ -4094,22 +3325,6 @@ class HudView(context: Context, private val game: Game) : View(context) {
             canvas.drawRect(hx + 2f * s, hy - 4f * s, hx + 6f * s, hy, btnPaint)
             canvas.drawRect(hx - 2f * s, hy, hx + 2f * s, hy + 5f * s, btnPaint)
         }
-    }
-
-    /** 双击落点：像素小手标记 */
-    private fun drawHandMarker(canvas: Canvas, cx: Float, gy: Float, s: Float) {
-        val x = cx + handTargetX * s
-        val y = gy - 22f * s
-        val bob = kotlin.math.sin(homePhase * 8f) * 4f * s
-        val a = (handMarkerLife / 2.5f * 220f).toInt().coerceIn(60, 220)
-        btnPaint.style = Paint.Style.FILL
-        btnPaint.color = withAlpha(0xFFFFE8A8.toInt(), a)
-        canvas.drawRect(x - 10f * s, y + bob, x + 10f * s, y + 16f * s + bob, btnPaint)
-        btnPaint.color = withAlpha(0xFFFFD075.toInt(), a)
-        canvas.drawRect(x - 14f * s, y + 12f * s + bob, x - 6f * s, y + 20f * s + bob, btnPaint)
-        canvas.drawRect(x - 2f * s, y + 10f * s + bob, x + 6f * s, y + 18f * s + bob, btnPaint)
-        canvas.drawRect(x + 8f * s, y + 12f * s + bob, x + 16f * s, y + 20f * s + bob, btnPaint)
-        canvas.drawRect(x + 4f * s, y + 18f * s + bob, x + 12f * s, y + 24f * s + bob, btnPaint)
     }
 
     private fun drawYardFloaters(canvas: Canvas, s: Float) {
@@ -4367,202 +3582,6 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 canvas.drawCircle(cx - r * 0.18f, cy + r * 0.12f, r * 0.35f, btnPaint)
                 btnPaint.color = withAlpha(0xFF4878D0.toInt(), 140)
                 canvas.drawCircle(cx + r * 0.22f, cy - r * 0.15f, r * 0.25f, btnPaint)
-            }
-        }
-    }
-
-    /** 参数化像素猫：footY 为脚底，dir=1 朝右 / -1 朝左（水平镜像）；外观默认取当前装备 */
-    private fun drawPixelCat(
-        canvas: Canvas, x: Float, footY: Float, s: Float, dir: Float, pose: Int,
-        colorIdx: Int = game.catColor, scarf: Int = game.scarfStyle, hat: Int = game.hatStyle
-    ) {
-        val c = COLOR_CHIPS[colorIdx % COLOR_CHIPS.size]
-        val cd = darken(c)
-        val eye = 0xFF222222.toInt()
-        val paw = 0xFFF2F2EE.toInt()
-        fun rc(dxl: Float, dyt: Float, dxr: Float, dyb: Float, color: Int) {
-            val x1 = x + dxl * dir * s
-            val x2 = x + dxr * dir * s
-            btnPaint.style = Paint.Style.FILL
-            btnPaint.color = color
-            canvas.drawRect(min(x1, x2), footY + dyt * s, kotlin.math.max(x1, x2), footY + dyb * s, btnPaint)
-        }
-        // 帽子：hL 为头部左沿、hT 为头顶（猫身坐标）
-        fun hatAt(hL: Float, hT: Float) {
-            when (hat) {
-                1 -> { // 红棒球帽
-                    rc(hL + 1f, hT - 9f, hL + 23f, hT + 1f, HAT_CAP)
-                    rc(hL + 20f, hT - 4f, hL + 34f, hT, HAT_CAP)
-                    rc(hL + 10f, hT - 12f, hL + 14f, hT - 8f, HAT_CAP_DK)
-                }
-                2 -> { // 青草帽
-                    rc(hL - 6f, hT - 4f, hL + 30f, hT, HAT_STRAW)
-                    rc(hL + 4f, hT - 12f, hL + 20f, hT - 4f, HAT_STRAW)
-                    rc(hL + 4f, hT - 6f, hL + 20f, hT - 3f, HAT_STRAW_BAND)
-                }
-                3 -> { // 金皇冠
-                    rc(hL + 4f, hT - 8f, hL + 20f, hT, HAT_GOLD)
-                    for (i in 0..2) {
-                        rc(hL + 5f + i * 6f, hT - 13f, hL + 9f + i * 6f, hT - 8f, HAT_GOLD)
-                    }
-                    rc(hL + 10f, hT - 6f, hL + 14f, hT - 2f, HAT_RUBY)
-                }
-            }
-        }
-        // 世界装备：与跑酷一致——水下家戴潜水镜、星空家罩太空盔（画在帽子之后，玻璃罩住帽子）
-        val gearWorld = if (game.menuPanel == Game.PANEL_HOME) game.homeWorld else Game.UNI_MEADOW
-        fun gearAt(hL: Float, hT: Float) {
-            when (gearWorld) {
-                Game.UNI_WATER -> {
-                    rc(hL - 2f, hT + 8f, hL + 26f, hT + 10f, 0xFF2E3A4A.toInt())   // 绑带
-                    rc(hL + 3f, hT + 5f, hL + 12f, hT + 15f, 0xFF2E3A4A.toInt())   // 左镜框
-                    rc(hL + 14f, hT + 5f, hL + 23f, hT + 15f, 0xFF2E3A4A.toInt())  // 右镜框
-                    rc(hL + 5f, hT + 7f, hL + 10f, hT + 13f, 0xCC9FE8FF.toInt())   // 镜片
-                    rc(hL + 16f, hT + 7f, hL + 21f, hT + 13f, 0xCC9FE8FF.toInt())
-                }
-                Game.UNI_SPACE -> {
-                    val ccx = x + (hL + 12f) * dir * s
-                    val ccy = footY + (hT + 11f) * s
-                    val r = 19f * s
-                    val aa = btnPaint.isAntiAlias
-                    btnPaint.isAntiAlias = true
-                    btnPaint.style = Paint.Style.FILL
-                    btnPaint.color = 0x3E9FD8FF
-                    canvas.drawCircle(ccx, ccy, r, btnPaint)
-                    btnPaint.style = Paint.Style.STROKE
-                    btnPaint.strokeWidth = 2f * s
-                    btnPaint.color = 0xAAE8F4FF.toInt()
-                    canvas.drawCircle(ccx, ccy, r, btnPaint)
-                    btnPaint.style = Paint.Style.FILL
-                    btnPaint.color = 0x66FFFFFF
-                    canvas.drawCircle(ccx - r * 0.4f * dir, ccy - r * 0.4f, r * 0.22f, btnPaint)
-                    btnPaint.isAntiAlias = aa
-                }
-            }
-        }
-        val scC = SCARF_CHIPS[scarf % SCARF_CHIPS.size]
-        val t = homePhase
-        when (pose) {
-            POSE_NAP -> {
-                rc(-24f, -14f, 20f, 0f, c)                    // 趴平的身体
-                rc(4f, -24f, 30f, -4f, c)                     // 头贴地
-                rc(6f, -30f, 12f, -22f, cd)                   // 耳
-                rc(20f, -30f, 26f, -22f, cd)
-                rc(11f, -16f, 24f, -14f, cd)                  // 闭眼线
-                rc(-34f, -10f, -22f, -4f, cd)                 // 尾巴收拢
-                val fl = (t * 1.2f) % 1f                      // 飘起的 z
-                textPaint.textAlign = Paint.Align.LEFT
-                pixText(
-                    canvas, "z", x + 34f * dir * s, footY - (30f + fl * 14f) * s, 20f * s,
-                    withAlpha(0xFFFFFFFF.toInt(), (200 * (1f - fl)).toInt()), 1f, 1f
-                )
-                textPaint.textAlign = Paint.Align.CENTER
-            }
-            POSE_SIT -> {
-                rc(-16f, -30f, 12f, 0f, c)                    // 竖起的身体
-                rc(-4f, -50f, 22f, -26f, c)                   // 头
-                rc(-2f, -56f, 4f, -48f, cd)                   // 耳
-                rc(12f, -56f, 18f, -48f, cd)
-                rc(2f, -40f, 5f, -37f, eye)
-                rc(11f, -40f, 14f, -37f, eye)
-                val tw = kotlin.math.sin(t * 4f) * 8f
-                rc(-26f + tw, -10f, -14f, -4f, cd)            // 甩尾
-                rc(-14f, -6f, -6f, 0f, paw)
-                rc(2f, -6f, 10f, 0f, paw)
-                if (scarf > 0) rc(-4f, -30f, 16f, -24f, scC)  // 颈圈
-                if (hat > 0) hatAt(-4f, -50f)
-                gearAt(-4f, -50f)
-            }
-            POSE_PET -> {
-                val lean = kotlin.math.sin(t * 5f) * 3f         // 被摸时微微蹭手
-                rc(-16f + lean, -30f, 12f + lean, 0f, c)
-                rc(-2f + lean, -50f, 24f + lean, -24f, c)       // 头略抬
-                rc(0f + lean, -56f, 6f + lean, -48f, cd)
-                rc(14f + lean, -56f, 20f + lean, -48f, cd)
-                rc(4f + lean, -40f, 17f + lean, -38f, cd)       // 眯眼笑
-                rc(0f + lean, -34f, 4f + lean, -30f, 0xFFF7A8B8.toInt()) // 腮红
-                rc(13f + lean, -34f, 17f + lean, -30f, 0xFFF7A8B8.toInt())
-                val tw = kotlin.math.sin(t * 11f) * 14f           // 尾巴快速摇摆
-                rc(-28f + tw, -12f, -12f, -4f, cd)
-                rc(-14f, -6f, -6f, 0f, paw)
-                rc(2f, -6f, 10f, 0f, paw)
-                if (scarf > 0) rc(-2f + lean, -28f, 18f + lean, -22f, scC)
-                if (hat > 0) hatAt(-2f + lean, -50f)
-                gearAt(-2f + lean, -50f)
-            }
-            POSE_SWIM -> {
-                val paddle = kotlin.math.sin(t * 12f)
-                val ripC = 0xFF9AD9F5.toInt()
-                val splash = 0xFFCDEBFA.toInt()
-                // 身体周围扩散的水面涟漪
-                rc(-30f, -1f, -16f, 2f, ripC)
-                rc(14f, -1f, 30f, 2f, ripC)
-                // 露出水面的后背与翘起的尾巴尖
-                rc(-16f, -6f, 8f, 2f, c)
-                val tw = paddle * 4f
-                rc(-24f + tw, -10f, -14f + tw, -4f, cd)
-                // 抬出水面的头
-                rc(6f, -22f, 28f, -4f, c)
-                rc(8f, -28f, 14f, -22f, cd)               // 耳
-                rc(22f, -28f, 28f, -22f, cd)
-                rc(13f, -15f, 16f, -12f, eye)             // 眼
-                rc(22f, -15f, 25f, -12f, eye)
-                rc(27f, -12f, 30f, -9f, 0xFFF7A8B8.toInt()) // 鼻尖
-                // 划水的前爪与溅起的水花
-                val pawDy = -2f + paddle * 3f
-                rc(2f, pawDy, 10f, pawDy + 5f, paw)
-                if (paddle > 0.4f) {
-                    rc(11f, -7f, 14f, -4f, splash)
-                    rc(15f, -10f, 17f, -7f, splash)
-                }
-                if (scarf > 0) rc(6f, -9f, 24f, -3f, scC) // 贴水面的围巾
-                if (hat > 0) hatAt(6f, -22f)
-                gearAt(6f, -22f)
-            }
-            else -> {
-                val walk = pose == POSE_WALK
-                val jump = pose == POSE_JUMP
-                val bob = when {
-                    jump -> 0f
-                    walk -> kotlin.math.abs(kotlin.math.sin(t * 9f)) * 3f
-                    else -> kotlin.math.sin(t * 2f) * 1.5f
-                }
-                val headDy = when (pose) {
-                    POSE_SNIFF -> 16f
-                    POSE_LOOKUP -> -7f
-                    else -> 0f
-                }
-                val headDx = if (pose == POSE_SNIFF) 6f else 0f
-                rc(-20f, -22f - bob, 16f, 0f, c)              // 身体
-                rc(6f + headDx, -40f - bob + headDy, 30f + headDx, -16f - bob + headDy, c)   // 头
-                // 顶部暖高光（太阳在上方）：头顶受光 + 背部左肩受光，补一点立体感
-                rc(6f + headDx, -40f - bob + headDy, 30f + headDx, -37f - bob + headDy, 0x33FFF6DC)
-                rc(-20f, -22f - bob, 6f, -19f - bob, 0x2BFFF6DC)
-                rc(8f + headDx, -46f - bob + headDy, 14f + headDx, -38f - bob + headDy, cd)  // 耳
-                rc(22f + headDx, -46f - bob + headDy, 28f + headDx, -38f - bob + headDy, cd)
-                rc(12f + headDx, -30f - bob + headDy, 15f + headDx, -27f - bob + headDy, eye)
-                rc(21f + headDx, -30f - bob + headDy, 24f + headDx, -27f - bob + headDy, eye)
-                val tailW = if (jump) 8f else kotlin.math.sin(t * 3f) * 6f
-                val tailDy = if (jump) -8f else 0f            // 跳跃时尾巴上扬
-                rc(-32f + tailW, -30f + tailDy, -18f, -24f + tailDy, cd)
-                if (scarf > 0) {
-                    rc(4f, -22f - bob, 22f, -15f - bob, scC)  // 颈圈
-                    val fl = kotlin.math.sin(t * 3f) * 3f     // 身后小飘带
-                    rc(-4f, -19f - bob + fl * 0.4f, 4f, -7f - bob + fl, scC)
-                }
-                if (hat > 0) hatAt(6f + headDx, -40f - bob + headDy)
-                gearAt(6f + headDx, -40f - bob + headDy)
-                if (walk) {
-                    val sw = kotlin.math.sin(t * 9f) * 5f     // 前后爪交替
-                    rc(-18f + sw, -6f, -10f + sw, 0f, paw)
-                    rc(4f - sw, -6f, 12f - sw, 0f, paw)
-                } else if (jump) {
-                    rc(-14f, -8f, -6f, -2f, paw)              // 收腿
-                    rc(2f, -8f, 10f, -2f, paw)
-                } else {
-                    rc(-18f, -6f, -10f, 0f, paw)
-                    rc(4f, -6f, 12f, 0f, paw)
-                }
             }
         }
     }

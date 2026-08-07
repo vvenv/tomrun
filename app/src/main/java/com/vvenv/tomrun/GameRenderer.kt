@@ -172,15 +172,6 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         """
 
         private val SKY = floatArrayOf(0.42f, 0.80f, 0.95f, 1f)
-        /** 家页面背景（Canvas 小屋场景铺在其上）：按当前家所在世界取天顶色 */
-        private val HOME_SKIES = arrayOf(
-            floatArrayOf(0.43f, 0.71f, 0.90f, 1f),   // 草原
-            floatArrayOf(0.03f, 0.16f, 0.25f, 1f),   // 水下
-            floatArrayOf(0.24f, 0.56f, 0.88f, 1f),   // 天空
-            floatArrayOf(0.16f, 0.06f, 0.05f, 1f),   // 熔岩
-            floatArrayOf(1.00f, 0.66f, 0.81f, 1f),   // 糖果
-            floatArrayOf(0.02f, 0.03f, 0.08f, 1f)    // 星空
-        )
         /** 文物名牌可见距离：超出就不画，避免远处名牌糊住路面 */
         private const val RELIC_LABEL_RANGE = 45f
         private val ROAD = floatArrayOf(0.42f, 0.40f, 0.44f, 1f)
@@ -255,48 +246,7 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
             floatArrayOf(0.98f, 0.55f, 0.65f, 1f),
             floatArrayOf(1.0f, 0.82f, 0.25f, 1f)
         )
-        // 蓝灰 / 橘黄 / 乌黑 / 粉红 / 奶白 / 青绿 / 紫罗兰 / 棕褐
-        private val CAT_MAIN = arrayOf(
-            floatArrayOf(0.52f, 0.58f, 0.70f, 1f),
-            floatArrayOf(0.95f, 0.62f, 0.26f, 1f),
-            floatArrayOf(0.30f, 0.30f, 0.35f, 1f),
-            floatArrayOf(0.96f, 0.66f, 0.76f, 1f),
-            floatArrayOf(0.93f, 0.90f, 0.82f, 1f),
-            floatArrayOf(0.35f, 0.72f, 0.65f, 1f),
-            floatArrayOf(0.62f, 0.50f, 0.82f, 1f),
-            floatArrayOf(0.62f, 0.44f, 0.30f, 1f)
-        )
-        private val CAT_DK = arrayOf(
-            floatArrayOf(0.36f, 0.42f, 0.55f, 1f),
-            floatArrayOf(0.76f, 0.42f, 0.12f, 1f),
-            floatArrayOf(0.16f, 0.16f, 0.21f, 1f),
-            floatArrayOf(0.82f, 0.47f, 0.60f, 1f),
-            floatArrayOf(0.72f, 0.67f, 0.56f, 1f),
-            floatArrayOf(0.20f, 0.50f, 0.45f, 1f),
-            floatArrayOf(0.44f, 0.33f, 0.62f, 1f),
-            floatArrayOf(0.42f, 0.28f, 0.18f, 1f)
-        )
-        private val CAT_WHITE = floatArrayOf(0.95f, 0.95f, 0.92f, 1f)
-        private val CAT_PINK = floatArrayOf(0.96f, 0.62f, 0.72f, 1f)
-        private val CAT_NOSE = floatArrayOf(0.92f, 0.42f, 0.52f, 1f)
-        private val CAT_EYE = floatArrayOf(0.12f, 0.12f, 0.14f, 1f)
-        private val CAT_EYE_HL = floatArrayOf(1f, 1f, 1f, 1f)
-        /** 相对障碍物/跑道的体型；1 为原始建模尺寸。 */
-        private const val CAT_SCALE = 0.80f
-
-        // 围巾 / 帽子（下标 0 为"无"，占位）
-        private val SCARF_COLS = arrayOf(
-            floatArrayOf(0f, 0f, 0f, 0f),
-            floatArrayOf(0.95f, 0.25f, 0.25f, 1f),
-            floatArrayOf(0.30f, 0.85f, 0.95f, 1f),
-            floatArrayOf(0.65f, 0.45f, 1.0f, 1f)
-        )
-        private val HAT_RED = floatArrayOf(0.88f, 0.27f, 0.27f, 1f)
-        private val HAT_RED_DK = floatArrayOf(0.65f, 0.17f, 0.17f, 1f)
-        private val STRAW = floatArrayOf(0.85f, 0.77f, 0.42f, 1f)
-        private val STRAW_BAND = floatArrayOf(0.30f, 0.62f, 0.30f, 1f)
-        private val CROWN_GOLD = floatArrayOf(0.95f, 0.78f, 0.20f, 1f)
-        private val CROWN_RUBY = floatArrayOf(0.90f, 0.20f, 0.35f, 1f)
+        // 猫本体与装扮的配色搬进 [CatPalette]：家里那只是同一只猫，颜色不能有两份
         // 世界专属配件：叠在现有装扮之上，不替换猫本体
         private val GOGGLE_LENS = floatArrayOf(0.55f, 0.85f, 0.92f, 0.55f)
         private val GOGGLE_STRAP = floatArrayOf(0.20f, 0.22f, 0.26f, 1f)
@@ -507,19 +457,28 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         Matrix.perspectiveM(proj, 0, vertical, aspect, 0.5f, 400f)
     }
 
+    /**
+     * 家页面用**直给的垂直 FOV**，不做跑酷那套水平锚定。
+     *
+     * 跑酷竖屏要保证「三条道刚好入镜」，所以按参考横屏反推垂直 FOV，算出来是 120° 的
+     * 大广角；院子是一张静物构图，那么大的广角会把房屋两侧拉变形。这里直接指定，
+     * 竖屏给到 76°（够高、装得下天空到脚下的路），横屏 52°（和跑酷同一档）。
+     */
+    private fun applyPlainProjection(vFovDeg: Float) {
+        Matrix.perspectiveM(proj, 0, vFovDeg, aspect, 0.5f, 400f)
+    }
+
     override fun onDrawFrame(gl: GL10?) {
         val now = System.nanoTime()
         val dt = if (lastNanos == 0L) 0.016f else min((now - lastNanos) / 1e9f, 0.05f)
         lastNanos = now
         game.update(dt)
 
-        // 家页面：独立 Canvas 场景，不渲染跑道
+        // 家页面：同一套体素管线渲染的院子，只是换了相机与内容
         if (game.menuPanel == Game.PANEL_HOME &&
             (game.state == Game.State.READY || game.state == Game.State.DEAD)
         ) {
-            EyeComfort.grade(HOME_SKIES[game.homeWorld.coerceIn(0, HOME_SKIES.size - 1)], gradedSky)
-            GLES20.glClearColor(gradedSky[0], gradedSky[1], gradedSky[2], 1f)
-            GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
+            drawHomeWorld(dt)
             return
         }
 
@@ -577,6 +536,170 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
 
         GLES20.glDisableVertexAttribArray(aPos)
         GLES20.glDisableVertexAttribArray(aNormal)
+    }
+
+    // ---------- 家园：同一套管线，另一套相机与内容 ----------
+
+    private var homePhase = 0f
+    private val homeBounds = FloatArray(6)
+    private val homeVpInv = FloatArray(16)
+    private val homeSkyCol = FloatArray(4) { 1f }
+    private val homeTint = FloatArray(4) { 1f }
+    private val homePainter = HomePainter()
+
+    /**
+     * 画家页面。
+     *
+     * 和跑酷共用着色器、光照、雾和护眼分级——这就是「家和跑酷是同一个世界」的全部秘密，
+     * 不需要在两套绘制代码之间对色号。区别只有三处：相机是静物机位（[applyPlainProjection]）、
+     * 内容由 [HomeScene3D] 给、昼夜强度取的是进门那一刻定格的值（[HomeYard.lightDusk]）。
+     */
+    private fun drawHomeWorld(dt: Float) {
+        homePhase += dt
+        HomeYard.ensureLight(game)
+        val world = game.homeWorld.coerceIn(0, Game.UNIVERSE_COUNT - 1)
+        val pal = HomePalette.of(world)
+        val dusk = HomeYard.lightDusk.coerceAtLeast(0f)
+        val night = HomeYard.lightNight
+
+        argbTo(pal.sky[0], homeSkyCol)
+        DayNight.apply(homeSkyCol, dusk, night)
+        EyeComfort.grade(homeSkyCol, gradedSky)
+        GLES20.glClearColor(gradedSky[0], gradedSky[1], gradedSky[2], 1f)
+        GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
+        GLES20.glUseProgram(program)
+        GLES20.glEnableVertexAttribArray(aPos)
+        GLES20.glEnableVertexAttribArray(aNormal)
+        setSkyFog()
+
+        val portrait = aspect < 1f
+        applyPlainProjection(if (portrait) 76f else 52f)
+        // 极慢的横向漂移：静物构图里一点点视差就够「活着」，又不会晃得人晕
+        val sway = sin(homePhase * 0.11f) * 1.2f
+        if (portrait) {
+            Matrix.setLookAtM(view, 0, sway, 12.5f, 23f, sway * 0.4f, 3.0f, -4f, 0f, 1f, 0f)
+        } else {
+            Matrix.setLookAtM(view, 0, sway, 9.5f, 19.5f, sway * 0.4f, 2.6f, -4f, 0f, 1f, 0f)
+        }
+        Matrix.multiplyMM(vp, 0, proj, 0, view, 0)
+
+        drawSkyGradient()
+        drawHomeCelestial(pal, night)
+        // 造型代码里有直接落笔的世界坐标方块（栅栏、彩旗），先把矩阵栈归零
+        Matrix.setIdentityM(model, 0)
+        stack.clear()
+
+        // 正在浏览、还没买下的东西按「幽灵」预览，与选物面板的第一下点击对应
+        val house = if (game.homeTab == Game.HOME_TAB_HOUSE) game.homeBrowseHouse else game.houseStyle
+        val roof = if (game.homeTab == Game.HOME_TAB_ROOF) game.homeBrowseRoof else game.roofStyle
+        val ghostDeco = if (game.homeTab == Game.HOME_TAB_DECO) game.homeBrowseDeco else -1
+        val catColor = if (game.homeTab == Game.HOME_TAB_COLOR) game.shopBrowseColor else game.catColor
+        val catScarf = if (game.homeTab == Game.HOME_TAB_SCARF) game.shopBrowseScarf else game.scarfStyle
+        val catHat = if (game.homeTab == Game.HOME_TAB_HAT) game.shopBrowseHat else game.hatStyle
+
+        HomeScene3D.draw(homePainter, game, homePhase, house, roof, ghostDeco, catColor, catScarf, catHat)
+        publishHomeHits(house)
+
+        GLES20.glDisableVertexAttribArray(aPos)
+        GLES20.glDisableVertexAttribArray(aNormal)
+    }
+
+    /** 家的天体：白天暖阳挂右上（美术方向定的光位），入夜换月亮与星子 */
+    private fun drawHomeCelestial(pal: HomePalette.Ramp, night: Float) {
+        mMode = 2
+        val dayVis = (1f - night * 1.3f).coerceIn(0f, 1f)
+        if (dayVis > 0.05f) {
+            argbTo(pal.hi, homeTint)
+            setFog(homeTint[0], homeTint[1], homeTint[2])
+            val k = 6.5f * dayVis
+            drawBox(20f, 26f, -88f, k, k, k, homeTint)
+        }
+        if (night > 0.15f) {
+            argbTo(pal.win, homeTint)
+            setFog(homeTint[0], homeTint[1], homeTint[2])
+            val k = 4.5f * night
+            drawBox(-18f, 25f, -88f, k, k, k, homeTint)
+            setSkyFog()
+            argbTo(pal.hi, homeTint)
+            homeTint[3] = 0.9f
+            for (i in 0 until 16) {
+                val x = -80f + i * 10.5f + (i % 3) * 4f
+                val y = 15f + (i * 7 % 13)
+                val tw = 0.3f + 0.2f * abs(sin(homePhase * 1.6f + i))
+                drawBox(x, y, -118f, tw, tw, tw, homeTint)
+            }
+            homeTint[3] = 1f
+        }
+        setSkyFog()
+        mMode = 0
+    }
+
+    /**
+     * 把每件东西的包围盒投影成屏幕矩形交给 [HomeYard]，HUD 直接拿去当热区。
+     *
+     * 这是 3D 化之后交互不掉链子的关键：热区不再由 UI 侧复刻一遍布局公式算出来，
+     * 而是**看到哪儿就点哪儿**——缩放、拖动、换房型、换朝向全都自动跟上。
+     */
+    private fun publishHomeHits(house: Int) {
+        HomeYard.beginFrame()
+        Matrix.invertM(homeVpInv, 0, vp, 0)
+        HomeYard.putInverseVp(homeVpInv)
+        for (slot in HomeYard.HIT_IDS.indices) {
+            if (!HomeScene3D.bounds(HomeYard.HIT_IDS[slot], game, house, homeBounds)) continue
+            var minX = 2f; var minY = 2f; var maxX = -2f; var maxY = -2f
+            var ok = true
+            for (corner in 0 until 8) {
+                val x = homeBounds[0] + if (corner and 1 == 0) -homeBounds[3] else homeBounds[3]
+                val y = homeBounds[1] + if (corner and 2 == 0) -homeBounds[4] else homeBounds[4]
+                val z = homeBounds[2] + if (corner and 4 == 0) -homeBounds[5] else homeBounds[5]
+                val cw = vp[3] * x + vp[7] * y + vp[11] * z + vp[15]
+                if (cw <= 0.05f) { ok = false; break }
+                val nx = (vp[0] * x + vp[4] * y + vp[8] * z + vp[12]) / cw * 0.5f + 0.5f
+                val ny = 1f - ((vp[1] * x + vp[5] * y + vp[9] * z + vp[13]) / cw * 0.5f + 0.5f)
+                if (nx < minX) minX = nx
+                if (nx > maxX) maxX = nx
+                if (ny < minY) minY = ny
+                if (ny > maxY) maxY = ny
+            }
+            if (!ok || maxX <= 0f || minX >= 1f || maxY <= 0f || minY >= 1f) continue
+            HomeYard.putRect(
+                slot, minX.coerceIn(0f, 1f), minY.coerceIn(0f, 1f),
+                maxX.coerceIn(0f, 1f), maxY.coerceIn(0f, 1f)
+            )
+        }
+    }
+
+    private fun argbTo(argb: Int, out: FloatArray) {
+        out[0] = ((argb ushr 16) and 0xFF) / 255f
+        out[1] = ((argb ushr 8) and 0xFF) / 255f
+        out[2] = (argb and 0xFF) / 255f
+        out[3] = 1f
+    }
+
+    /** [HomeScene3D] 只描述形状，落笔的活儿在这儿——它拿不到也不需要拿到 GLES */
+    private inner class HomePainter : HomeScene3D.Painter {
+        override fun box(x: Float, y: Float, z: Float, w: Float, h: Float, d: Float, c: FloatArray) =
+            drawBox(x, y, z, w, h, d, c)
+
+        override fun part(x: Float, y: Float, z: Float, sx: Float, sy: Float, sz: Float, c: FloatArray) =
+            drawPart(x, y, z, sx, sy, sz, c)
+
+        override fun push(x: Float, y: Float, z: Float) = pushModel(x, y, z)
+        override fun pop() = popModel()
+        override fun scale(sx: Float, sy: Float, sz: Float) = Matrix.scaleM(model, 0, sx, sy, sz)
+        override fun rotY(deg: Float) = Matrix.rotateM(model, 0, deg, 0f, 1f, 0f)
+        override fun rotX(deg: Float) = Matrix.rotateM(model, 0, deg, 1f, 0f, 0f)
+        override fun rotZ(deg: Float) = Matrix.rotateM(model, 0, deg, 0f, 0f, 1f)
+        override fun mode(m: Int) { mMode = m }
+
+        override fun shadow(x: Float, z: Float, r: Float, y: Float) {
+            val keep = mMode
+            mMode = 1
+            pushModel(x, y, z)
+            drawPart(0f, 0f, 0f, r * 2.4f, 0.02f, r * 2.4f, SHADOW)
+            popModel()
+            mMode = keep
+        }
     }
 
     /**
@@ -680,19 +803,8 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         for (arr in outs) applyDayNight(arr)
     }
 
-    private fun applyDayNight(c: FloatArray) {
-        if (duskAmt > 0.01f) {
-            c[0] = c[0] * (1f - 0.15f * duskAmt) + 1.0f * 0.15f * duskAmt
-            c[1] = c[1] * (1f - 0.25f * duskAmt) + 0.55f * 0.15f * duskAmt
-            c[2] = c[2] * (1f - 0.45f * duskAmt)
-        }
-        if (nightAmt > 0.01f) {
-            val dim = 1f - 0.55f * nightAmt
-            c[0] *= dim * (1f - 0.15f * nightAmt)
-            c[1] *= dim * (1f - 0.05f * nightAmt)
-            c[2] = min(1f, c[2] * dim + 0.08f * nightAmt)
-        }
-    }
+    /** 公式挪进 [DayNight]，与家园场景共用一份——两边天色必须同时变 */
+    private fun applyDayNight(c: FloatArray) = DayNight.apply(c, duskAmt, nightAmt)
 
     private fun setSkyFog() {
         val r = gradedSky[0] + 0.08f
@@ -1939,7 +2051,7 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
             val col = floatArrayOf(base[0], base[1], base[2], a.coerceAtMost(0.72f))
             val width = 0.18f * (1f - t * 0.45f) * boostK
             val length = 0.34f * (1f - t * 0.25f) * boostK
-            val footGap = 0.31f * CAT_SCALE
+            val footGap = 0.31f * CatPalette.SCALE
             val rise = t * 0.06f
             drawBox(trailX[i] - footGap, trailY[i] + rise, trailZ[i], width, 0.045f, length, col)
             drawBox(trailX[i] + footGap, trailY[i] + rise, trailZ[i], width, 0.045f, length, col)
@@ -1968,7 +2080,7 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
     private fun drawCat(dt: Float) {
         val g = game
         powerFxPhase = (powerFxPhase + dt * 5f) % 1000f
-        drawShadow(g.catX, 0f, (0.95f - min(g.catY * 0.10f, 0.3f)) * CAT_SCALE)
+        drawShadow(g.catX, 0f, (0.95f - min(g.catY * 0.10f, 0.3f)) * CatPalette.SCALE)
 
         val squash = if (g.sliding) 0.5f else 1f
         val bob = if (g.onGround && g.state == Game.State.RUNNING) abs(sin(g.runPhase)) * 0.07f else 0f
@@ -1982,10 +2094,10 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         pushModel(g.catX, g.catY + bob, 0f)
         if (g.state == Game.State.DEAD) {
             Matrix.rotateM(model, 0, -65f, 1f, 0f, 0f)
-            Matrix.translateM(model, 0, 0f, 0.3f * CAT_SCALE, 0.3f * CAT_SCALE)
+            Matrix.translateM(model, 0, 0f, 0.3f * CatPalette.SCALE, 0.3f * CatPalette.SCALE)
         }
-        val c = CAT_MAIN[game.catColor % CAT_MAIN.size]
-        val cd = CAT_DK[game.catColor % CAT_DK.size]
+        val c = CatPalette.MAIN[game.catColor % CatPalette.MAIN.size]
+        val cd = CatPalette.DARK[game.catColor % CatPalette.DARK.size]
 
         val ridingZip = g.riding != null
         // 已到边道还往外拨：叠加一段衰减抖动，弹回正常姿态
@@ -1998,12 +2110,12 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         Matrix.rotateM(model, 0, -lean, 0f, 0f, 1f)
         // 滑索握杆在缩小前绘制，保证顶端仍接到世界坐标缆绳
         if (ridingZip) {
-            val reach = 1.9f * CAT_SCALE
+            val reach = 1.9f * CatPalette.SCALE
             val gripTop = Game.CABLE_H - g.catY
             drawPart(0f, (reach + gripTop) / 2f, -0.2f, 0.1f, gripTop - reach, 0.1f, cd)
             drawPart(0f, gripTop - 0.1f, -0.2f, 0.3f, 0.2f, 0.24f, GANTRY)
         }
-        Matrix.scaleM(model, 0, CAT_SCALE, squash * CAT_SCALE, CAT_SCALE)
+        Matrix.scaleM(model, 0, CatPalette.SCALE, squash * CatPalette.SCALE, CatPalette.SCALE)
         if (!g.onGround && !ridingZip && g.state == Game.State.RUNNING) {
             Matrix.rotateM(model, 0, if (g.velY > 0) 14f else -10f, 1f, 0f, 0f)
         }
@@ -2030,18 +2142,18 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
             pushModel(lx, 0.52f, lz)
             Matrix.rotateM(model, 0, swing, 1f, 0f, 0f)
             drawPart(0f, -0.22f, 0f, 0.26f, 0.48f, 0.26f, if (left) c else cd)
-            drawPart(0f, -0.50f, 0.02f, 0.28f, 0.14f, 0.30f, CAT_WHITE)
+            drawPart(0f, -0.50f, 0.02f, 0.28f, 0.14f, 0.30f, CatPalette.WHITE)
             popModel()
         }
 
         // 身体：偏矮偏长，俯视像猫而不是竖柱
         drawPart(0f, 0.72f, 0f, 1.05f, 0.72f, 1.45f, c)
-        drawPart(0f, 0.48f, -0.05f, 0.78f, 0.36f, 1.1f, CAT_WHITE)
+        drawPart(0f, 0.48f, -0.05f, 0.78f, 0.36f, 1.1f, CatPalette.WHITE)
         drawPart(0f, 0.95f, 0.28f, 1.08f, 0.22f, 0.32f, cd)
         drawPart(0f, 0.95f, -0.28f, 1.08f, 0.22f, 0.32f, cd)
 
         if (g.scarfStyle > 0) {
-            val sc = SCARF_COLS[g.scarfStyle % SCARF_COLS.size]
+            val sc = CatPalette.SCARF[g.scarfStyle % CatPalette.SCARF.size]
             drawPart(0f, 1.12f, -0.35f, 1.05f, 0.20f, 0.34f, sc)
             val fl = sin(g.runPhase * 1.1f) * 0.15f
             drawPart(0.22f, 1.10f + fl * 0.4f, 0.25f, 0.24f, 0.16f, 0.55f, sc)
@@ -2067,14 +2179,14 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
             Matrix.rotateM(model, 0, roll, 0f, 0f, 1f)
         }
         drawPart(0f, 0f, 0f, 0.92f, 0.78f, 0.88f, c)
-        drawPart(-0.40f, -0.06f, -0.15f, 0.20f, 0.30f, 0.36f, CAT_WHITE)
-        drawPart(0.40f, -0.06f, -0.15f, 0.20f, 0.30f, 0.36f, CAT_WHITE)
-        drawPart(0f, -0.16f, -0.42f, 0.46f, 0.32f, 0.16f, CAT_WHITE)
-        drawPart(0f, -0.10f, -0.50f, 0.14f, 0.10f, 0.08f, CAT_NOSE)
-        drawPart(-0.22f, 0.08f, -0.40f, 0.18f, 0.18f, 0.08f, CAT_EYE)
-        drawPart(0.22f, 0.08f, -0.40f, 0.18f, 0.18f, 0.08f, CAT_EYE)
-        drawPart(-0.18f, 0.12f, -0.44f, 0.06f, 0.06f, 0.04f, CAT_EYE_HL)
-        drawPart(0.26f, 0.12f, -0.44f, 0.06f, 0.06f, 0.04f, CAT_EYE_HL)
+        drawPart(-0.40f, -0.06f, -0.15f, 0.20f, 0.30f, 0.36f, CatPalette.WHITE)
+        drawPart(0.40f, -0.06f, -0.15f, 0.20f, 0.30f, 0.36f, CatPalette.WHITE)
+        drawPart(0f, -0.16f, -0.42f, 0.46f, 0.32f, 0.16f, CatPalette.WHITE)
+        drawPart(0f, -0.10f, -0.50f, 0.14f, 0.10f, 0.08f, CatPalette.NOSE)
+        drawPart(-0.22f, 0.08f, -0.40f, 0.18f, 0.18f, 0.08f, CatPalette.EYE)
+        drawPart(0.22f, 0.08f, -0.40f, 0.18f, 0.18f, 0.08f, CatPalette.EYE)
+        drawPart(-0.18f, 0.12f, -0.44f, 0.06f, 0.06f, 0.04f, CatPalette.EYE_HL)
+        drawPart(0.26f, 0.12f, -0.44f, 0.06f, 0.06f, 0.04f, CatPalette.EYE_HL)
 
         // 大三角耳：从正后俯视最显眼
         val earWiggle = if (g.state == Game.State.RUNNING && g.onGround && !g.sliding) {
@@ -2083,32 +2195,32 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         pushModel(-0.32f, 0.42f, 0.05f)
         Matrix.rotateM(model, 0, -18f - earWiggle, 0f, 0f, 1f)
         drawPart(0f, 0.16f, 0f, 0.28f, 0.42f, 0.18f, cd)
-        drawPart(0f, 0.12f, -0.05f, 0.14f, 0.26f, 0.08f, CAT_PINK)
+        drawPart(0f, 0.12f, -0.05f, 0.14f, 0.26f, 0.08f, CatPalette.PINK)
         popModel()
         pushModel(0.32f, 0.42f, 0.05f)
         Matrix.rotateM(model, 0, 18f + earWiggle * 0.85f, 0f, 0f, 1f)
         drawPart(0f, 0.16f, 0f, 0.28f, 0.42f, 0.18f, cd)
-        drawPart(0f, 0.12f, -0.05f, 0.14f, 0.26f, 0.08f, CAT_PINK)
+        drawPart(0f, 0.12f, -0.05f, 0.14f, 0.26f, 0.08f, CatPalette.PINK)
         popModel()
 
         if (!g.helmet && g.hatStyle > 0) {
             when (g.hatStyle) {
                 1 -> {
-                    drawPart(0f, 0.47f, 0.05f, 0.82f, 0.26f, 0.75f, HAT_RED)
-                    drawPart(0f, 0.40f, -0.55f, 0.66f, 0.09f, 0.5f, HAT_RED)
-                    drawPart(0f, 0.63f, 0.05f, 0.16f, 0.1f, 0.16f, HAT_RED_DK)
+                    drawPart(0f, 0.47f, 0.05f, 0.82f, 0.26f, 0.75f, CatPalette.HAT_RED)
+                    drawPart(0f, 0.40f, -0.55f, 0.66f, 0.09f, 0.5f, CatPalette.HAT_RED)
+                    drawPart(0f, 0.63f, 0.05f, 0.16f, 0.1f, 0.16f, CatPalette.HAT_RED_DK)
                 }
                 2 -> {
-                    drawPart(0f, 0.42f, 0f, 1.35f, 0.08f, 1.3f, STRAW)
-                    drawPart(0f, 0.56f, 0f, 0.72f, 0.24f, 0.7f, STRAW)
-                    drawPart(0f, 0.49f, 0f, 0.76f, 0.07f, 0.74f, STRAW_BAND)
+                    drawPart(0f, 0.42f, 0f, 1.35f, 0.08f, 1.3f, CatPalette.STRAW)
+                    drawPart(0f, 0.56f, 0f, 0.72f, 0.24f, 0.7f, CatPalette.STRAW)
+                    drawPart(0f, 0.49f, 0f, 0.76f, 0.07f, 0.74f, CatPalette.STRAW_BAND)
                 }
                 else -> {
-                    drawPart(0f, 0.50f, 0f, 0.66f, 0.16f, 0.64f, CROWN_GOLD)
+                    drawPart(0f, 0.50f, 0f, 0.66f, 0.16f, 0.64f, CatPalette.CROWN_GOLD)
                     for (i in -1..1) {
-                        drawPart(i * 0.22f, 0.64f, 0f, 0.12f, 0.14f, 0.12f, CROWN_GOLD)
+                        drawPart(i * 0.22f, 0.64f, 0f, 0.12f, 0.14f, 0.12f, CatPalette.CROWN_GOLD)
                     }
-                    drawPart(0f, 0.52f, -0.34f, 0.12f, 0.12f, 0.06f, CROWN_RUBY)
+                    drawPart(0f, 0.52f, -0.34f, 0.12f, 0.12f, 0.06f, CatPalette.CROWN_RUBY)
                 }
             }
         }

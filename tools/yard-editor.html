@@ -140,7 +140,7 @@ function applyMode() {
   const skyRoom = Math.max(GY - 300 * S - 12 * S, 90 * S);
   LU = Math.min(0.92 * S, skyRoom / 200);
   FARGY = GY - Math.min(126 * S, skyRoom - 132 * LU);
-  FARX = Math.max(Math.min(HALF - 78 * S, 196 * S), 150 * S);
+  FARX = Math.max(Math.min(HALF - 96 * S, 188 * S), 140 * S);
   bindMode();   // 切到当前朝向的配置
   cv.width = W; cv.height = H;
   document.getElementById("modeInfo").textContent = `${W}×${H} · s=${S.toFixed(2)}`;
@@ -165,15 +165,15 @@ const YARD = ["fence", "swing", "garden", "telescope", "perch", "mailbox", "pool
 
 // ------- 建筑：相对各自自适应基线的微调偏移（delta，s 单位，横竖屏通用） -------
 function sceneDefaults() {
-  return { house: { label: "房子", dx: 0, dy: 0, scale: 1 }, museum: { label: "藏品馆", dx: 0, dy: 0, scale: 1 }, honor: { label: "荣誉墙", dx: 0, dy: 0, scale: 1 } };
+  return { house: { label: "房子", dx: 0, dy: 0, scale: 1 }, museum: { label: "藏馆", dx: 0, dy: 0, scale: 1 } };
 }
 let scene;   // 指向 store[mode].scene
-const SCENE = ["house", "museum", "honor"];
+// 藏品馆 + 荣誉墙已合成一栋「藏馆」（scene.museum），荣誉侧墙跟着整栋走，不再单独摆放
+const SCENE = ["house", "museum"];
 // 各建筑的自适应基线锚点（屏幕像素）
 function sceneBase(id) {
   if (id === "house") return { x: CX, y: GY };
-  if (id === "museum") return { x: CX - FARX, y: FARGY };
-  return { x: CX + FARX, y: FARGY };   // honor
+  return { x: CX + FARX, y: FARGY };   // museum：偏置在房屋右后方
 }
 function sceneAnchor(id) { const b = sceneBase(id), d = scene[id]; return { x: b.x + d.dx * S, y: b.y + d.dy * S }; }
 
@@ -198,9 +198,11 @@ function textBase(id) {
 function textRect(id) { const b = textBase(id), d = text[id]; return { x: b.x + d.dx * S, y: b.y + d.dy * S, w: b.w, h: b.h }; }
 
 // ------- UI 按钮：贴边/比例定位，横竖屏分别存（rect 存屏幕像素） -------
-const UI = ["leave", "wallet", "tabColor", "tabTrail", "tabScarf", "tabHat", "arrowL", "arrowR", "buy"];
-const UI_LABEL = { leave: "出门", wallet: "钱包", tabColor: "配色", tabTrail: "光迹", tabScarf: "围巾", tabHat: "帽子", arrowL: "上一个", arrowR: "下一个", buy: "载上" };
-const UI_COLOR = { leave: "#d98a2b", wallet: "#d98a2b", tabColor: "#4a72c0", tabTrail: "#4a72c0", tabScarf: "#4a72c0", tabHat: "#4a72c0", arrowL: "#6b7684", arrowR: "#6b7684", buy: "#3f9e5a" };
+// 商店条那批（tab×4 / 翻页×2 / 购买）已随游戏内的选物面板一起删除：
+// 面板是底部整块自排版的，没有可单独挪位的零件。
+const UI = ["leave", "wallet"];
+const UI_LABEL = { leave: "出门", wallet: "钱包" };
+const UI_COLOR = { leave: "#d98a2b", wallet: "#d98a2b" };
 // 全部配置横竖屏隔离：每朝向独立一套 {yard, scene, text, ui}
 function freshOri() { return { yard: yardDefaults(), scene: sceneDefaults(), text: textDefaults(), ui: {} }; }
 let store = { portrait: freshOri(), landscape: freshOri() };
@@ -211,21 +213,9 @@ function uiDefaults(w, h, s, portrait) {
   const margin = (portrait ? 18 : 28) * s, bottomPad = (portrait ? 44 : 26) * s;
   const bh = (portrait ? 68 : 56) * s, bw = portrait ? Math.min(176 * s, w * 0.44) : 156 * s;
   const bottom = h - bottomPad;
-  const stripTop = h * (portrait ? 0.74 : 0.78), by = h * (portrait ? 0.80 : 0.83);
-  const tabGap = 8 * s, tabH = (portrait ? 40 : 34) * s;
-  const tabW = portrait ? Math.min(88 * s, (w * 0.92 - 3 * tabGap) / 4) : 76 * s;
-  const tabY = stripTop + 12 * s;
-  const aHalf = (portrait ? 36 : 28) * s, aH = (portrait ? 28 : 22) * s;
-  const buyH = (portrait ? 52 : 44) * s, buyHalf = portrait ? Math.min(150 * s, w * 0.34) : 120 * s;
-  const buyTop = by + 34 * s;
-  const tab = i => ({ x: w / 2 + (i - 1.5) * (tabW + tabGap) - tabW / 2, y: tabY, w: tabW, h: tabH });
   return {
     leave:  { x: margin, y: bottom - bh, w: bw, h: bh },
     wallet: { x: w - margin - bw, y: bottom - bh, w: bw, h: bh },
-    tabColor: tab(0), tabTrail: tab(1), tabScarf: tab(2), tabHat: tab(3),
-    arrowL: { x: w * 0.16 - aHalf, y: by - aH, w: aHalf * 2, h: aH * 2 },
-    arrowR: { x: w * 0.84 - aHalf, y: by - aH, w: aHalf * 2, h: aH * 2 },
-    buy:    { x: w / 2 - buyHalf, y: buyTop, w: buyHalf * 2, h: buyH },
   };
 }
 function uiRect(id) {
@@ -258,9 +248,8 @@ function drawBackground() {
   circle(sx, sy, r, "#ffe49b"); circle(sx - r * .25, sy - r * .25, r * .5, "#fff3ce");
   rc(0, GY, W, H - GY, "#78bb50"); rc(0, GY, W, 8 * S, "#5fa845");
   rc(0, FARGY, W, GY - FARGY, "#8fc85f"); rc(0, FARGY, W, 4 * S, "#74b052");
-  const aM = sceneAnchor("museum"), aHo = sceneAnchor("honor"), aH = sceneAnchor("house");
-  withScale(aM.x, aM.y, scene.museum.scale || 1, () => drawMuseum(aM.x, aM.y, LU));
-  withScale(aHo.x, aHo.y, scene.honor.scale || 1, () => drawHonorWall(aHo.x, aHo.y, LU));
+  const aM = sceneAnchor("museum"), aH = sceneAnchor("house");
+  withScale(aM.x, aM.y, scene.museum.scale || 1, () => drawArchive(aM.x, aM.y, LU));
   withScale(aH.x, aH.y, scene.house.scale || 1, () => drawHouse(aH.x, aH.y));
 }
 function drawHouse(cx, gy) {
@@ -274,29 +263,31 @@ function drawHouse(cx, gy) {
   rc(cx - 26 * S, gy - 64 * S, 52 * S, 64 * S, "#6b4a2b"); rc(cx - 18 * S, gy - 56 * S, 36 * S, 56 * S, "#553a20");
   rc(cx - 60 * S, gy - 110 * S, 12 * S, 32 * S, "#7a86a8"); rc(cx + 48 * S, gy - 110 * S, 12 * S, 32 * S, "#7a86a8");
 }
-function drawMuseum(mx, base, u) {
-  shadow(mx, base, 60 * u);
-  rc(mx - 58 * u, base - 6 * u, 116 * u, 6 * u, "#b6ac92"); rc(mx - 52 * u, base - 12 * u, 104 * u, 6 * u, "#ddd4bd"); rc(mx - 46 * u, base - 18 * u, 92 * u, 6 * u, "#b6ac92");
-  rc(mx - 44 * u, base - 84 * u, 88 * u, 66 * u, "#c7bda3");
-  rc(mx - 14 * u, base - 60 * u, 28 * u, 42 * u, "#4a3a28"); rc(mx - 8 * u, base - 48 * u, 16 * u, 30 * u, "#e8b45e");
-  for (const dx of [-34, -20, 20, 34]) {
-    const cxp = mx + dx * u;
-    rc(cxp - 6 * u, base - 78 * u, 12 * u, 54 * u, "#f8f3e4"); rc(cxp + 3 * u, base - 78 * u, 3 * u, 54 * u, "#cdc3a8");
-    rc(cxp - 8 * u, base - 84 * u, 16 * u, 6 * u, "#ede7d6"); rc(cxp - 8 * u, base - 24 * u, 16 * u, 6 * u, "#ede7d6");
+// 藏馆：左门廊（藏品）+ 右侧翼墙（荣誉四枚等级章），与 HudView.drawArchive 同一套几何
+function drawArchive(ax, base, u) {
+  const R = (l, t, r, b, c) => rc(ax + l * u, base + t * u, (r - l) * u, (b - t) * u, c);
+  shadow(ax, base, 80 * u);
+  R(-82, -6, 80, 0, "#b6ac92"); R(-76, -12, 74, -6, "#ddd4bd");
+  // 侧翼墙
+  R(-10, -52, 70, -12, "#ad9377");
+  R(-10, -30, 70, -28, "#937a61"); R(-10, -44, 70, -42, "#937a61");
+  R(-14, -58, 74, -52, "#ddd4bd"); R(-14, -58, 74, -55.5, "#f7f3e6");
+  const medal = ["#c87a3a", "#aeb6c4", "#f2c14e", "#6fd3e0"];
+  for (let t = 0; t < 4; t++) {
+    const mx = ax + (2 + t * 18) * u;
+    R(2 + t * 18 - 9.5, -42.5, 2 + t * 18 + 9.5, -21.5, "#937a61");
+    circle(mx, base - 32 * u, 8 * u, "#5f5348"); circle(mx, base - 32 * u, 6.5 * u, medal[t]);
   }
-  rc(mx - 54 * u, base - 108 * u, 108 * u, 24 * u, "#e6dfcb"); tri(mx, base - 108 * u, 58 * u, 28 * u, "#ede7d6");
-}
-function drawHonorWall(hx, base, u) {
-  shadow(hx, base, 66 * u);
-  rc(hx - 74 * u, base - 8 * u, 148 * u, 8 * u, "#7a6a58");
-  rc(hx - 68 * u, base - 96 * u, 136 * u, 88 * u, "#ad9377"); boxShade(hx - 68 * u, base - 96 * u, 136 * u, 88 * u);
-  rc(hx - 76 * u, base - 106 * u, 152 * u, 10 * u, "#8b7a66"); rc(hx - 76 * u, base - 106 * u, 152 * u, 3 * u, "#c4b399");
-  const medal = ["#8a7561", "#c87a3a", "#aeb6c4", "#f2c14e"];
-  for (let r = 0; r < 3; r++) for (let c = 0; c < 6; c++) {
-    const cxp = hx - 55 * u + c * 22 * u, cyp = base - 78 * u + r * 22 * u;
-    circle(cxp, cyp, 6.5 * u, "#5f5348"); circle(cxp, cyp, 5 * u, medal[(r * 6 + c) % 4]);
+  // 门廊
+  R(-70, -80, -12, -12, "#ad9377");
+  R(-49, -58, -33, -12, "#2e2418"); R(-46, -50, -36, -12, "#e8b45e");
+  for (const cxp of [-62, -20]) {
+    R(cxp - 5.5, -84, cxp + 5.5, -18, "#f8f3e4"); R(cxp + 2.5, -84, cxp + 5.5, -18, "#cdc3a8");
+    R(cxp - 7.5, -88, cxp + 7.5, -84, "#ede7d6"); R(cxp - 7.5, -18, cxp + 7.5, -12, "#ede7d6");
   }
-  rc(hx - 50 * u, base - 132 * u, 100 * u, 26 * u, "#6b4a2b"); rc(hx - 50 * u, base - 132 * u, 100 * u, 4 * u, "#97622f");
+  R(-76, -100, -6, -88, "#e6dfcb"); R(-76, -100, -6, -97, "#f7f3e6");
+  tri(ax - 41 * u, base - 100 * u, 40 * u, 24 * u, "#ede7d6");
+  circle(ax - 41 * u, base - 110 * u, 4 * u, "#f2a33c");
 }
 
 // ------- 庭院道具绘制（锚点脚下，尺寸 × S） -------
@@ -383,8 +374,7 @@ function rectOf(id) {
     const a = sceneAnchor(id), sc = scene[id].scale || 1;
     let b;
     if (id === "house") b = { x: a.x - 130 * S, y: a.y - 268 * S, w: 260 * S, h: 268 * S };
-    else if (id === "museum") b = { x: a.x - 58 * LU, y: a.y - 136 * LU, w: 116 * LU, h: 136 * LU };
-    else b = { x: a.x - 76 * LU, y: a.y - 132 * LU, w: 152 * LU, h: 132 * LU };
+    else b = { x: a.x - 82 * LU, y: a.y - 124 * LU, w: 162 * LU, h: 124 * LU };
     return scaleBox(b.x, b.y, b.w, b.h, a.x, a.y, sc);
   }
   const it = yard[id];
@@ -781,7 +771,6 @@ function oriBlock(ori) {
       fenceY: y.fence.oy, fenceS: y.fence.scale, catS: y.cat.scale,
       houseDX: st.scene.house.dx, houseDY: st.scene.house.dy, houseS: st.scene.house.scale,
       museumDX: st.scene.museum.dx, museumDY: st.scene.museum.dy, museumS: st.scene.museum.scale,
-      honorDX: st.scene.honor.dx, honorDY: st.scene.honor.dy, honorS: st.scene.honor.scale,
       pool: { l: p.ox, r: p.ox + p.w, t: p.oy, b: p.oy + p.h },
     },
     text: {
@@ -812,7 +801,7 @@ function applyOri(st, blk, ori) {
   set(st.yard.cat, "scale", y.catS);
   if (y.pool) { const p = st.yard.pool; p.ox = y.pool.l; p.oy = y.pool.t; p.w = y.pool.r - y.pool.l; p.h = y.pool.b - y.pool.t; }
   const sd = (grp, id, vx, vy, vs) => { set(grp[id], "dx", vx); set(grp[id], "dy", vy); set(grp[id], "scale", vs); };
-  sd(st.scene, "house", y.houseDX, y.houseDY, y.houseS); sd(st.scene, "museum", y.museumDX, y.museumDY, y.museumS); sd(st.scene, "honor", y.honorDX, y.honorDY, y.honorS);
+  sd(st.scene, "house", y.houseDX, y.houseDY, y.houseS); sd(st.scene, "museum", y.museumDX, y.museumDY, y.museumS);
   const t = blk.text || {};
   sd(st.text, "name", t.nameDX, t.nameDY, t.nameS); sd(st.text, "energy", t.energyDX, t.energyDY, t.energyS); sd(st.text, "reward", t.rewardDX, t.rewardDY, t.rewardS);
   const ui = blk.ui || {}, m = MODES[ori], s = oriS(ori), portrait = ori === "portrait";

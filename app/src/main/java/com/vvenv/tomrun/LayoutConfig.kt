@@ -5,27 +5,21 @@ import android.graphics.RectF
 import org.json.JSONObject
 
 /**
- * 家页面布局的单一事实来源，**横竖屏各一套、完全隔离**。
+ * 家页面**顶栏文字与 UI 按钮**的布局，以及各元素的缩放系数；横竖屏各一套、完全隔离。
  *
- * 每个元素都可配「位置 + 大小」：
- *  - 庭院道具（望远镜/花坛/秋千/猫爬架/信箱）：X/Y 偏移 + 缩放 s
- *  - 栅栏：Y 偏移 + 缩放
- *  - 泳池：L/R/T/B 自由矩形
- *  - 建筑（房子/藏品馆/荣誉墙）：基线微调 dx/dy + 缩放
- *  - 顶栏文字（家名称/家能量/开局奖励）：基线微调 dx/dy + 字号缩放
- *  - 猫：缩放（位置不可配——它在庭院里自由游走并与道具互动）
- *  - UI 按钮：屏幕比例位置 + s 单位尺寸（覆盖式，未动的走原公式）
+ * 原来这里还存着庭院每件道具的 X/Y 坐标（屏幕 s 单位）。家页面改成体素 3D 之后，
+ * 庭院里的位置由 [HomeYard] 的世界坐标锚点 + 玩家拖动的偏移决定，这份 JSON 里的
+ * `yard` 坐标已不再读取——**`tools/yard-editor.html` 那个 2D 网页编辑器随之作废**，
+ * 摆放请直接在游戏里拖（拖的是地面上的真实位置，还有透视）。
  *
- * 与 `tools/yard-editor.html` 共享同一 JSON（v2：顶层 portrait/landscape）。绘制前调 [select]。
+ * 仍然生效的是：
+ *  - `*S` 缩放：房子 / 藏馆 / 猫 / 顶栏文字（3D 里就是模型整体缩放）
+ *  - 顶栏文字（家名称 / 家能量 / 开局奖励）的基线微调
+ *  - UI 按钮的覆盖式位置（未被移动过的仍走 HudView 的响应式公式）
+ *
+ * 绘制前调 [select] 切换朝向。
  */
 object LayoutConfig {
-
-    class Pool(var l: Float, var r: Float, var t: Float, var b: Float) {
-        val cx get() = (l + r) / 2f
-        val edge get() = l - 14f
-        val surface get() = t + 20f
-        val swimHalf get() = 46f
-    }
 
     class UiRect(val x: Float, val y: Float, val w: Float, val h: Float) {
         fun resolve(vw: Float, vh: Float, s: Float) = RectF(x * vw, y * vh, x * vw + w * s, y * vh + h * s)
@@ -33,17 +27,9 @@ object LayoutConfig {
 
     /** 单个朝向的完整布局。`*S` 为缩放（1 = 原始大小）。 */
     class Set {
-        var telescopeX = -176f; var telescopeY = 0f; var telescopeS = 1f
-        var gardenX = -232f; var gardenY = 0f; var gardenS = 1f
-        var swingX = -280f; var swingY = 0f; var swingS = 1f
-        var perchX = 158f; var perchY = 0f; var perchS = 1f
-        var mailboxX = 210f; var mailboxY = 0f; var mailboxS = 1f
-        var fenceY = 0f; var fenceS = 1f
-        val pool = Pool(0f, 264f, 72f, 192f)
         var catS = 1f
-        var houseDX = 0f; var houseDY = 0f; var houseS = 1f
-        var museumDX = 0f; var museumDY = 0f; var museumS = 1f
-        var honorDX = 0f; var honorDY = 0f; var honorS = 1f
+        var houseS = 1f
+        var museumS = 1f
         var nameDX = 0f; var nameDY = 0f; var nameS = 1f
         var energyDX = 0f; var energyDY = 0f; var energyS = 1f
         var rewardDX = 0f; var rewardDY = 0f; var rewardS = 1f
@@ -85,21 +71,11 @@ object LayoutConfig {
     }
 
     private fun apply(s: Set, yard: JSONObject?, text: JSONObject?, ui: JSONObject? = null) {
+        // yard 段里只剩缩放还有意义：坐标已交给 [HomeYard] 的世界锚点
         yard?.let { y ->
-            s.telescopeX = y.optFloat("telescopeX", s.telescopeX); s.telescopeY = y.optFloat("telescopeY", s.telescopeY); s.telescopeS = y.optFloat("telescopeS", s.telescopeS)
-            s.gardenX = y.optFloat("gardenX", s.gardenX); s.gardenY = y.optFloat("gardenY", s.gardenY); s.gardenS = y.optFloat("gardenS", s.gardenS)
-            s.swingX = y.optFloat("swingX", s.swingX); s.swingY = y.optFloat("swingY", s.swingY); s.swingS = y.optFloat("swingS", s.swingS)
-            s.perchX = y.optFloat("perchX", s.perchX); s.perchY = y.optFloat("perchY", s.perchY); s.perchS = y.optFloat("perchS", s.perchS)
-            s.mailboxX = y.optFloat("mailboxX", s.mailboxX); s.mailboxY = y.optFloat("mailboxY", s.mailboxY); s.mailboxS = y.optFloat("mailboxS", s.mailboxS)
-            s.fenceY = y.optFloat("fenceY", s.fenceY); s.fenceS = y.optFloat("fenceS", s.fenceS)
             s.catS = y.optFloat("catS", s.catS)
-            s.houseDX = y.optFloat("houseDX", s.houseDX); s.houseDY = y.optFloat("houseDY", s.houseDY); s.houseS = y.optFloat("houseS", s.houseS)
-            s.museumDX = y.optFloat("museumDX", s.museumDX); s.museumDY = y.optFloat("museumDY", s.museumDY); s.museumS = y.optFloat("museumS", s.museumS)
-            s.honorDX = y.optFloat("honorDX", s.honorDX); s.honorDY = y.optFloat("honorDY", s.honorDY); s.honorS = y.optFloat("honorS", s.honorS)
-            y.optJSONObject("pool")?.let { p ->
-                s.pool.l = p.optFloat("l", s.pool.l); s.pool.r = p.optFloat("r", s.pool.r)
-                s.pool.t = p.optFloat("t", s.pool.t); s.pool.b = p.optFloat("b", s.pool.b)
-            }
+            s.houseS = y.optFloat("houseS", s.houseS)
+            s.museumS = y.optFloat("museumS", s.museumS)
         }
         text?.let { t ->
             s.nameDX = t.optFloat("nameDX", s.nameDX); s.nameDY = t.optFloat("nameDY", s.nameDY); s.nameS = t.optFloat("nameS", s.nameS)

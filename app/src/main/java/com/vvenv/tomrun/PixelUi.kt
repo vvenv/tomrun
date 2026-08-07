@@ -359,4 +359,131 @@ object PixelUi {
     val WOOD_NAME = WoodStyle(0xFF6A4528.toInt(), 0xFF9A6A3C.toInt(), 0xFF3E2818.toInt(), grain = true)
     val WOOD_LEAVE = WoodStyle(0xFF3A4E62.toInt(), 0xFF5A7088.toInt(), 0xFF243040.toInt())
     val WOOD_WALLET = WoodStyle(0xFF4A3C28.toInt(), 0xFF6A5238.toInt(), 0xFF2A2018.toInt())
+    val WOOD_ACCENT = WoodStyle(0xFF5C4A2E.toInt(), 0xFF8A6E44.toInt(), 0xFF342818.toInt(), grain = true)
+
+    /**
+     * 精致的圆角木质小按钮：用于图层、设置等角落小控件。
+     * 比标准切角按钮更圆润，带微妙的内发光和金色钉头装饰。
+     */
+    fun drawTinyWoodBtn(
+        canvas: Canvas, paint: Paint,
+        cx: Float, cy: Float, r: Float,
+        s: Float, accent: Int, pressed: Boolean = false
+    ) {
+        val size = r * 2f
+        val l = cx - r
+        val t = cy - r
+        val rr = cx + r
+        val b = cy + r
+        val notch = size * 0.18f
+        val dy = if (pressed) 2f * s else 0f
+
+        if (!pressed) drawDropShadow(canvas, paint, l, t + dy, rr, b + dy, s, notch)
+
+        val edge = darken(0xFF5A4228.toInt(), 0.15f)
+        val fill = 0xFF6B4F30.toInt()
+        val palette = paletteFor(fill, edge)
+        drawDepthFrameChamfer(canvas, paint, l, t + dy, rr, b + dy, notch, palette, s,
+            if (pressed) Bevel.PRESSED else Bevel.RAISED)
+
+        val nailR = max(2f, 2.5f * s)
+        paint.style = Paint.Style.FILL
+        paint.color = accent
+        canvas.drawCircle(l + notch * 0.8f, t + notch * 0.8f + dy, nailR, paint)
+        canvas.drawCircle(rr - notch * 0.8f, t + notch * 0.8f + dy, nailR, paint)
+        canvas.drawCircle(l + notch * 0.8f, b - notch * 0.8f + dy, nailR, paint)
+        canvas.drawCircle(rr - notch * 0.8f, b - notch * 0.8f + dy, nailR, paint)
+
+        paint.color = lighten(accent, 0.5f)
+        canvas.drawCircle(l + notch * 0.8f - nailR * 0.3f, t + notch * 0.8f - nailR * 0.3f + dy, nailR * 0.4f, paint)
+        canvas.drawCircle(rr - notch * 0.8f - nailR * 0.3f, t + notch * 0.8f - nailR * 0.3f + dy, nailR * 0.4f, paint)
+    }
+
+    /**
+     * 精致的能量水晶/进度格：比普通矩形格更有立体感和光泽。
+     */
+    fun drawCrystalPip(
+        canvas: Canvas, paint: Paint,
+        cx: Float, cy: Float, w: Float, h: Float,
+        s: Float, color: Int, filled: Boolean, glow: Float = 1f
+    ) {
+        val l = cx - w / 2f
+        val t = cy - h / 2f
+        val r = cx + w / 2f
+        val b = cy + h / 2f
+        val bevel = max(2f, 2f * s)
+
+        if (filled) {
+            paint.style = Paint.Style.FILL
+            paint.color = withAlpha(darken(color, 0.3f), (glow * 255).toInt())
+            canvas.drawRect(l - 1f * s, t - 1f * s, r + 1f * s, b + 1f * s, paint)
+
+            paint.color = withAlpha(color, (glow * 255).toInt())
+            canvas.drawRect(l, t, r, b, paint)
+
+            paint.color = withAlpha(lighten(color, 0.45f), (glow * 255).toInt())
+            canvas.drawRect(l + bevel, t + bevel, r - bevel, t + bevel * 1.5f, paint)
+            canvas.drawRect(l + bevel, t + bevel, l + bevel * 1.5f, b - bevel, paint)
+
+            paint.color = withAlpha(lighten(color, 0.7f), (glow * 180).toInt())
+            canvas.drawRect(l + bevel * 1.5f, t + bevel * 1.3f, l + w * 0.35f, t + bevel * 2.2f, paint)
+        } else {
+            paint.style = Paint.Style.FILL
+            paint.color = 0xFF2A303A.toInt()
+            canvas.drawRect(l, t, r, b, paint)
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = max(1f, 1f * s)
+            paint.color = 0x555A6A7E.toInt()
+            canvas.drawRect(l, t, r, b, paint)
+            paint.style = Paint.Style.FILL
+        }
+    }
+
+    /**
+     * 绘制装饰性分隔线：双线中间带点，用于铭牌/面板内部。
+     */
+    fun drawDivider(
+        canvas: Canvas, paint: Paint,
+        x1: Float, y: Float, x2: Float,
+        s: Float, color: Int
+    ) {
+        paint.style = Paint.Style.FILL
+        val midX = (x1 + x2) / 2f
+        val lineH = max(1f, 1f * s)
+        val dotR = max(1.5f, 2f * s)
+
+        paint.color = withAlpha(color, 120)
+        canvas.drawRect(x1, y - lineH / 2f, midX - dotR * 2f, y + lineH / 2f, paint)
+        canvas.drawRect(midX + dotR * 2f, y - lineH / 2f, x2, y + lineH / 2f, paint)
+
+        paint.color = color
+        canvas.drawCircle(midX, y, dotR, paint)
+        paint.color = lighten(color, 0.4f)
+        canvas.drawCircle(midX - dotR * 0.3f, y - dotR * 0.3f, dotR * 0.45f, paint)
+    }
+
+    /**
+     * 金币图标：比简单矩形更精致的像素金币。
+     */
+    fun drawCoin(canvas: Canvas, paint: Paint, cx: Float, cy: Float, r: Float, pulse: Float = 1f) {
+        val inner = r * 0.72f
+        val core = r * 0.42f
+        val shine = r * 0.28f
+
+        paint.style = Paint.Style.FILL
+        paint.color = 0xFFB8860B.toInt()
+        canvas.drawCircle(cx, cy, r, paint)
+
+        paint.color = 0xFFFFC21F.toInt()
+        canvas.drawCircle(cx, cy, inner, paint)
+
+        paint.color = 0xFFFFE878.toInt()
+        canvas.drawCircle(cx, cy, core, paint)
+
+        paint.color = withAlpha(0xFFFFFFFF.toInt(), (180 * pulse).toInt())
+        canvas.drawCircle(cx - shine * 0.6f, cy - shine * 0.6f, shine, paint)
+
+        paint.color = 0xFF8A6508.toInt()
+        canvas.drawRect(cx - r * 0.12f, cy - inner * 0.8f, cx + r * 0.12f, cy + inner * 0.8f, paint)
+    }
 }

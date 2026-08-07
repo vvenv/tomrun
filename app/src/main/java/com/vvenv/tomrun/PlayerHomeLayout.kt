@@ -15,8 +15,10 @@ object PlayerHomeLayout {
     /** 家园可单独显示/隐藏的元素（与 HudView 拖放 id 一致） */
     val ELEMENTS = arrayOf(
         Element("house", "房子"),
-        Element("museum", "藏品馆"),
-        Element("honor", "荣誉墙"),
+        // 藏品馆与荣誉墙已合成一栋「藏馆」：museum = 整栋（可搬可缩放），
+        // honor = 侧翼墙上的等级奖章（只能开关，位置跟着整栋走）
+        Element("museum", "藏馆"),
+        Element("honor", "荣誉奖章"),
         Element("garden", "花坛"),
         Element("fence", "栅栏"),
         Element("mailbox", "信箱"),
@@ -29,25 +31,9 @@ object PlayerHomeLayout {
         Element("energy", "家能量"),
         Element("reward", "开局奖励"),
         Element("homeHint", "摆放提示"),
-        Element("editHint", "装扮提示"),
-        Element("worldLabel", "世界名"),
-        Element("worldUnlockHint", "解锁提示"),
-        Element("museumLabel", "藏品标签"),
-        Element("honorLabel", "荣誉标签"),
-        Element("shopName", "商品名"),
-        Element("shopPrice", "价格"),
-        Element("shopStatus", "状态"),
+        Element("museumLabel", "藏馆铭牌"),
         Element("leave", "出门"),
         Element("wallet", "钱包"),
-        Element("worldL", "世界上一个"),
-        Element("worldR", "世界下一个"),
-        Element("arrowL", "上一个"),
-        Element("arrowR", "下一个"),
-        Element("buy", "载上"),
-        Element("tabColor", "配色"),
-        Element("tabTrail", "光迹"),
-        Element("tabScarf", "围巾"),
-        Element("tabHat", "帽子"),
     )
 
     class Set {
@@ -60,7 +46,6 @@ object PlayerHomeLayout {
         var poolDX = 0f; var poolDY = 0f
         var houseDX = 0f; var houseDY = 0f
         var museumDX = 0f; var museumDY = 0f
-        var honorDX = 0f; var honorDY = 0f
         var nameDX = 0f; var nameDY = 0f
         var energyDX = 0f; var energyDY = 0f
         var rewardDX = 0f; var rewardDY = 0f
@@ -70,10 +55,11 @@ object PlayerHomeLayout {
         val hidden = HashSet<String>()
     }
 
-    val UI_IDS = arrayOf(
-        "leave", "wallet", "tabColor", "tabTrail", "tabScarf", "tabHat",
-        "arrowL", "arrowR", "buy", "worldL", "worldR"
-    )
+    /**
+     * 屏幕像素坐标的 UI 元素。商店条那批（tab×4 / 翻页×2 / 购买）随选物面板一起删了——
+     * 面板是底部整块自排版的，没有可以单独挪位的零件。
+     */
+    val UI_IDS = arrayOf("leave", "wallet")
 
     fun labelOf(id: String) = ELEMENTS.firstOrNull { it.id == id }?.label ?: id
 
@@ -87,7 +73,6 @@ object PlayerHomeLayout {
         put("poolDX", s.poolDX); put("poolDY", s.poolDY)
         put("houseDX", s.houseDX); put("houseDY", s.houseDY)
         put("museumDX", s.museumDX); put("museumDY", s.museumDY)
-        put("honorDX", s.honorDX); put("honorDY", s.honorDY)
         put("nameDX", s.nameDX); put("nameDY", s.nameDY)
         put("energyDX", s.energyDX); put("energyDY", s.energyDY)
         put("rewardDX", s.rewardDX); put("rewardDY", s.rewardDY)
@@ -125,8 +110,6 @@ object PlayerHomeLayout {
         into.houseDY = j.optDouble("houseDY", 0.0).toFloat()
         into.museumDX = j.optDouble("museumDX", 0.0).toFloat()
         into.museumDY = j.optDouble("museumDY", 0.0).toFloat()
-        into.honorDX = j.optDouble("honorDX", 0.0).toFloat()
-        into.honorDY = j.optDouble("honorDY", 0.0).toFloat()
         into.nameDX = j.optDouble("nameDX", 0.0).toFloat()
         into.nameDY = j.optDouble("nameDY", 0.0).toFloat()
         into.energyDX = j.optDouble("energyDX", 0.0).toFloat()
