@@ -406,6 +406,9 @@ class HudView(context: Context, private val game: Game) : View(context) {
         private const val LIGHT_RELIC_COMMON = 0xFF3A3A3A.toInt()
         private const val LIGHT_RELIC_RARE = 0xFF3A3A3A.toInt()
         private const val LIGHT_RELIC_LEGEND = 0xFF3A3A3A.toInt()
+        private const val DARK_PANEL = 0xE61C2128.toInt()
+        private const val DARK_EDGE = 0x33FFFFFF
+        private const val DARK_MUTED = 0xFFB0B8C0.toInt()
         /** 商店 / 小屋面板标题：同字号、同相对返回按钮的纵坐标 */
         private const val PANEL_TITLE_SIZE = 48f
         private const val PANEL_TITLE_DY = 64f
@@ -1065,9 +1068,9 @@ class HudView(context: Context, private val game: Game) : View(context) {
             // 深色底板 + 描边，遮住下层文字保证可读
             PixelUi.drawRect(
                 canvas, btnPaint, cx - halfW, toastTop, cx + halfW, toastBottom,
-                withAlpha(0xFF1C2634.toInt(), (fade * 235).toInt()), s,
-                edge = withAlpha(0xFFFFD426.toInt(), (fade * 255).toInt()),
-                edgeW = max(1f, 2f * s), shadow = true
+                withAlpha(0xFF1C2128.toInt(), (fade * 220).toInt()), s,
+                edge = withAlpha(0xFFFFFFFF.toInt(), (fade * 50).toInt()),
+                edgeW = max(1f, s)
             )
             pixText(
                 canvas, toast, cx, baseY, size,
@@ -1297,10 +1300,10 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val bottom = h * 0.84f
         PixelUi.drawPanel(
             canvas, btnPaint, w / 2f - pw / 2f, top, w / 2f + pw / 2f, bottom,
-            0xF21C2634.toInt(), 0xFFFFD426.toInt(), s, 12f * s, edgeW = 2f * s
+            DARK_PANEL, DARK_EDGE, s, 0f, edgeW = 1f
         )
 
-        pixText(canvas, "玩法说明", w / 2f, top + 56f * s, 36f * s, 0xFFFFD426.toInt(), sdx, sdy)
+        pixText(canvas, "玩法说明", w / 2f, top + 56f * s, 36f * s, Color.WHITE, sdx, sdy)
         val lines = arrayOf(
             "左右滑动 换道",
             "上滑或点击 跳跃",
@@ -1353,19 +1356,14 @@ class HudView(context: Context, private val game: Game) : View(context) {
 
         PixelUi.drawPanel(
             canvas, btnPaint, left, top, right, bottom,
-            LIGHT_PANEL, LIGHT_PANEL_EDGE, s, 16f * s, edgeW = 3f * s
+            LIGHT_PANEL, LIGHT_PANEL_EDGE, s, 0f, edgeW = 1f
         )
 
         val titleCx = (left + right) * 0.5f
-        // 顶栏用一块暖金切角 banner 把标题区和列表区分开，比整片同色更有层次
-        PixelUi.drawPanel(
-            canvas, btnPaint, left + 10f * s, top + 6f * s, right - 10f * s, headerBottom - 4f * s,
-            0xFFF3E4B8.toInt(), LIGHT_PANEL_EDGE, s, 9f * s, edgeW = 1.5f * s, shadow = false
-        )
         val boardTitle = if (leaderboardScope == LB_SCOPE_GLOBAL) "全服纪录榜" else "本地纪录榜"
         lightText(canvas, boardTitle, titleCx, top + 46f * s, 36f * s, LIGHT_TITLE)
         val catSize = fittedTextSize(title, 28f * s, (right - left) * 0.82f, 18f * s)
-        lightText(canvas, title, titleCx, top + 84f * s, catSize, LIGHT_RELIC_LEGEND)
+        lightText(canvas, title, titleCx, top + 84f * s, catSize, LIGHT_TEXT)
         val subSize = fittedTextSize(subtitle, 20f * s, (right - left) * 0.88f, 14f * s)
         lightText(canvas, subtitle, titleCx, top + 116f * s, subSize, LIGHT_SUB)
 
@@ -1485,23 +1483,15 @@ class HudView(context: Context, private val game: Game) : View(context) {
         canvas: Canvas, left: Float, top: Float, right: Float, bottom: Float,
         s: Float, rank: Int, entry: Leaderboards.Entry, category: Int, singleLine: Boolean
     ) {
-        val rowFill = if (rank <= 3) 0xFFFFF6DC.toInt() else LIGHT_ROW
         PixelUi.drawPanel(
             canvas, btnPaint, left, top, right, bottom,
-            rowFill, LIGHT_ROW_EDGE, s, 7f * s, edgeW = 1.5f * s, shadow = rank <= 3
+            LIGHT_ROW, LIGHT_ROW_EDGE, s, 0f, edgeW = 1f
         )
 
         val cy = (top + bottom) * 0.5f
         val badgeCx = left + 26f * s
-        if (rank <= 3) {
-            // 前三名直接用与荣誉墙同款的像素奖牌，比数字更抓眼
-            val medalR = 17f * s
-            drawMedal(canvas, badgeCx, cy, medalR, 4 - rank)
-        } else {
-            val rankColor = LIGHT_MUTED
-            textPaint.textAlign = Paint.Align.CENTER
-            lightText(canvas, "$rank", badgeCx, centeredBaselineY(cy, 22f * s), 22f * s, rankColor)
-        }
+        textPaint.textAlign = Paint.Align.CENTER
+        lightText(canvas, "$rank", badgeCx, centeredBaselineY(cy, 22f * s), 22f * s, LIGHT_MUTED)
 
         val rowW = right - left
         val name = entry.player.ifEmpty { "?" }
@@ -1660,19 +1650,15 @@ class HudView(context: Context, private val game: Game) : View(context) {
 
         PixelUi.drawPanel(
             canvas, btnPaint, left, top, left + panelW, top + panelH,
-            0xF01C2634.toInt(), 0xFFFFD426.toInt(), s, 12f * s, edgeW = 2.5f * s
+            DARK_PANEL, DARK_EDGE, s, 0f, edgeW = 1f
         )
 
         val titleBarT = top + 6f * s
         val titleBarH = 46f * s
         val titleBarB = titleBarT + titleBarH
-        PixelUi.drawPanel(
-            canvas, btnPaint, left + 8f * s, titleBarT, left + panelW - 8f * s, titleBarB,
-            0xFF2C3A4E.toInt(), 0xFFFFD426.toInt(), s, 8f * s, edgeW = 1.5f * s, shadow = false
-        )
         textPaint.textAlign = Paint.Align.CENTER
         pixText(canvas, "家园图层", left + panelW / 2f, centeredBaselineY((titleBarT + titleBarB) * 0.5f, 24f * s),
-            24f * s, 0xFFFFE8A8.toInt(), sdx, sdy)
+            24f * s, Color.WHITE, sdx, sdy)
 
         val btnH = 36f * s
         val btnW = 92f * s
@@ -1681,14 +1667,14 @@ class HudView(context: Context, private val game: Game) : View(context) {
         btnHomeLayersClose.set(left + panelW - pad - btnW, btnY, left + panelW - pad, btnY + btnH)
         PixelUi.drawBtn(canvas, btnPaint, btnHomeLayersShowAll.left, btnHomeLayersShowAll.top,
             btnHomeLayersShowAll.right, btnHomeLayersShowAll.bottom,
-            0xFF3A7A9C.toInt(), s)
+            0xFF2C3138.toInt(), s)
         pixText(canvas, "全显示", btnHomeLayersShowAll.centerX(),
-            centeredBaselineY(btnHomeLayersShowAll.centerY(), 18f * s), 18f * s, 0xFFF0F8FF.toInt(), 0f, 0f)
+            centeredBaselineY(btnHomeLayersShowAll.centerY(), 18f * s), 18f * s, Color.WHITE, 0f, 0f)
         PixelUi.drawBtn(canvas, btnPaint, btnHomeLayersClose.left, btnHomeLayersClose.top,
             btnHomeLayersClose.right, btnHomeLayersClose.bottom,
-            0xFF8A6A3A.toInt(), s)
+            0xFF2C3138.toInt(), s)
         pixText(canvas, "完成", btnHomeLayersClose.centerX(),
-            centeredBaselineY(btnHomeLayersClose.centerY(), 18f * s), 18f * s, 0xFFFFF0D0.toInt(), 0f, 0f)
+            centeredBaselineY(btnHomeLayersClose.centerY(), 18f * s), 18f * s, Color.WHITE, 0f, 0f)
 
         val listTop = btnY + btnH + 14f * s
         val listBottom = top + panelH - pad - 10f * s
@@ -1697,7 +1683,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val maxScroll = (contentH - (listBottom - listTop)).coerceAtLeast(0f)
         homeLayerScroll = homeLayerScroll.coerceIn(0f, maxScroll)
 
-        PixelUi.drawDivider(canvas, btnPaint, left + pad, listTop - 6f * s, left + panelW - pad, s, 0x44FFD426.toInt())
+        PixelUi.drawDivider(canvas, btnPaint, left + pad, listTop - 6f * s, left + panelW - pad, s, DARK_EDGE)
 
         canvas.save()
         canvas.clipRect(left + pad, listTop, left + panelW - pad, listBottom)
@@ -1711,35 +1697,17 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 val rowR = left + panelW - pad - 2f * s
                 PixelUi.drawRect(
                     canvas, btnPaint, rowL, rowTop, rowR, rowBottom,
-                    if (on) 0xFF324458.toInt() else 0xFF242C36.toInt(), s,
-                    bevel = if (on) PixelUi.Bevel.RAISED else PixelUi.Bevel.INSET,
-                    edge = if (on) 0x6690B8D0.toInt() else 0x33405060.toInt(),
-                    edgeW = 1.5f * s, shadow = on
+                    if (on) 0xFF2A3038.toInt() else 0xFF1C2128.toInt(), s,
+                    edge = DARK_EDGE, edgeW = 1f
                 )
-                val box = 22f * s
+                val box = 16f * s
                 val boxL = rowL + 12f * s
                 val boxCy = (rowTop + rowBottom) * 0.5f
                 PixelUi.drawRect(
                     canvas, btnPaint, boxL, boxCy - box / 2f, boxL + box, boxCy + box / 2f,
-                    if (on) 0xFF3F9E5A.toInt() else 0xFF3A4552.toInt(), s,
-                    bevel = if (on) PixelUi.Bevel.RAISED else PixelUi.Bevel.INSET,
-                    edge = if (on) 0xFF5FC87A.toInt() else 0xFF506070.toInt(),
-                    edgeW = 1.5f * s
+                    if (on) Color.WHITE else 0x00000000, s,
+                    edge = 0x66FFFFFF, edgeW = 1f
                 )
-                if (on) {
-                    btnPaint.color = 0xFF2A7A42.toInt()
-                    canvas.drawRect(boxL + 2f * s, boxCy - box / 2f + 2f * s, boxL + box - 2f * s, boxCy - box / 2f + 4f * s, btnPaint)
-                    btnPaint.color = 0xFFF0FFF4.toInt()
-                    canvas.drawRect(boxL + 5f * s, boxCy - 2f * s, boxL + box - 7f * s, boxCy, btnPaint)
-                    canvas.drawRect(boxL + 5f * s, boxCy, boxL + box - 11f * s, boxCy + 2f * s, btnPaint)
-                    btnPaint.color = 0xFFFFFFFF.toInt()
-                    canvas.drawRect(boxL + 6f * s, boxCy - 2f * s, boxL + 8f * s, boxCy - 1f * s, btnPaint)
-                    btnPaint.color = withAlpha(0xFFA8FFC0.toInt(), 80)
-                    canvas.drawCircle(boxL + box * 0.7f, boxCy - box * 0.2f, box * 0.2f, btnPaint)
-                } else {
-                    btnPaint.color = 0x44000000.toInt()
-                    canvas.drawRect(boxL + 4f * s, boxCy + 2f * s, boxL + box - 4f * s, boxCy + box / 2f - 3f * s, btnPaint)
-                }
                 textPaint.textAlign = Paint.Align.LEFT
                 pixText(
                     canvas, el.label, boxL + box + 14f * s, centeredBaselineY(boxCy, 18f * s),
@@ -1760,7 +1728,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         if (hit.isEmpty) return
         btnPaint.style = Paint.Style.STROKE
         btnPaint.strokeWidth = 3f * s
-        btnPaint.color = 0xAAFFD426.toInt()
+        btnPaint.color = 0x66FFFFFF
         canvas.drawRect(hit, btnPaint)
         btnPaint.style = Paint.Style.FILL
     }
@@ -1887,11 +1855,8 @@ class HudView(context: Context, private val game: Game) : View(context) {
             val rb = rewardBottom + rdy
             PixelUi.drawPanel(
                 canvas, btnPaint, rl, rt, rr, rb,
-                0x99203048.toInt(), 0x5590B8D0.toInt(), s, 7f * s, edgeW = 1.2f * s, shadow = false
+                0x99203048.toInt(), DARK_EDGE, s, 0f, edgeW = 1f
             )
-            val sparkle = 0.6f + 0.4f * kotlin.math.sin(homePhase * 2f)
-            btnPaint.color = withAlpha(0xFFFFFFFF.toInt(), (30 * sparkle).toInt())
-            canvas.drawRect(rl + 8f * s, rt + 3f * s, rr - 8f * s, rt + 5f * s, btnPaint)
             pixText(
                 canvas, rewardLine, w / 2f + rdx, centeredBaselineY(rewardCy, rewardSize) + rdy,
                 rewardSize, 0xDDD0E8FF.toInt(), 0f, 0f
@@ -1965,7 +1930,6 @@ class HudView(context: Context, private val game: Game) : View(context) {
     }
 
     private fun drawHomeWalletPlate(canvas: Canvas, r: RectF, s: Float, sdx: Float, sdy: Float) {
-        val pulse = 0.72f + 0.28f * (0.5f + 0.5f * kotlin.math.sin(homePhase * 2.4f))
         PixelUi.drawBtn(canvas, btnPaint, r.left, r.top, r.right, r.bottom,
             0xFF2C3138.toInt(), s)
 
@@ -1979,45 +1943,18 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val cy = r.centerY()
         val coinCx = contentL + coinR
 
-        PixelUi.drawCoin(canvas, btnPaint, coinCx, cy, coinR, pulse)
+        PixelUi.drawCoin(canvas, btnPaint, coinCx, cy, coinR, 1f)
 
         textPaint.textAlign = Paint.Align.LEFT
         pixText(
             canvas, "${game.wallet}", contentL + coinR * 2f + gap, centeredBaselineY(cy, labelSize),
-            labelSize, 0xFFFFE088.toInt(), sdx, sdy
+            labelSize, 0xFFF0F4FF.toInt(), sdx, sdy
         )
         textPaint.textAlign = Paint.Align.CENTER
     }
 
     private fun drawHomeNamePlaque(canvas: Canvas, l: Float, t: Float, r: Float, b: Float, s: Float) {
         PixelUi.drawBtn(canvas, btnPaint, l, t, r, b, 0xFF2C3138.toInt(), s)
-    }
-
-    private fun drawTinyHouseIcon(canvas: Canvas, cx: Float, cy: Float, s: Float) {
-        btnPaint.style = Paint.Style.FILL
-        btnPaint.color = 0xFF8A5E32.toInt()
-        canvas.drawRect(cx - 10f * s, cy - 1f * s, cx + 10f * s, cy + 11f * s, btnPaint)
-        btnPaint.color = 0xFFB07A45.toInt()
-        canvas.drawRect(cx - 9f * s, cy, cx + 9f * s, cy + 10f * s, btnPaint)
-        btnPaint.color = 0xFFC89460.toInt()
-        canvas.drawRect(cx - 9f * s, cy, cx + 9f * s, cy + 2f * s, btnPaint)
-        btnPaint.color = 0xFFD9483B.toInt()
-        canvas.drawRect(cx - 13f * s, cy - 7f * s, cx + 13f * s, cy, btnPaint)
-        btnPaint.color = 0xFFE8685B.toInt()
-        canvas.drawRect(cx - 12f * s, cy - 7f * s, cx + 12f * s, cy - 5f * s, btnPaint)
-        canvas.drawRect(cx - 9f * s, cy - 14f * s, cx + 9f * s, cy - 7f * s, btnPaint)
-        btnPaint.color = 0xFFF08070.toInt()
-        canvas.drawRect(cx - 8f * s, cy - 14f * s, cx + 8f * s, cy - 12f * s, btnPaint)
-        btnPaint.color = 0xFF5A3E22.toInt()
-        canvas.drawRect(cx + 2f * s, cy + 1f * s, cx + 7f * s, cy + 10f * s, btnPaint)
-        btnPaint.color = 0xFF6B4A2B.toInt()
-        canvas.drawRect(cx + 3f * s, cy + 2f * s, cx + 6f * s, cy + 9f * s, btnPaint)
-        btnPaint.color = 0xFFFFD75E.toInt()
-        canvas.drawRect(cx - 6f * s, cy + 2f * s, cx - 2f * s, cy + 6f * s, btnPaint)
-        btnPaint.color = 0xFFFFEBAA.toInt()
-        canvas.drawRect(cx - 5f * s, cy + 2f * s, cx - 3f * s, cy + 3f * s, btnPaint)
-        btnPaint.color = 0xFFFFE8A0.toInt()
-        canvas.drawRect(cx - 1f * s, cy - 10f * s, cx + 1f * s, cy - 6f * s, btnPaint)
     }
 
     private fun drawHomeEnergyMeter(
@@ -2040,10 +1977,9 @@ class HudView(context: Context, private val game: Game) : View(context) {
         pixText(canvas, label, x, centeredBaselineY(cy, labelSize), labelSize, 0xFF9AD9A0.toInt(), sdx, sdy)
         x += labelW + 12f * s
 
-        val glow = 0.75f + 0.25f * (0.5f + 0.5f * kotlin.math.sin(homePhase * 2.4f))
         for (i in 0 until 3) {
             val pipCx = x + pipW / 2f
-            PixelUi.drawCrystalPip(canvas, btnPaint, pipCx, cy, pipW, pipH, s, 0xFF7DEBA0.toInt(), i < lv, glow)
+            PixelUi.drawCrystalPip(canvas, btnPaint, pipCx, cy, pipW, pipH, s, 0xFF7DEBA0.toInt(), i < lv, 1f)
             x += pipW + pipGap
         }
 
@@ -2070,17 +2006,13 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val t = h / 2f - ph / 2f
         PixelUi.drawPanel(
             canvas, btnPaint, l, t, l + pw, t + ph,
-            0xF21C2634.toInt(), 0xFFFFD426.toInt(), s, 14f * s, edgeW = 2.5f * s
+            DARK_PANEL, DARK_EDGE, s, 0f, edgeW = 1f
         )
 
         val titleBarT = t + 10f * s
         val titleBarB = titleBarT + titleH
-        PixelUi.drawPanel(
-            canvas, btnPaint, l + 10f * s, titleBarT, l + pw - 10f * s, titleBarB,
-            0xFF2C3A4E.toInt(), 0xFFFFD426.toInt(), s, 8f * s, edgeW = 1.5f * s, shadow = false
-        )
         pixText(canvas, "去哪个家", w / 2f, centeredBaselineY((titleBarT + titleBarB) * 0.5f, 28f * s),
-            28f * s, 0xFFFFE8A8.toInt(), sdx, sdy)
+            28f * s, Color.WHITE, sdx, sdy)
 
         var ry = titleBarB + 16f * s
         for (n in 0 until homeWorldRowCount) {
@@ -2090,35 +2022,23 @@ class HudView(context: Context, private val game: Game) : View(context) {
             val rowPad = 8f * s
             r.set(l + 16f * s, ry, l + pw - 16f * s, ry + rowH - 8f * s)
 
-            val fillColor = if (here) 0xFF344860.toInt() else 0xFF1C2636.toInt()
-            val edgeColor = withAlpha(UNI_HUD[i], if (here) 0xFF else 0x88)
+            val fillColor = if (here) 0xFF2A3038.toInt() else 0xFF1C2128.toInt()
             PixelUi.drawRect(
                 canvas, btnPaint, r.left, r.top, r.right, r.bottom,
-                fillColor, s,
-                bevel = if (here) PixelUi.Bevel.PRESSED else PixelUi.Bevel.RAISED,
-                edge = edgeColor, edgeW = max(1.5f, if (here) 2.5f else 1.5f) * s,
-                shadow = here
+                fillColor, s, edge = DARK_EDGE, edgeW = 1f
             )
-
-            if (here) {
-                btnPaint.style = Paint.Style.FILL
-                btnPaint.color = withAlpha(UNI_HUD[i], 50)
-                canvas.drawRect(r.left + 3f * s, r.top + 3f * s, r.right - 3f * s, r.top + 6f * s, btnPaint)
-            }
 
             val dotCx = r.left + 24f * s
             val dotCy = r.centerY()
-            val dotR = 8f * s
+            val dotR = 6f * s
             btnPaint.color = UNI_HUD[i]
             canvas.drawCircle(dotCx, dotCy, dotR, btnPaint)
-            btnPaint.color = PixelUi.lighten(UNI_HUD[i], 0.5f)
-            canvas.drawCircle(dotCx - dotR * 0.3f, dotCy - dotR * 0.3f, dotR * 0.4f, btnPaint)
 
             textPaint.textAlign = Paint.Align.LEFT
             val textX = dotCx + dotR + 14f * s
             pixText(
                 canvas, Game.UNIVERSE_NAMES[i], textX, centeredBaselineY(r.centerY(), 24f * s),
-                24f * s, if (here) 0xFFFFE8A8.toInt() else 0xFFE8EEF8.toInt(), 0f, 0f
+                24f * s, if (here) Color.WHITE else DARK_MUTED, 0f, 0f
             )
 
             if (here) {
@@ -2200,32 +2120,27 @@ class HudView(context: Context, private val game: Game) : View(context) {
 
         PixelUi.drawPanel(
             canvas, btnPaint, l, t, l + pw, b,
-            0xF01C2634.toInt(), 0xFFFFD426.toInt(), s, 12f * s, edgeW = 2.5f * s
+            DARK_PANEL, DARK_EDGE, s, 0f, edgeW = 1f
         )
 
         val titleBarT = t + 6f * s
         val titleBarB = t + titleH
-        PixelUi.drawPanel(
-            canvas, btnPaint, l + 8f * s, titleBarT, l + pw - 8f * s, titleBarB,
-            0xFF2C3A4E.toInt(), 0xFFFFD426.toInt(), s, 8f * s, edgeW = 1.5f * s, shadow = false
-        )
 
         val title = pickTitleFor(game.homeTab)
         textPaint.textAlign = Paint.Align.LEFT
         pixText(canvas, title, l + padH + 4f * s, centeredBaselineY((titleBarT + titleBarB) * 0.5f, 22f * s),
-            22f * s, 0xFFFFE8A8.toInt(), sdx, sdy)
+            22f * s, Color.WHITE, sdx, sdy)
 
-        val coinPulse = 0.75f + 0.25f * kotlin.math.sin(homePhase * 2.8f)
         val coinCx = l + pw - padH - 10f * s
         val coinCy = (titleBarT + titleBarB) * 0.5f
-        PixelUi.drawCoin(canvas, btnPaint, coinCx - 28f * s, coinCy, 10f * s, coinPulse)
+        PixelUi.drawCoin(canvas, btnPaint, coinCx - 28f * s, coinCy, 10f * s, 1f)
         textPaint.textAlign = Paint.Align.RIGHT
         pixText(canvas, "${game.wallet}", l + pw - padH, centeredBaselineY(coinCy, 20f * s),
-            20f * s, 0xFFFFD75E.toInt(), sdx, sdy)
+            20f * s, 0xFFF0F4FF.toInt(), sdx, sdy)
         textPaint.textAlign = Paint.Align.CENTER
 
         val dividerY = titleBarB + 6f * s
-        PixelUi.drawDivider(canvas, btnPaint, l + padH, dividerY, l + pw - padH, s, 0x66FFD426.toInt())
+        PixelUi.drawDivider(canvas, btnPaint, l + padH, dividerY, l + pw - padH, s, DARK_EDGE)
 
         var ry = titleBarB + 14f * s
         for (row in rows) {
@@ -2243,10 +2158,8 @@ class HudView(context: Context, private val game: Game) : View(context) {
 
             PixelUi.drawPanel(
                 canvas, btnPaint, labelTagL, labelTagT, labelTagR, labelTagB,
-                0x553A5068.toInt(), 0x6690B0D0.toInt(), s * 0.85f, 5f * s, edgeW = 1f * s, shadow = false
+                0x332A3038.toInt(), DARK_EDGE, s, 0f, edgeW = 1f
             )
-            btnPaint.color = 0x33FFFFFF.toInt()
-            canvas.drawRect(labelTagL + 4f * s, labelTagT + 2f * s, labelTagR - 4f * s, labelTagT + 3.5f * s, btnPaint)
 
             pixText(
                 canvas, row.label, (labelTagL + labelTagR) * 0.5f,
@@ -2274,8 +2187,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         textPaint.textAlign = Paint.Align.CENTER
 
         val hint = if (pickArmedTab >= 0) "再点一次买下  ·  点别处收起" else "点别处收起"
-        val hintAlpha = (0.55f + 0.25f * (0.5f + 0.5f * kotlin.math.sin(homePhase * 1.6f))).coerceIn(0.4f, 1f)
-        pixText(canvas, hint, w / 2f, b - 12f * s, 16f * s, withAlpha(0xCCDDEEFF.toInt(), (hintAlpha * 255).toInt()), 0f, 0f)
+        pixText(canvas, hint, w / 2f, b - 12f * s, 16f * s, DARK_MUTED, 0f, 0f)
     }
 
     private fun drawPickChip(
@@ -2297,25 +2209,17 @@ class HudView(context: Context, private val game: Game) : View(context) {
             else -> 0xFF181E28.toInt()
         }
         val edge = when {
-            equipped -> 0xFFFFD426.toInt()
-            armed -> withAlpha(0xFFFFD426.toInt(), (150 + 105 * (0.5f + 0.5f * kotlin.math.sin(homePhase * 7f))).toInt())
-            owned -> 0x99D4E4FF.toInt()
-            afford -> 0x55A0B4CC.toInt()
-            else -> 0x33506078.toInt()
+            equipped -> 0xCCFFFFFF.toInt()
+            armed -> 0x88FFFFFF.toInt()
+            owned -> 0x55FFFFFF.toInt()
+            afford -> DARK_EDGE
+            else -> 0x22FFFFFF
         }
-        val edgeW = max(1.5f, if (equipped || armed) 2.5f else 1.5f) * s
 
         PixelUi.drawRect(
             canvas, btnPaint, cl + chipPad, ct + chipPad, cr - chipPad, cb - chipPad, fill, s,
-            bevel = if (equipped || armed) PixelUi.Bevel.PRESSED else PixelUi.Bevel.RAISED,
-            edge = edge, edgeW = edgeW, shadow = equipped
+            edge = edge, edgeW = 1f
         )
-
-        if (equipped) {
-            btnPaint.style = Paint.Style.FILL
-            btnPaint.color = withAlpha(0xFFFFD426.toInt(), 60)
-            canvas.drawRect(cl + chipPad + 2f * s, ct + chipPad + 2f * s, cr - chipPad - 2f * s, ct + chipPad + 5f * s, btnPaint)
-        }
 
         val cx = (cl + cr) / 2f
         val cy = (ct + cb) / 2f
@@ -2333,7 +2237,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
             btnPaint.color = withAlpha(0xFF101820.toInt(), 180)
             canvas.drawRect(cl + chipPad + 1f * s, cb - chipPad - bgH - 2f * s, cr - chipPad - 1f * s, cb - chipPad - 1f * s, btnPaint)
             pixText(canvas, name, cx, cb - chipPad - bgH / 2f + ns * 0.35f, ns,
-                if (afford) 0xFFFFF0D0.toInt() else 0xFF8090A0.toInt(), 0f, 0f)
+                if (afford) 0xFFF0F4FF.toInt() else 0xFF8090A0.toInt(), 0f, 0f)
         } else {
             val nameY = if (owned) cy else cy - 6f * s
             val ns = fittedTextSize(name, 18f * s, maxW, 12f * s)
@@ -2343,40 +2247,13 @@ class HudView(context: Context, private val game: Game) : View(context) {
             )
         }
 
-        if (owned && equipped) {
-            val checkSize = 11f * s
-            val checkX = cr - chipPad - checkSize - 3f * s
-            val checkY = ct + chipPad + 4f * s
-            btnPaint.style = Paint.Style.FILL
-            btnPaint.color = 0xFF3F9E5A.toInt()
-            canvas.drawRect(checkX, checkY, checkX + checkSize, checkY + checkSize, btnPaint)
-            btnPaint.color = 0xFFFFFFFF.toInt()
-            canvas.drawRect(checkX + 2f * s, checkY + 5f * s, checkX + 4.5f * s, checkY + 9f * s, btnPaint)
-            canvas.drawRect(checkX + 4.5f * s, checkY + 7f * s, checkX + 8.5f * s, checkY + 9.5f * s, btnPaint)
-        }
-
         if (!owned) {
             val ps = fittedTextSize("$price", 14f * s, maxW, 10f * s)
-            val priceH = ps + 5f * s
-            btnPaint.color = withAlpha(
-                if (afford) 0xFF2A1F08.toInt() else 0xFF2A1010.toInt(),
-                190
-            )
-            canvas.drawRect(cl + chipPad + 2f * s, cb - chipPad - priceH - 1f * s, cr - chipPad - 2f * s, cb - chipPad - 1f * s, btnPaint)
             pixText(
-                canvas, "$price", cx, cb - chipPad - priceH / 2f + ps * 0.35f, ps,
-                if (afford) 0xFFFFD75E.toInt() else 0xFFE07060.toInt(),
+                canvas, "$price", cx, cb - chipPad - ps * 0.7f, ps,
+                if (afford) DARK_MUTED else 0xFFE07060.toInt(),
                 0f, 0f
             )
-        }
-
-        if (armed) {
-            btnPaint.style = Paint.Style.STROKE
-            btnPaint.strokeWidth = 2f * s
-            btnPaint.color = withAlpha(0xFFFFD426.toInt(),
-                (80 + 80 * (0.5f + 0.5f * kotlin.math.sin(homePhase * 6f))).toInt())
-            canvas.drawRect(cl, ct, cr, cb, btnPaint)
-            btnPaint.style = Paint.Style.FILL
         }
 
         val r = pickChipRects[pickChipCount]
@@ -2577,65 +2454,6 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private fun snapDragPx(v: Float): Float =
         kotlin.math.round(v / HOME_DRAG_SNAP_PX) * HOME_DRAG_SNAP_PX
 
-    /**
-     * 奖牌盘面：lv 0 为未解锁的灰位，1/2/3/4 对应铜 / 银 / 金 / 钻。
-     * 档位色是语义色（金牌就该是金的），不随世界换；[tint] 供远景做大气透视时统一褪色。
-     */
-    private fun drawMedal(
-        canvas: Canvas, cx: Float, cy: Float, r: Float, lv: Int,
-        tint: ((Int) -> Int)? = null
-    ) {
-        fun t(c: Int) = tint?.invoke(c) ?: c
-        if (lv <= 0) {
-            pixDisc(canvas, cx, cy, r, t(0xFF8A7561.toInt()))
-            pixDisc(canvas, cx, cy, r * 0.72f, t(0xFF6B5B4B.toInt()))
-            return
-        }
-        val face = when (lv) {
-            1 -> 0xFFC87A3A.toInt()
-            2 -> 0xFFAEB6C4.toInt()
-            3 -> 0xFFF2C14E.toInt()
-            else -> 0xFF6FD3E0.toInt()
-        }
-        val glow = when (lv) {
-            1 -> 0xFFE8AE74.toInt()
-            2 -> 0xFFDCE3EC.toInt()
-            3 -> 0xFFFFEDB0.toInt()
-            else -> 0xFFCBF3F9.toInt()
-        }
-        pixDisc(canvas, cx, cy, r, t(darken(face)))
-        pixDisc(canvas, cx, cy, r * 0.82f, t(face))
-        pixDisc(canvas, cx, cy, r * 0.44f, t(glow))
-        btnPaint.style = Paint.Style.FILL
-        btnPaint.color = t(0xCCFFFFFF.toInt())
-        canvas.drawRect(cx - r * 0.62f, cy - r * 0.5f, cx - r * 0.36f, cy - r * 0.24f, btnPaint)
-    }
-
-    /** 奖牌上方的挂钉与绶带；topY 为盘面顶端 */
-    private fun drawMedalRibbon(canvas: Canvas, cx: Float, topY: Float, r: Float, lv: Int) {
-        btnPaint.style = Paint.Style.FILL
-        btnPaint.color = 0xFF5B5046.toInt()
-        canvas.drawRect(cx - r * 0.18f, topY - r * 1.0f, cx + r * 0.18f, topY - r * 0.64f, btnPaint)
-        btnPaint.color = if (lv > 0) 0xFFA83B3B.toInt() else 0xFF7A6C5C.toInt()
-        canvas.drawRect(cx - r * 0.64f, topY - r * 0.64f, cx - r * 0.18f, topY + r * 0.18f, btnPaint)
-        canvas.drawRect(cx + r * 0.18f, topY - r * 0.64f, cx + r * 0.64f, topY + r * 0.18f, btnPaint)
-    }
-
-    /** 像素圆盘：5 段等高横条拼出圆形，用于奖牌盘面 */
-    private fun pixDisc(canvas: Canvas, cx: Float, cy: Float, r: Float, color: Int) {
-        if (r <= 0f) return
-        val f = floatArrayOf(0.5f, 0.86f, 1f, 0.86f, 0.5f)
-        val band = r * 2f / 5f
-        btnPaint.style = Paint.Style.FILL
-        btnPaint.color = color
-        for (i in 0..4) {
-            val hw = r * f[i]
-            canvas.drawRect(cx - hw, cy - r + i * band, cx + hw, cy - r + (i + 1) * band, btnPaint)
-        }
-    }
-
-    private fun darken(c: Int): Int = PixelUi.darken(c)
-
     private fun withAlpha(c: Int, a: Int): Int = (a shl 24) or (c and 0x00FFFFFF)
 
     // ---------- 家园 3D 场景的交互层 ----------
@@ -2656,10 +2474,9 @@ class HudView(context: Context, private val game: Game) : View(context) {
         syncHomeHits(w, h)
 
         if (homeEditing) {
-            val pulse = if (kotlin.math.sin(homePhase * 4f) > 0f) 0x44FFD426 else 0x22FFD426
             btnPaint.style = Paint.Style.STROKE
             btnPaint.strokeWidth = 2f
-            btnPaint.color = pulse
+            btnPaint.color = 0x55FFFFFF
             when (game.homeTab) {
                 Game.HOME_TAB_HOUSE, Game.HOME_TAB_ROOF -> canvas.drawRect(hitHouse, btnPaint)
                 Game.HOME_TAB_DECO -> for (id in ownedDecoDragId) {
@@ -3402,11 +3219,11 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val bottom = top + relBottom
         PixelUi.drawPanel(
             canvas, btnPaint, left, top, right, bottom,
-            0xF20C1220.toInt(), 0xFF6B8CFF.toInt(), s, 16f * s, edgeW = 2.5f * s
+            DARK_PANEL, DARK_EDGE, s, 0f, edgeW = 1f
         )
 
         // 顶栏：名称 + 阅读进度
-        pixText(canvas, name, w / 2f, top + nameY, 34f * s, 0xFFB8CCFF.toInt(), sdx, sdy)
+        pixText(canvas, name, w / 2f, top + nameY, 34f * s, Color.WHITE, sdx, sdy)
         pixText(canvas, "$readTag · ${game.stargazeReadCount()}/${game.telescopeLevel + 1}",
             w / 2f, top + readTagY, 18f * s, 0xFF88AACC.toInt(), sdx, sdy)
 
@@ -3432,7 +3249,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         btnPaint.style = Paint.Style.FILL
 
         // 术语徽章
-        pixText(canvas, card.term, w / 2f, top + badgeY, 26f * s, 0xFFFFD426.toInt(), sdx, sdy)
+        pixText(canvas, card.term, w / 2f, top + badgeY, 26f * s, Color.WHITE, sdx, sdy)
 
         // 两句钩子
         for (i in hooks.indices) {
@@ -3452,8 +3269,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
             val chipTextY = chipTopAbs + chipH * 0.62f
             PixelUi.drawPanel(
                 canvas, btnPaint, cl, chipTopAbs, cr, chipTopAbs + chipH,
-                0xFF162038.toInt(), 0xFF3A4A70.toInt(), s, 6f * s,
-                edgeW = 1.5f * s, shadow = false
+                0xFF1C2128.toInt(), DARK_EDGE, s, 0f, edgeW = 1f
             )
             val factSize = fittedTextSize(facts[i], 18f * s, chipW * 0.9f, 14f * s)
             pixText(canvas, facts[i], cx, chipTextY, factSize, 0xFFCCDDFF.toInt(), sdx, sdy)
@@ -3610,7 +3426,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         btnPause.set(right - size, bottom - size, right, bottom)
         PixelUi.drawRect(
             canvas, btnPaint, btnPause.left, btnPause.top, btnPause.right, btnPause.bottom,
-            0xFF4A5A6E.toInt(), s, edge = 0xFF6B4E28.toInt(), edgeW = 1f, shadow = true
+            0xFF2C3138.toInt(), s, edge = DARK_EDGE, edgeW = 1f
         )
         btnPaint.color = Color.WHITE
         val cx = btnPause.centerX()
@@ -3769,7 +3585,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
     ) {
         val fill = when {
             !enabled -> 0xFFE8E2D6.toInt()
-            selected -> 0xFFFFF6DC.toInt()
+            selected -> 0xFFE8E6E0.toInt()
             else -> LIGHT_BTN
         }
         PixelUi.drawBtn(canvas, btnPaint, r.left, r.top, r.right, r.bottom,
@@ -3786,8 +3602,6 @@ class HudView(context: Context, private val game: Game) : View(context) {
             centeredBaselineY(r.centerY(), labelSize), labelSize, ink
         )
     }
-
-    private fun bevelW(s: Float) = max(3f * s, 3f)
 
     /** 亮色底上的稀有度字色，避免霓虹色 + 阴影发糊 */
     private fun relicInkOnLight(rarity: Int): Int = when (rarity) {
@@ -3841,9 +3655,22 @@ class HudView(context: Context, private val game: Game) : View(context) {
             drawHonorPlaque(canvas, rowLeft, rowTop, rowRight, rowBottom, s, lv)
 
             val badgeLeft = rowLeft + 10f * s
-            val medalR = min(rowH * 0.30f, 30f * s)
-            drawMedalRibbon(canvas, badgeLeft + badgeW * 0.5f, (rowTop + rowBottom) * 0.5f - medalR, medalR, lv)
-            drawMedal(canvas, badgeLeft + badgeW * 0.5f, (rowTop + rowBottom) * 0.5f, medalR, lv)
+            val badgeCx = badgeLeft + badgeW * 0.5f
+            val badgeCy = (rowTop + rowBottom) * 0.5f
+            val badgeHalf = min(rowH * 0.28f, 16f * s)
+            val tier = when (lv) {
+                0 -> "—"
+                1 -> "铜"
+                2 -> "银"
+                3 -> "金"
+                else -> "钻"
+            }
+            PixelUi.drawRect(
+                canvas, btnPaint,
+                badgeCx - badgeHalf, badgeCy - badgeHalf, badgeCx + badgeHalf, badgeCy + badgeHalf,
+                if (lv > 0) LIGHT_ROW else 0xFFECEAE4.toInt(), s, edge = LIGHT_ROW_EDGE, edgeW = 1f
+            )
+            lightText(canvas, tier, badgeCx, centeredBaselineY(badgeCy, 16f * s), 16f * s, tierColor)
 
             val textLeft = badgeLeft + badgeW + 14f * s
             val textMaxW = rowRight - textLeft - 12f * s
@@ -4181,10 +4008,9 @@ class HudView(context: Context, private val game: Game) : View(context) {
         }
 
         val rarity = Game.RELIC_RARITY[id]
-        val frameColor = relicInkOnLight(rarity)
         PixelUi.drawPanel(
             canvas, btnPaint, left, top, right, bottom,
-            LIGHT_PANEL, frameColor, s, 14f * s, edgeW = 3f * s
+            LIGHT_PANEL, LIGHT_PANEL_EDGE, s, 0f, edgeW = 1f
         )
 
         relicDetailFrame.set(left, top, right, bottom)
@@ -4200,7 +4026,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
 
         var ty = top + 52f * s + iconHalf * 2f + 24f * s
         textPaint.textAlign = Paint.Align.CENTER
-        lightText(canvas, Game.RELIC_NAMES[id], cx, ty, 40f * s, frameColor)
+        lightText(canvas, Game.RELIC_NAMES[id], cx, ty, 40f * s, LIGHT_TITLE)
         ty += 40f * s
         val collected = game.relicCollected(id)
         val eraLine = buildString {
@@ -4291,9 +4117,8 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 PixelUi.drawRect(
                     canvas, btnPaint, x - pad, y - pad, x + pad, y + pad,
                     withAlpha(0xF8F4E8.toInt(), (fade * 0xEE).toInt()), s,
-                    bevel = PixelUi.Bevel.RAISED,
                     edge = withAlpha(accent, a255),
-                    edgeW = max(2f, 2.5f * s), shadow = true
+                    edgeW = 1f
                 )
                 RelicIcons.draw(
                     canvas, btnPaint, id, x, y, iconHalf,

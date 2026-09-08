@@ -2,7 +2,6 @@ package com.vvenv.tomrun
 
 import android.graphics.Canvas
 import android.graphics.Paint
-import android.graphics.Path
 import kotlin.math.max
 import kotlin.math.min
 
@@ -13,19 +12,6 @@ import kotlin.math.min
 object PixelUi {
 
     enum class Bevel { RAISED, PRESSED, INSET }
-
-    /** 多层斜面色阶，由 [paletteFor] 从主题色推导 */
-    data class DepthPalette(
-        val fill: Int,
-        val outer: Int,
-        val specular: Int,
-        val hi: Int,
-        val midHi: Int,
-        val lo: Int,
-        val deep: Int
-    )
-
-    private val chamferPathBuf = Path()
 
     fun withAlpha(c: Int, a: Int): Int = (a shl 24) or (c and 0x00FFFFFF)
 
@@ -42,45 +28,6 @@ object PixelUi {
     }
 
     fun darken(c: Int): Int = darken(c, 0.28f)
-
-    /** 从面板/按钮的主题色生成 SDV 式多层斜面色 */
-    fun paletteFor(fill: Int, edge: Int): DepthPalette = DepthPalette(
-        fill = fill,
-        outer = edge,
-        specular = lighten(fill, 0.52f),
-        hi = lighten(fill, 0.34f),
-        midHi = lighten(fill, 0.18f),
-        lo = blend(edge, darken(fill, 0.35f), 0.55f),
-        deep = darken(edge, 0.28f)
-    )
-
-    private fun blend(a: Int, b: Int, t: Float): Int {
-        fun ch(ai: Int, bi: Int) = (ai + (bi - ai) * t).toInt().coerceIn(0, 255)
-        val alpha = ((a ushr 24) * (1f - t) + (b ushr 24) * t).toInt().coerceIn(0, 255)
-        return (alpha shl 24) or
-            (ch(a shr 16 and 0xFF, b shr 16 and 0xFF) shl 16) or
-            (ch(a shr 8 and 0xFF, b shr 8 and 0xFF) shl 8) or
-            ch(a and 0xFF, b and 0xFF)
-    }
-
-    fun chamferPath(l: Float, t: Float, r: Float, b: Float, n: Float): Path {
-        val nn = n.coerceAtMost(min(r - l, b - t) * 0.5f).coerceAtLeast(0f)
-        chamferPathBuf.reset()
-        if (nn <= 0f) {
-            chamferPathBuf.addRect(l, t, r, b, Path.Direction.CW)
-            return chamferPathBuf
-        }
-        chamferPathBuf.moveTo(l + nn, t)
-        chamferPathBuf.lineTo(r - nn, t)
-        chamferPathBuf.lineTo(r, t + nn)
-        chamferPathBuf.lineTo(r, b - nn)
-        chamferPathBuf.lineTo(r - nn, b)
-        chamferPathBuf.lineTo(l + nn, b)
-        chamferPathBuf.lineTo(l, b - nn)
-        chamferPathBuf.lineTo(l, t + nn)
-        chamferPathBuf.close()
-        return chamferPathBuf
-    }
 
     fun drawPanel(
         canvas: Canvas, paint: Paint,
