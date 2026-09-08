@@ -71,8 +71,6 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private var downY = 0f
     private var consumed = false
     private var runSwipeFired = false
-    private var lastSwipeX = 0f
-    private var lastSwipeY = 0f
     private var toast = ""
     private var toastLife = 0f
     private var secretTapCount = 0
@@ -486,8 +484,6 @@ class HudView(context: Context, private val game: Game) : View(context) {
             MotionEvent.ACTION_DOWN -> {
                 downX = event.x; downY = event.y; consumed = false
                 runSwipeFired = false
-                lastSwipeX = event.x
-                lastSwipeY = event.y
                 yardLongPressTriggered = false
                 homeDragId = null
                 homeDragActive = false
@@ -573,25 +569,22 @@ class HudView(context: Context, private val game: Game) : View(context) {
     /**
      * 跑酷手势：左右换道优先，轴要分得清才落锤。
      * 斜着滑时旧逻辑会先把微小上下当成跳/铲并吃掉整次手势，左右就失灵。
+     * 同一次按下只认一记换道，长滑不能连跳两条道。
      */
     private fun tryRunSwipe(x: Float, y: Float): Boolean {
-        if (consumed && !runSwipeFired) return false
+        if (consumed || runSwipeFired) return false
         if (game.state != Game.State.RUNNING || game.paused) return false
         val s = hudScale(width.toFloat(), height.toFloat())
         val minH = 36f * s
         val minV = 52f * s
-        val originX = if (runSwipeFired) lastSwipeX else downX
-        val originY = if (runSwipeFired) lastSwipeY else downY
-        val dx = x - originX
-        val dy = y - originY
+        val dx = x - downX
+        val dy = y - downY
         val adx = abs(dx)
         val ady = abs(dy)
         val horizontal = adx >= minH && adx > ady * 1.15f
-        val vertical = !runSwipeFired && ady >= minV && ady > adx * 1.25f
+        val vertical = ady >= minV && ady > adx * 1.25f
         if (horizontal) {
             if (dx > 0f) game.onSwipeRight() else game.onSwipeLeft()
-            lastSwipeX = x
-            lastSwipeY = y
             runSwipeFired = true
             consumed = true
             return true
