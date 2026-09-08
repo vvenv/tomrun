@@ -60,6 +60,22 @@ class Game {
         const val BOOST_MULT = 1.22f
         /** 拾取/击倒等奖励瞬间：短暂减速让玩家读清反馈 */
         const val PACE_SLOW_MULT = 0.68f
+        /** 离地后仍可起跳的宽限，避免「脚刚离地点跳没了」 */
+        const val COYOTE_SECS = 0.12f
+        /** 落地前点跳会记住，着地立刻跳出去 */
+        const val JUMP_BUFFER_SECS = 0.14f
+        const val NEAR_MISS_COOL = 0.48f
+        const val NEAR_MISS_SCORE = 8
+
+        private const val WAVE_BLOCK = 0
+        private const val WAVE_LOW = 1
+        private const val WAVE_BAR = 2
+        private const val WAVE_SPIKE = 3
+        private const val WAVE_RAMP = 4
+        private const val WAVE_COINS = 5
+        private const val WAVE_WEAVE = 6
+        private const val WAVE_BAR_LOW = 7
+        private const val WAVE_GATE = 8
 
         // 连击阈值：x2/x3/x4/x5。
         // 窗口拉长到 2.6s，覆盖住波与波之间的正常空档，让高档位靠「持续好好玩」够得到，
@@ -678,6 +694,9 @@ class Game {
     private var invulnTime = 0f
     private var wavesSincePower = 0
     private var runTime = 0f
+    private var coyoteTime = 0f
+    private var jumpBuffer = 0f
+    private var nearMissCool = 0f
     /** 本波金币串铺到的最深 z（最后一枚）；用于给下一波障碍留出间距 */
     private var waveCoinMinZ = Float.POSITIVE_INFINITY
 
@@ -1753,16 +1772,24 @@ class Game {
         edgeBumpTime = EDGE_BUMP_DURATION
     }
 
+    private fun canJumpNow(): Boolean =
+        riding == null && (onGround || coyoteTime > 0f)
+
+    private fun performJump() {
+        velY = JUMP_V * UNI_JUMP[universe]
+        slideTimer = 0f
+        coyoteTime = 0f
+        jumpBuffer = 0f
+        runJumps++
+        bumpQuest(Q_JUMP, 1)
+        keepCombo()
+        emit(EV_JUMP, HAPTIC_LIGHT)
+    }
+
     private fun jump() {
         if (riding != null) return
-        if (onGround) {
-            velY = JUMP_V * UNI_JUMP[universe]
-            slideTimer = 0f
-            runJumps++
-            bumpQuest(Q_JUMP, 1)
-            keepCombo()
-            emit(EV_JUMP, HAPTIC_LIGHT)
-        }
+        if (canJumpNow()) performJump()
+        else jumpBuffer = JUMP_BUFFER_SECS
     }
 
     @Synchronized fun reset() {
@@ -1795,6 +1822,9 @@ class Game {
         nextRelicAt = 180f + Random.nextFloat() * 120f
         shake = 0f; hapticPulse = 0; floatFlash = 0f; lastFloat = ""
         wavesSincePower = 0
+        coyoteTime = 0f
+        jumpBuffer = 0f
+        nearMissCool = 0f
         menuPanel = PANEL_MAIN
         paused = false
         zipGap = 90f + Random.nextFloat() * 80f
@@ -1835,11 +1865,12 @@ class Game {
         gapRemaining = nextGap()
     }
 
-    /** 反应时间间距：前期 ~2.1s，后期 ~1.05s；前 500m 略放宽 */
+    /** 反应时间间距：前期 ~2.1s，后期略收到 ~0.95s；前 500m 略放宽 */
     private fun nextGap(): Float {
         val t = (distance / 2500f).coerceIn(0f, 1f)
         val earlyEase = if (distance < 500f) 1f + 0.15f * (1f - distance / 500f) else 1f
-        val react = (2.1f - t * 0.85f) * earlyEase
+        val late = if (distance > 1400f) 0.94f else 1f
+        val react = (2.1f - t * 0.90f) * earlyEase * late
         val jitter = 0.88f + Random.nextFloat() * 0.28f
         return (baseSpeed * react * jitter).coerceIn(18f, 58f)
     }
@@ -1959,6 +1990,19 @@ class Game {
             }
         }
 
+        if (riding != null) {
+            coyoteTime = 0f
+            jumpBuffer = 0f
+        } else {
+            if (onGround && velY <= 0f) coyoteTime = COYOTE_SECS
+            else coyoteTime = (coyoteTime - dt).coerceAtLeast(0f)
+            if (jumpBuffer > 0f) {
+                jumpBuffer = (jumpBuffer - dt).coerceAtLeast(0f)
+                if (canJumpNow()) performJump()
+            }
+        }
+        if (nearMissCool > 0f) nearMissCool = (nearMissCool - dt).coerceAtLeast(0f)
+
         val it = entities.iterator()
         while (it.hasNext()) {
             val e = it.next()
@@ -2025,6 +2069,7 @@ class Game {
         else if (!portalActive && distance >= nextChaseAt) startChase()
 
         checkCollision()
+        if (state == State.RUNNING) tickNearMiss()
         syncQuestProgress()
         // 计分：里程 + 加倍里程 + 金币基础分 + 连击额外 + 任务分
         score = (distance + scoreBoost).toInt() + coins * 10 + comboScore + missionBonus
@@ -2157,7 +2202,8 @@ class Game {
         chaseTimeLeft -= dt
         yokaiRunPhase += dt * speed * 0.92f
         yokaiLaneTimer -= dt
-        if (yokaiLaneTimer <= 0f) {
+        // 最后两秒 / 快贴上时锁道，底栏「切到X道」才是真话
+        if (yokaiLaneTimer <= 0f && chaseTimeLeft > 2.6f && yokaiZ < -18f) {
             var next = Random.nextInt(3)
             if (next == yokaiLane) next = (next + 1) % 3
             yokaiLane = next
@@ -2308,70 +2354,176 @@ class Game {
     private fun spawnWave(zBase: Float, early: Boolean) {
         wavesSincePower++
         waveCoinMinZ = Float.POSITIVE_INFINITY
-        val freeLanes = mutableListOf(0, 1, 2)
         val barOpen = distance > 180f && !early
         val rampOpen = distance > 450f && !early
-        // 地刺：需要看清"平躺→突然弹起"才能反应，晚一点解锁给玩家先摸熟基础道具
         val spikeOpen = distance > 280f && !early
-        val dense = distance > 1200f
-        val relaxed = distance < 500f && !early
-        val blockCut = if (relaxed) 0.48f else 0.55f
-        val lowCut = if (relaxed) 0.72f else 0.82f
 
-        val r = Random.nextFloat()
-        when {
-            rampOpen && r < 0.14f -> spawnRampWave(zBase)
-            barOpen && r < (if (dense) 0.38f else 0.32f) -> {
-                val l = Random.nextInt(3)
-                entities.add(Entity(OBST_BAR, l, zBase))
-                // 金币与横杆同道：串起点退到横杆之后，先铲滑过去再吃，
-                // 否则金币等于把人直接引到必须铲滑的位置上，没有反应时间
-                coinRow(l, zBase - coinObstClear())
-            }
-            r < blockCut -> {
-                // 最多堵 2 道，始终留一条可走
-                val n = 1 + Random.nextInt(2)
-                freeLanes.shuffle()
-                for (i in 0 until n) entities.add(Entity(OBST_BLOCK, freeLanes[i], zBase))
-                coinRow(freeLanes.last(), zBase)
-            }
-            r < lowCut -> {
-                val n = 1 + Random.nextInt(2)
-                freeLanes.shuffle()
-                for (i in 0 until n) entities.add(Entity(OBST_LOW, freeLanes[i], zBase))
-                coinArc(freeLanes[0], zBase)
-            }
-            spikeOpen && r < lowCut + 0.10f -> {
-                val n = 1 + Random.nextInt(2)
-                freeLanes.shuffle()
-                for (i in 0 until n) entities.add(Entity(OBST_SPIKE, freeLanes[i], zBase))
-                coinArc(freeLanes[0], zBase)
-            }
-            else -> {
-                // 两列金币：同道可密排；分道则按变道时间拉开 Z，避免来不及换道
-                val laneA = Random.nextInt(3)
-                val laneB = Random.nextInt(3)
-                coinRow(laneA, zBase, 5)
-                coinRow(laneB, zBase - coinLaneGap(laneA, laneB, 5), 5)
-            }
+        when (pickWaveKind(early, barOpen, rampOpen, spikeOpen)) {
+            WAVE_RAMP -> spawnRampWave(zBase)
+            WAVE_BAR -> spawnBarWave(zBase)
+            WAVE_BLOCK -> spawnBlockWave(zBase)
+            WAVE_LOW -> spawnLowWave(zBase)
+            WAVE_SPIKE -> spawnSpikeWave(zBase)
+            WAVE_WEAVE -> spawnWeaveWave(zBase)
+            WAVE_BAR_LOW -> spawnBarLowWave(zBase)
+            WAVE_GATE -> spawnGateWave(zBase)
+            else -> spawnCoinWave(zBase)
         }
 
         // 道具 / 藏品：随机 + 保底；妖怪追击期间只留金币与障碍
         if (!chaseActive) {
+            val pickupZ = (if (waveCoinMinZ.isFinite()) min(waveCoinMinZ, zBase) else zBase) - 8f
             val pity = wavesSincePower >= 7
             if (pity || Random.nextFloat() < 0.15f) {
                 val kinds = intArrayOf(P_MAGNET, P_HELMET, P_DOUBLE, P_BOOST)
-                entities.add(Entity(kinds[Random.nextInt(kinds.size)], Random.nextInt(3), zBase - 10f, 1.2f))
+                entities.add(Entity(kinds[Random.nextInt(kinds.size)], freeLaneNear(pickupZ), pickupZ, 1.2f))
                 wavesSincePower = 0
             }
             if (distance >= nextRelicAt) {
-                spawnRelic(zBase)
+                spawnRelic(pickupZ)
             }
         }
     }
 
-    private fun spawnRelic(zBase: Float) {
-        val e = Entity(P_RELIC, Random.nextInt(3), zBase - 10f, 1.2f)
+    /** 按距离解锁 + 当前宇宙偏科，抽一波该练什么动作 */
+    private fun pickWaveKind(
+        early: Boolean, barOpen: Boolean, rampOpen: Boolean, spikeOpen: Boolean
+    ): Int {
+        val setOpen = !early && distance > 350f
+        val w = FloatArray(9)
+        w[WAVE_BLOCK] = if (distance < 500f && !early) 0.30f else 0.26f
+        w[WAVE_LOW] = 0.22f
+        w[WAVE_BAR] = if (barOpen) 0.16f else 0f
+        w[WAVE_SPIKE] = if (spikeOpen) 0.08f else 0f
+        w[WAVE_RAMP] = if (rampOpen) 0.10f else 0f
+        w[WAVE_COINS] = if (early || distance < 500f) 0.22f else 0.10f
+        w[WAVE_WEAVE] = if (setOpen) 0.10f else 0f
+        w[WAVE_BAR_LOW] = if (setOpen && barOpen && distance > 400f) 0.08f else 0f
+        w[WAVE_GATE] = if (setOpen && barOpen && distance > 600f) 0.06f else 0f
+        if (distance > 900f) {
+            w[WAVE_WEAVE] += 0.04f
+            w[WAVE_BAR_LOW] += 0.03f
+            w[WAVE_COINS] *= 0.7f
+        }
+        when (universe) {
+            UNI_WATER -> { w[WAVE_BAR] += 0.10f; w[WAVE_LOW] -= 0.04f; w[WAVE_BLOCK] -= 0.04f }
+            UNI_SKY -> { w[WAVE_LOW] += 0.08f; w[WAVE_RAMP] += 0.06f; w[WAVE_BAR] -= 0.05f }
+            UNI_LAVA -> {
+                w[WAVE_BLOCK] += 0.08f; w[WAVE_SPIKE] += 0.04f
+                w[WAVE_WEAVE] += 0.04f; w[WAVE_COINS] -= 0.06f
+            }
+            UNI_CANDY -> { w[WAVE_COINS] += 0.10f; w[WAVE_BLOCK] -= 0.04f }
+            UNI_SPACE -> { w[WAVE_RAMP] += 0.08f; w[WAVE_LOW] += 0.05f; w[WAVE_BLOCK] -= 0.05f }
+        }
+        if (!barOpen) {
+            w[WAVE_BAR] = 0f
+            w[WAVE_BAR_LOW] = 0f
+            w[WAVE_GATE] = 0f
+        }
+        if (!rampOpen) w[WAVE_RAMP] = 0f
+        if (!spikeOpen) w[WAVE_SPIKE] = 0f
+        if (!setOpen) {
+            w[WAVE_WEAVE] = 0f
+            w[WAVE_BAR_LOW] = 0f
+            w[WAVE_GATE] = 0f
+        }
+        var sum = 0f
+        for (i in w.indices) {
+            if (w[i] < 0f) w[i] = 0f
+            sum += w[i]
+        }
+        if (sum <= 0f) return WAVE_BLOCK
+        var roll = Random.nextFloat() * sum
+        for (i in w.indices) {
+            roll -= w[i]
+            if (roll <= 0f) return i
+        }
+        return WAVE_BLOCK
+    }
+
+    private fun spawnBarWave(zBase: Float) {
+        val l = Random.nextInt(3)
+        entities.add(Entity(OBST_BAR, l, zBase))
+        coinRow(l, zBase - coinObstClear())
+    }
+
+    private fun spawnBlockWave(zBase: Float) {
+        val freeLanes = mutableListOf(0, 1, 2)
+        freeLanes.shuffle()
+        val n = 1 + Random.nextInt(2)
+        for (i in 0 until n) entities.add(Entity(OBST_BLOCK, freeLanes[i], zBase))
+        coinRow(freeLanes.last(), zBase)
+    }
+
+    private fun spawnLowWave(zBase: Float) {
+        val freeLanes = mutableListOf(0, 1, 2)
+        freeLanes.shuffle()
+        val n = 1 + Random.nextInt(2)
+        for (i in 0 until n) entities.add(Entity(OBST_LOW, freeLanes[i], zBase))
+        coinArc(freeLanes[0], zBase)
+    }
+
+    private fun spawnSpikeWave(zBase: Float) {
+        val freeLanes = mutableListOf(0, 1, 2)
+        freeLanes.shuffle()
+        val n = 1 + Random.nextInt(2)
+        for (i in 0 until n) entities.add(Entity(OBST_SPIKE, freeLanes[i], zBase))
+        coinArc(freeLanes[0], zBase)
+    }
+
+    private fun spawnCoinWave(zBase: Float) {
+        val laneA = Random.nextInt(3)
+        val laneB = Random.nextInt(3)
+        coinRow(laneA, zBase, 5)
+        coinRow(laneB, zBase - coinLaneGap(laneA, laneB, 5), 5)
+    }
+
+    /** 先走中间，再立刻换边：两拍读路，比单排木箱多一步决策 */
+    private fun spawnWeaveWave(zBase: Float) {
+        val mid = Random.nextInt(3)
+        val sides = (0..2).filter { it != mid }
+        entities.add(Entity(OBST_BLOCK, sides[0], zBase))
+        entities.add(Entity(OBST_BLOCK, sides[1], zBase))
+        coinRow(mid, zBase)
+        val stagger = (speed * 0.58f).coerceIn(9f, 14f)
+        entities.add(Entity(OBST_BLOCK, mid, zBase - stagger))
+        coinRow(sides[Random.nextInt(sides.size)], zBase - stagger)
+    }
+
+    /** 同道先铲后跳，把两种动作串成一句 */
+    private fun spawnBarLowWave(zBase: Float) {
+        val l = Random.nextInt(3)
+        entities.add(Entity(OBST_BAR, l, zBase))
+        val gap = (speed * 0.62f).coerceIn(10f, 15f)
+        entities.add(Entity(OBST_LOW, l, zBase - gap))
+        coinArc(l, zBase - gap)
+    }
+
+    /** 只留一条缝，缝上是横杆：必须认准再铲 */
+    private fun spawnGateWave(zBase: Float) {
+        val open = Random.nextInt(3)
+        for (l in 0..2) {
+            if (l == open) entities.add(Entity(OBST_BAR, l, zBase))
+            else entities.add(Entity(OBST_BLOCK, l, zBase))
+        }
+        coinRow(open, zBase - coinObstClear())
+    }
+
+    private fun freeLaneNear(z: Float, slop: Float = 3f): Int {
+        val blocked = BooleanArray(3)
+        for (e in entities) {
+            if (abs(e.z - z) > slop) continue
+            when (e.kind) {
+                OBST_LOW, OBST_BAR, OBST_BLOCK, OBST_SPIKE, OBST_RAMP -> blocked[e.lane] = true
+            }
+        }
+        val free = ArrayList<Int>(3)
+        for (i in 0..2) if (!blocked[i]) free.add(i)
+        return if (free.isEmpty()) Random.nextInt(3) else free[Random.nextInt(free.size)]
+    }
+
+    private fun spawnRelic(z: Float) {
+        val e = Entity(P_RELIC, freeLaneNear(z), z, 1.2f)
         e.relicId = pickRelicForSpawn()
         entities.add(e)
         nextRelicAt = distance + 280f + Random.nextFloat() * 240f
@@ -2650,6 +2802,29 @@ class Game {
      */
     private fun keepCombo() {
         if (combo > 0) comboTimer = COMBO_WINDOW
+    }
+
+    /** 跳过 / 铲过 / 贴着木箱切走：给一下「刚才好险」的正反馈，不另开 HUD */
+    private fun tickNearMiss() {
+        if (nearMissCool > 0f) return
+        for (e in entities) {
+            if (e.taken) continue
+            if (e.z < 0.18f || e.z > 0.78f) continue
+            val dx = abs(e.x - catX)
+            val skilled = when (e.kind) {
+                OBST_LOW, OBST_SPIKE -> e.lane == lane && catY >= 0.55f && dx < 1.15f
+                OBST_BAR -> e.lane == lane && sliding && catY <= 0.3f && dx < 1.15f
+                OBST_BLOCK -> e.lane != lane && dx < 1.55f
+                else -> false
+            }
+            if (!skilled) continue
+            nearMissCool = NEAR_MISS_COOL
+            keepCombo()
+            missionBonus += NEAR_MISS_SCORE
+            pushFloat("好险", 0xFFE8EEF8.toInt())
+            emit(EV_COIN, HAPTIC_LIGHT)
+            break
+        }
     }
 
     /** 连击剩余时间占窗口的比例，供 HUD 做"即将断连"提示；无连击时为 0。 */
