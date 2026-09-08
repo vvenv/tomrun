@@ -7,21 +7,12 @@ import kotlin.math.max
 import kotlin.math.min
 
 /**
- * 星露谷式立体像素 UI：厚木框 + 多层斜面 + 双色投影。
- * 绘制顺序仿 SDV 对话框按钮——先外圈深色框，再内芯填色，最后左上亮带 / 右下暗带。
+ * 简洁像素风 UI：圆角按钮 + 切角面板 + 顶部高光 / 底部暗边。
+ * 按钮走干净统一的圆角风格，避免过多装饰元素堆叠。
  */
 object PixelUi {
 
     enum class Bevel { RAISED, PRESSED, INSET }
-
-    enum class AccentSide { NONE, LEFT, RIGHT, BOTH }
-
-    data class WoodStyle(
-        val body: Int,
-        val topHi: Int,
-        val bottomLo: Int,
-        val grain: Boolean = false
-    )
 
     /** 多层斜面色阶，由 [paletteFor] 从主题色推导 */
     data class DepthPalette(
@@ -254,27 +245,6 @@ object PixelUi {
         paint.style = Paint.Style.FILL
     }
 
-    fun drawButton(
-        canvas: Canvas, paint: Paint,
-        l: Float, t: Float, r: Float, b: Float,
-        fill: Int, edge: Int, s: Float,
-        bevel: Bevel = Bevel.RAISED,
-        shadow: Boolean = true,
-        notch: Float? = null
-    ) {
-        val nn = notch ?: min(r - l, b - t) * 0.18f
-        val bw = bandW(s)
-        val dy = if (bevel == Bevel.PRESSED) bw * 0.55f else 0f
-        val tl = l
-        val tt = t + dy
-        val tr = r
-        val tb = b + dy
-
-        if (shadow && bevel == Bevel.RAISED) drawDropShadow(canvas, paint, tl, tt, tr, tb, s, nn)
-        drawDepthFrameChamfer(canvas, paint, tl, tt, tr, tb, nn, paletteFor(fill, edge), s, bevel)
-        paint.style = Paint.Style.FILL
-    }
-
     fun drawRect(
         canvas: Canvas, paint: Paint,
         l: Float, t: Float, r: Float, b: Float,
@@ -295,108 +265,6 @@ object PixelUi {
         if (shadow && bevel == Bevel.RAISED) drawDropShadow(canvas, paint, tl, tt, tr, tb, s, null)
         drawDepthFrameRect(canvas, paint, tl, tt, tr, tb, paletteFor(fill, edgeColor), s, bevel)
         paint.style = Paint.Style.FILL
-    }
-
-    fun drawWoodPlaque(
-        canvas: Canvas, paint: Paint,
-        l: Float, t: Float, r: Float, b: Float,
-        s: Float, style: WoodStyle, accent: Int,
-        accentSide: AccentSide = AccentSide.NONE,
-        accentStroke: Boolean = true
-    ) {
-        val edge = darken(style.body, 0.18f)
-        drawDropShadow(canvas, paint, l, t, r, b, s, null)
-        drawDepthFrameRect(
-            canvas, paint, l, t, r, b,
-            DepthPalette(
-                fill = style.body,
-                outer = edge,
-                specular = lighten(style.topHi, 0.35f),
-                hi = style.topHi,
-                midHi = lighten(style.body, 0.12f),
-                lo = style.bottomLo,
-                deep = darken(style.bottomLo, 0.22f)
-            ),
-            s, Bevel.RAISED
-        )
-
-        val ow = frameW(s)
-        val il = l + ow
-        val it = t + ow
-        val ir = r - ow
-        val ib = b - ow
-
-        if (style.grain) {
-            paint.style = Paint.Style.FILL
-            paint.color = 0x405A3A1E
-            for (i in 1..3) {
-                val ly = it + 6f * s + i * ((ib - it - 12f * s) / 4f)
-                canvas.drawRect(il + 5f * s, ly, ir - 5f * s, ly + 1.5f * s, paint)
-            }
-        }
-
-        if (accentStroke) {
-            paint.style = Paint.Style.STROKE
-            paint.strokeWidth = max(2f, 2f * s)
-            paint.color = accent
-            canvas.drawRect(l + 1f * s, t + 1f * s, r - 1f * s, b - 1f * s, paint)
-            paint.style = Paint.Style.FILL
-        }
-
-        val barW = max(5f, 5f * s)
-        paint.color = accent
-        when (accentSide) {
-            AccentSide.LEFT -> canvas.drawRect(il, it + 2f * s, il + barW, ib - 2f * s, paint)
-            AccentSide.RIGHT -> canvas.drawRect(ir - barW, it + 2f * s, ir, ib - 2f * s, paint)
-            AccentSide.BOTH -> {
-                canvas.drawRect(il, it + 2f * s, il + barW, ib - 2f * s, paint)
-                canvas.drawRect(ir - barW, it + 2f * s, ir, ib - 2f * s, paint)
-            }
-            AccentSide.NONE -> Unit
-        }
-    }
-
-    val WOOD_NAME = WoodStyle(0xFF6A4528.toInt(), 0xFF9A6A3C.toInt(), 0xFF3E2818.toInt(), grain = true)
-    val WOOD_LEAVE = WoodStyle(0xFF3A4E62.toInt(), 0xFF5A7088.toInt(), 0xFF243040.toInt())
-    val WOOD_WALLET = WoodStyle(0xFF4A3C28.toInt(), 0xFF6A5238.toInt(), 0xFF2A2018.toInt())
-    val WOOD_ACCENT = WoodStyle(0xFF5C4A2E.toInt(), 0xFF8A6E44.toInt(), 0xFF342818.toInt(), grain = true)
-
-    /**
-     * 精致的圆角木质小按钮：用于图层、设置等角落小控件。
-     * 比标准切角按钮更圆润，带微妙的内发光和金色钉头装饰。
-     */
-    fun drawTinyWoodBtn(
-        canvas: Canvas, paint: Paint,
-        cx: Float, cy: Float, r: Float,
-        s: Float, accent: Int, pressed: Boolean = false
-    ) {
-        val size = r * 2f
-        val l = cx - r
-        val t = cy - r
-        val rr = cx + r
-        val b = cy + r
-        val notch = size * 0.18f
-        val dy = if (pressed) 2f * s else 0f
-
-        if (!pressed) drawDropShadow(canvas, paint, l, t + dy, rr, b + dy, s, notch)
-
-        val edge = darken(0xFF5A4228.toInt(), 0.15f)
-        val fill = 0xFF6B4F30.toInt()
-        val palette = paletteFor(fill, edge)
-        drawDepthFrameChamfer(canvas, paint, l, t + dy, rr, b + dy, notch, palette, s,
-            if (pressed) Bevel.PRESSED else Bevel.RAISED)
-
-        val nailR = max(2f, 2.5f * s)
-        paint.style = Paint.Style.FILL
-        paint.color = accent
-        canvas.drawCircle(l + notch * 0.8f, t + notch * 0.8f + dy, nailR, paint)
-        canvas.drawCircle(rr - notch * 0.8f, t + notch * 0.8f + dy, nailR, paint)
-        canvas.drawCircle(l + notch * 0.8f, b - notch * 0.8f + dy, nailR, paint)
-        canvas.drawCircle(rr - notch * 0.8f, b - notch * 0.8f + dy, nailR, paint)
-
-        paint.color = lighten(accent, 0.5f)
-        canvas.drawCircle(l + notch * 0.8f - nailR * 0.3f, t + notch * 0.8f - nailR * 0.3f + dy, nailR * 0.4f, paint)
-        canvas.drawCircle(rr - notch * 0.8f - nailR * 0.3f, t + notch * 0.8f - nailR * 0.3f + dy, nailR * 0.4f, paint)
     }
 
     /**
@@ -460,6 +328,73 @@ object PixelUi {
         canvas.drawCircle(midX, y, dotR, paint)
         paint.color = lighten(color, 0.4f)
         canvas.drawCircle(midX - dotR * 0.3f, y - dotR * 0.3f, dotR * 0.45f, paint)
+    }
+
+    /**
+     * 简洁统一按钮：纯色填充 + 顶部高光 + 底部暗边 + 圆角描边。
+     * 去掉木纹、钉头、切角等多余装饰，整体更干净精致。
+     */
+    fun drawBtn(
+        canvas: Canvas, paint: Paint,
+        l: Float, t: Float, r: Float, b: Float,
+        fill: Int, s: Float,
+        pressed: Boolean = false,
+        radius: Float? = null
+    ) {
+        val rr = (radius ?: min(r - l, b - t) * 0.18f).coerceAtMost(min(r - l, b - t) * 0.5f)
+        val bw = max(2f, 2f * s)
+        val dy = if (pressed) bw * 0.5f else 0f
+
+        if (!pressed) {
+            paint.color = 0x44000000.toInt()
+            canvas.drawRoundRect(l + 2f * s, t + dy + 3f * s, r + 2f * s, b + dy + 3f * s, rr, rr, paint)
+        }
+
+        paint.color = fill
+        canvas.drawRoundRect(l, t + dy, r, b + dy, rr, rr, paint)
+
+        paint.color = lighten(fill, 0.34f)
+        canvas.drawRoundRect(l + bw, t + dy + bw, r - bw, t + dy + bw * 1.4f, bw * 0.5f, bw * 0.5f, paint)
+
+        paint.color = darken(fill, 0.22f)
+        canvas.drawRoundRect(l + bw, b + dy - bw * 1.4f, r - bw, b + dy - bw, bw * 0.5f, bw * 0.5f, paint)
+
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = max(1.5f, 1.5f * s)
+        paint.color = darken(fill, 0.32f)
+        canvas.drawRoundRect(l, t + dy, r, b + dy, rr, rr, paint)
+        paint.style = Paint.Style.FILL
+    }
+
+    /**
+     * 横向进度条：深槽 + 填充 + 顶部高光。用于追击倒计时等瞬时提示。
+     */
+    fun drawMeter(
+        canvas: Canvas, paint: Paint,
+        l: Float, t: Float, r: Float, b: Float,
+        fill: Int, frac: Float, s: Float
+    ) {
+        val f = frac.coerceIn(0f, 1f)
+        val bw = max(1f, 1.5f * s)
+        paint.style = Paint.Style.FILL
+        paint.color = 0xFF1A222C.toInt()
+        canvas.drawRect(l, t, r, b, paint)
+        paint.color = darken(fill, 0.45f)
+        canvas.drawRect(l, t, r, t + bw, paint)
+        canvas.drawRect(l, b - bw, r, b, paint)
+        canvas.drawRect(l, t, l + bw, b, paint)
+        canvas.drawRect(r - bw, t, r, b, paint)
+        val innerL = l + bw
+        val innerR = r - bw
+        val innerT = t + bw
+        val innerB = b - bw
+        val mid = innerL + (innerR - innerL) * f
+        if (mid > innerL) {
+            paint.color = fill
+            canvas.drawRect(innerL, innerT, mid, innerB, paint)
+            paint.color = lighten(fill, 0.35f)
+            canvas.drawRect(innerL, innerT, mid, innerT + bw, paint)
+        }
     }
 
     /**

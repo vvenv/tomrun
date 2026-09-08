@@ -127,6 +127,8 @@ class Game {
             intArrayOf(0xFFFF69B4.toInt(), 0xFF6D4C2A.toInt()),
             intArrayOf(0xFF9C27B0.toInt(), 0xFF00E5FF.toInt())
         )
+        /** 6 宇宙 × 每种 2 只，位掩码 12 bit */
+        const val YOKAI_COUNT = 12
         // 文物收集：跑道上稀有刷出，收进博物馆图鉴（寓教于乐）
         const val RELIC_COMMON = 0
         const val RELIC_RARE = 1
@@ -566,6 +568,9 @@ class Game {
     private var runBattleWins = 0
     private var yokaiLaneTimer = 0f
     private var paceSlowUntil = 0f
+    /** 遇见过的妖怪（出场即记，逃走也算「见过」） */
+    private var yokaiSeenMask = 0
+    @Volatile var yokaiSeenCount = 0
 
     // 平行宇宙
     @Volatile var universe = UNI_MEADOW
@@ -781,6 +786,8 @@ class Game {
         seenRelicsFound = p.getInt("seenRelicsFound", relicsFound)
         seenAchieveCount = p.getInt("seenAchieveCount", achieveCount)
         totalRelicPickups = p.getInt("totalRelicPickups", 0)
+        yokaiSeenMask = p.getInt("yokaiSeenMask", 0) and yokaiMaskBits()
+        yokaiSeenCount = Integer.bitCount(yokaiSeenMask)
 
         ownedHouses = p.getInt("ownedHouses", 1) or 1
         ownedRoofs = p.getInt("ownedRoofs", 1) or 1
@@ -1154,6 +1161,46 @@ class Game {
     }
     fun seenUniverse(i: Int) = (seenMask and (1 shl i)) != 0
     fun codexComplete() = universesSeen >= UNIVERSE_COUNT
+
+    fun yokaiSlot(uni: Int, kind: Int): Int =
+        uni.coerceIn(0, UNIVERSE_COUNT - 1) * 2 + kind.coerceIn(0, 1)
+
+    fun yokaiSeen(slot: Int): Boolean =
+        slot in 0 until YOKAI_COUNT && (yokaiSeenMask and (1 shl slot)) != 0
+
+    fun yokaiUniverseOf(slot: Int) = slot.coerceIn(0, YOKAI_COUNT - 1) / 2
+
+    fun yokaiKindOf(slot: Int) = slot.coerceIn(0, YOKAI_COUNT - 1) % 2
+
+    private fun yokaiMaskBits() = (1 shl YOKAI_COUNT) - 1
+
+    private fun markYokaiSeen(uni: Int, kind: Int) {
+        val slot = yokaiSlot(uni, kind)
+        val bit = 1 shl slot
+        if (yokaiSeenMask and bit != 0) return
+        yokaiSeenMask = yokaiSeenMask or bit
+        yokaiSeenCount = Integer.bitCount(yokaiSeenMask)
+        persistAll()
+    }
+
+    /** 主菜单等待态：文物 / 宇宙 / 最近荣誉，一行看完去向 */
+    fun menuProgressLine(): String =
+        "文物 $relicsFound/$RELIC_COUNT  ·  宇宙 $universesSeen/$UNIVERSE_COUNT  ·  ${nextAchieveHint()}"
+
+    /** 结算「下一目标」：最近荣誉，博物馆未满再附文物进度 */
+    fun nextGoalLine(): String {
+        val honor = nextAchieveHint()
+        return if (museumComplete()) honor else "$honor  ·  文物 $relicsFound/$RELIC_COUNT"
+    }
+
+    fun chaseLaneHint(): String {
+        val laneName = when (yokaiLane) {
+            0 -> "左"
+            2 -> "右"
+            else -> "中"
+        }
+        return if (lane == yokaiLane) "同道追上" else "切到${laneName}道"
+    }
     fun relicCollected(i: Int): Boolean {
         if (i !in 0 until RELIC_COUNT) return false
         return (relicMaskWordValue(i) and relicMaskBit(i)) != 0
@@ -1290,6 +1337,13 @@ class Game {
     @Synchronized fun switchMenuPanel(panel: Int) {
         if (state == State.RUNNING) return
         menuPanel = panel
+    }
+
+    /** 从家园出门：清叠层后直接上路，不再经过主菜单空点一下 */
+    @Synchronized fun startRunFromHome() {
+        if (state == State.RUNNING) return
+        reset()
+        state = State.RUNNING
     }
 
     @Synchronized fun browseColor(delta: Int) {
@@ -1756,6 +1810,12 @@ class Game {
         nextChaseAt = CHASE_FIRST + Random.nextFloat() * 180f
         runBattleWins = 0
         rollQuests()
+        if (quests.isNotEmpty()) {
+            enqueueBanner(
+                "本局：" + quests.joinToString(" · ") { it.label },
+                0xFF7DEBA0.toInt(), 3.2f
+            )
+        }
         // 小屋能量：开局按等级赠送 buff
         val hl = homeLevel()
         if (hl >= 1) magnetTime = 5f
@@ -2083,6 +2143,7 @@ class Game {
         yokaiLaneTimer = 3.2f + Random.nextFloat() * 2.0f
         chaseRelicDrop = -1
         chaseActive = true
+        markYokaiSeen(uni, kind)
         nextChaseAt = distance + 400f + Random.nextFloat() * 320f
         clearObstaclesAhead((speed * 2.5f).coerceAtLeast(55f))
         clearPickupsAhead((speed * 2.5f).coerceAtLeast(55f))
@@ -2912,6 +2973,7 @@ class Game {
             .putInt("seenRelicsFound", seenRelicsFound)
             .putInt("seenAchieveCount", seenAchieveCount)
             .putInt("totalRelicPickups", totalRelicPickups)
+            .putInt("yokaiSeenMask", yokaiSeenMask)
             .putInt("ownedHouses", ownedHouses)
             .putInt("ownedRoofs", ownedRoofs)
             .putInt("ownedDecos", ownedDecos)
