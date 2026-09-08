@@ -122,16 +122,17 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private val btnMuseumTabYokai = RectF()
     /**
      * 选物面板的格子：分类 tab + 该分类内的下标 + 屏幕矩形，三条并行数组。
-     * 一屏最多 4 行 × 4 件（猫装扮）或 1 行 × 8 件（摆件），留 20 个位子足够。
+     * 家面板最多 小屋4 + 屋顶4 + 摆件8，猫面板 4×4，留 24 个位子足够。
      */
     private val pickPanelRect = RectF()
-    private val pickChipRects = Array(20) { RectF() }
-    private val pickChipTab = IntArray(20)
-    private val pickChipIdx = IntArray(20)
+    private val pickChipRects = Array(24) { RectF() }
+    private val pickChipTab = IntArray(24)
+    private val pickChipIdx = IntArray(24)
     private var pickChipCount = 0
     /** 已预览、等第二下确认买下的那一格；-1 表示没有 */
     private var pickArmedTab = -1
     private var pickArmedIdx = -1
+    private val btnPickBuy = RectF()
     private val hitHomeTitle = RectF()
     /** 世界切换：点房门开一张已解锁世界的清单，取代庭院里常驻的左右箭头 */
     private var showHomeWorlds = false
@@ -343,12 +344,16 @@ class HudView(context: Context, private val game: Game) : View(context) {
         private const val HOME_SUB_HONOR = 2
         private const val MUSEUM_TAB_RELIC = 0
         private const val MUSEUM_TAB_YOKAI = 1
-        /** 选物面板的行编排：一个入口摊开一族货，分类降级成行号而不是要先点的 tab */
+        /**
+         * 选物面板的行编排：一个入口摊开一族货，分类降级成行号而不是要先点的 tab。
+         * 小屋 / 屋顶 / 摆件必须在同一张板上——新家默认没有任何摆件可点，
+         * 若摆件单独一张板，没买过的人永远进不去商店。
+         */
         private val PICK_ROWS_HOUSE = arrayOf(
             PickRow(Game.HOME_TAB_HOUSE, "小屋"),
-            PickRow(Game.HOME_TAB_ROOF, "屋顶")
+            PickRow(Game.HOME_TAB_ROOF, "屋顶"),
+            PickRow(Game.HOME_TAB_DECO, "摆件")
         )
-        private val PICK_ROWS_DECO = arrayOf(PickRow(Game.HOME_TAB_DECO, "摆件"))
         private val PICK_ROWS_CAT = arrayOf(
             PickRow(Game.HOME_TAB_COLOR, "配色"),
             PickRow(Game.HOME_TAB_TRAIL, "光迹"),
@@ -527,7 +532,14 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                if (homeDragActive) {
+                // 抬手落在选物板上时，这块归购买，不要用按下时命中的房子/栅栏把点击吃掉。
+                // 否则「预览后再点一次买下」经常变成「拖院子 / 重新打开分类」，钱扣不出去。
+                val pickTakesUp = homeEditing && event.actionMasked == MotionEvent.ACTION_UP &&
+                    !pickPanelRect.isEmpty && pickPanelRect.contains(event.x, event.y)
+                if (pickTakesUp) {
+                    homeDragActive = false
+                    homeDragId = null
+                } else if (homeDragActive) {
                     game.saveHomeLayout()
                     showToast("位置已保存")
                     homeDragId = null
@@ -769,9 +781,17 @@ class HudView(context: Context, private val game: Game) : View(context) {
                         homeSubView = HOME_SUB_HONOR
                         game.markHonorsSeen()
                     }
-                    // 房子与屋顶合成同一张面板（小屋 + 屋顶两行），不再靠热区上下半分家
-                    hitHouse.contains(x, y) -> selectHomeCategory(Game.HOME_TAB_HOUSE)
-                    yardCatHit.contains(x, y) -> selectHomeCategory(Game.HOME_TAB_COLOR)
+                    // 房子与屋顶、摆件合成同一张面板，不再靠热区上下半分家
+                    hitHouse.contains(x, y) -> {
+                        if (!(homeEditing && (pickArmedTab == Game.HOME_TAB_HOUSE || pickArmedTab == Game.HOME_TAB_ROOF) &&
+                                confirmArmedPurchase())
+                        ) selectHomeCategory(Game.HOME_TAB_HOUSE)
+                    }
+                    yardCatHit.contains(x, y) -> {
+                        if (!(homeEditing && game.isCatHomeTab(pickArmedTab) && confirmArmedPurchase())) {
+                            selectHomeCategory(Game.HOME_TAB_COLOR)
+                        }
+                    }
                     yardSceneHit.contains(x, y) -> scheduleYardSceneTap(x, y)
                 }
             }
@@ -863,43 +883,68 @@ class HudView(context: Context, private val game: Game) : View(context) {
 
     /**
      * 系统返回键：优先关闭图鉴大图 / 全屏图鉴 / 观星 / 帮助，再退出小屋。
+     * 跑酷中与结算屏必须吃掉返回——targetSdk 36 的预测性返回会把桌面露出来，
+     * 左缘换道或死后惯性滑一下就会把 Activity finish 掉。
      * @return true 表示已消费，Activity 不应再 finish。
      */
     fun handleBackPressed(): Boolean {
         if (showHelp) {
             showHelp = false
+            invalidate()
             return true
         }
         if (showStargazing) {
             closeStargazing()
+            invalidate()
+            return true
+        }
+        if (showLeaderboard) {
+            showLeaderboard = false
+            invalidate()
             return true
         }
         if (game.menuPanel == Game.PANEL_HOME) {
             when {
                 showHomeWorlds -> {
                     showHomeWorlds = false
+                    invalidate()
                     return true
                 }
                 showHomeLayers -> {
                     showHomeLayers = false
+                    invalidate()
+                    return true
+                }
+                homeEditing -> {
+                    closeHomePick()
+                    invalidate()
                     return true
                 }
                 homeSubView == HOME_SUB_COLLECTION && museumDetailId >= 0 -> {
                     museumDetailId = -1
+                    invalidate()
                     return true
                 }
                 homeSubView == HOME_SUB_COLLECTION || homeSubView == HOME_SUB_HONOR -> {
                     closeHomeSubView()
+                    invalidate()
                     return true
                 }
                 else -> {
                     leaveHomePage()
+                    invalidate()
                     return true
                 }
             }
         }
-        if (game.state == Game.State.RUNNING && game.paused) {
-            game.resumeGame()
+        if (game.state == Game.State.RUNNING) {
+            if (game.paused) game.resumeGame() else game.pauseGame()
+            invalidate()
+            return true
+        }
+        if (game.state == Game.State.DEAD) {
+            openHomePage()
+            invalidate()
             return true
         }
         return false
@@ -937,6 +982,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         homeEditing = false
         showHomeLayers = false
         museumDetailId = -1
+        game.setHomePreviewing(false)
         game.switchMenuPanel(Game.PANEL_HOME)
     }
 
@@ -955,19 +1001,43 @@ class HudView(context: Context, private val game: Game) : View(context) {
     }
 
     private fun selectHomeCategory(tab: Int) {
+        val samePanel = homeEditing && pickPanelKind(game.homeTab) == pickPanelKind(tab)
         game.switchHomeTab(tab)
         homeEditing = true
-        pickArmedTab = -1
-        pickArmedIdx = -1
+        game.setHomePreviewing(true)
+        // 同一张板再点一次入口（房子 / 猫）不要清掉「等第二下买下」，否则预览后永远买不成
+        if (!samePanel) {
+            pickArmedTab = -1
+            pickArmedIdx = -1
+        }
     }
 
     /** 收起选物面板：连带清掉「等第二下确认」的那格，免得下次开面板直接扣钱 */
     private fun closeHomePick() {
         homeEditing = false
+        game.setHomePreviewing(false)
         pickChipCount = 0
         pickPanelRect.setEmpty()
+        btnPickBuy.setEmpty()
         pickArmedTab = -1
         pickArmedIdx = -1
+    }
+
+    /** 猫装扮一张板，房屋/屋顶/摆件一张板——入口不同，货在同一屏 */
+    private fun pickPanelKind(tab: Int) = if (game.isCatHomeTab(tab)) 1 else 0
+
+    /** 把已预览的那件买下来；没在等确认时返回 false */
+    private fun confirmArmedPurchase(): Boolean {
+        if (pickArmedTab < 0 || pickArmedIdx < 0) return false
+        game.switchHomeTab(pickArmedTab)
+        game.setHomeBrowse(pickArmedTab, pickArmedIdx)
+        val msg = game.buyOrEquipHome()
+        showToast(msg)
+        if (msg.isNotEmpty() && !msg.startsWith("金币不足")) {
+            pickArmedTab = -1
+            pickArmedIdx = -1
+        }
+        return true
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -1571,16 +1641,15 @@ class HudView(context: Context, private val game: Game) : View(context) {
         LayoutConfig.select(portrait)   // 横竖屏各用独立一套布局
         game.selectHomeLayoutOrientation(portrait)
         homeDragHits.clear()
-        val isCatTab = game.isCatHomeTab()
         // 「正在浏览哪一件」由渲染层直接读 game 决定（见 GameRenderer.drawHomeWorld），
         // 这里不再算一遍——两套预览逻辑迟早会对不上
         drawHomeScene(canvas, w, h, s)
 
-        drawHomeTopBar(canvas, w, h, s, sdx, sdy, isCatTab)
+        drawHomeTopBar(canvas, w, h, s, sdx, sdy)
 
         // 选物面板自带标题与收起提示，原来那行浮在半空的 editHint 就多余了
         if (homeEditing) drawHomePickPanel(canvas, w, h, s, sdx, sdy)
-        else { pickChipCount = 0; pickPanelRect.setEmpty() }
+        else { pickChipCount = 0; pickPanelRect.setEmpty(); btnPickBuy.setEmpty() }
 
         if (homeSubView == HOME_SUB_SCENE) {
             layoutLeaveHomeButton(w, h, s)
@@ -1774,7 +1843,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
 
     /** 家页面顶栏：木牌铭牌 + 金币芯片 + 能量格，贴合小屋像素风 */
     private fun drawHomeTopBar(
-        canvas: Canvas, w: Float, h: Float, s: Float, sdx: Float, sdy: Float, isCatTab: Boolean
+        canvas: Canvas, w: Float, h: Float, s: Float, sdx: Float, sdy: Float
     ) {
         val portrait = h > w
         val showHint = !homeEditing
@@ -1787,7 +1856,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val rewardLine = game.homeLevelDesc()
         val rewardSize = fittedTextSize(rewardLine, 18f * s, w * 0.86f, 14f * s)
         val hint = if (homeEditing) {
-            if (isCatTab) "点场景元素装扮家与猫" else "点房屋/屋顶/庭院/猫来装扮"
+            "点房子装扮家，点猫换行头"
         } else {
             "拖动任意元素可自由摆放"
         }
@@ -2138,7 +2207,8 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val padH = 18f * s
         val pw = min(w * 0.94f, 640f * s)
         val titleH = 50f * s
-        val footerH = 34f * s
+        // 页脚始终留给购买按钮同一块高度，武装后不能把格子顶上去，否则「再点一次」会点空
+        val footerH = 56f * s
         val ph = titleH + rows.size * rowH + footerH + 8f * s
         val l = w / 2f - pw / 2f
         val b = h - (if (portrait) 120f else 90f) * s
@@ -2213,8 +2283,24 @@ class HudView(context: Context, private val game: Game) : View(context) {
         }
         textPaint.textAlign = Paint.Align.CENTER
 
-        val hint = if (pickArmedTab >= 0) "再点一次买下  ·  点别处收起" else "点别处收起"
-        pixText(canvas, hint, w / 2f, b - 12f * s, 16f * s, DARK_MUTED, 0f, 0f)
+        btnPickBuy.setEmpty()
+        if (pickArmedTab >= 0) {
+            val price = pickPrice(pickArmedTab, pickArmedIdx)
+            val afford = game.wallet >= price
+            val btnW = min(pw - padH * 2f, 280f * s)
+            val bx = w / 2f
+            btnPickBuy.set(bx - btnW / 2f, b - footerH + 6f * s, bx + btnW / 2f, b - 10f * s)
+            PixelUi.drawBtn(
+                canvas, btnPaint, btnPickBuy.left, btnPickBuy.top, btnPickBuy.right, btnPickBuy.bottom,
+                if (afford) 0xFF2C3138.toInt() else 0xFF1C2128.toInt(), s
+            )
+            pixText(
+                canvas, "购买 · $price", bx, centeredBaselineY(btnPickBuy.centerY(), 18f * s),
+                18f * s, if (afford) Color.WHITE else 0xFFE07060.toInt(), 0f, 0f
+            )
+        } else {
+            pixText(canvas, "点别处收起", w / 2f, b - 18f * s, 16f * s, DARK_MUTED, 0f, 0f)
+        }
     }
 
     private fun drawPickChip(
@@ -2303,6 +2389,11 @@ class HudView(context: Context, private val game: Game) : View(context) {
             closeHomePick()
             return false
         }
+        if (pickArmedTab >= 0 && btnPickBuy.contains(x, y)) {
+            confirmArmedPurchase()
+            invalidate()
+            return true
+        }
         for (n in 0 until pickChipCount) {
             if (!pickChipRects[n].contains(x, y)) continue
             val tab = pickChipTab[n]
@@ -2311,14 +2402,17 @@ class HudView(context: Context, private val game: Game) : View(context) {
             game.switchHomeTab(tab)          // 会把游标复位成当前在用的那件
             game.setHomeBrowse(tab, i)       // 所以紧接着才把游标挪到点中的这件
             if (pickOwned(tab, i) || armed) {
-                showToast(game.buyOrEquipHome())
-                pickArmedTab = -1
-                pickArmedIdx = -1
+                val msg = game.buyOrEquipHome()
+                showToast(msg)
+                if (pickOwned(tab, i) || (msg.isNotEmpty() && !msg.startsWith("金币不足"))) {
+                    pickArmedTab = -1
+                    pickArmedIdx = -1
+                }
             } else {
                 // 先套上看看：场景里出的是幽灵预览，钱还没动
                 pickArmedTab = tab
                 pickArmedIdx = i
-                showToast("${pickName(tab, i)} · ${pickPrice(tab, i)} 金币，再点一次买下")
+                showToast("${pickName(tab, i)} · ${pickPrice(tab, i)} 金币，再点一次或点购买")
             }
             invalidate()
             return true
@@ -2329,20 +2423,14 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private class PickRow(val tab: Int, val label: String)
 
     /**
-     * 一个入口摊开一族货：点房子出「小屋 + 屋顶」，点猫出四行装扮。
+     * 一个入口摊开一族货：点房子或庭院出「小屋 + 屋顶 + 摆件」，点猫出四行装扮。
      * 分类不再是要先点的 tab，而是面板上的行号——少一层点击。
      */
-    private fun pickRowsFor(tab: Int): Array<PickRow> = when {
-        tab == Game.HOME_TAB_DECO -> PICK_ROWS_DECO
-        game.isCatHomeTab(tab) -> PICK_ROWS_CAT
-        else -> PICK_ROWS_HOUSE
-    }
+    private fun pickRowsFor(tab: Int): Array<PickRow> =
+        if (game.isCatHomeTab(tab)) PICK_ROWS_CAT else PICK_ROWS_HOUSE
 
-    private fun pickTitleFor(tab: Int): String = when {
-        tab == Game.HOME_TAB_DECO -> "院子里摆点什么"
-        game.isCatHomeTab(tab) -> "给猫换身行头"
-        else -> "翻修一下房子"
-    }
+    private fun pickTitleFor(tab: Int): String =
+        if (game.isCatHomeTab(tab)) "给猫换身行头" else "装扮家与庭院"
 
     /** 该分类共有几件（含本世界不供应的），用于遍历上界 */
     private fun pickIndexCount(tab: Int): Int = when (tab) {
@@ -2977,15 +3065,26 @@ class HudView(context: Context, private val game: Game) : View(context) {
             "house" -> if (hitDoor.contains(x, y)) {
                 showHomeWorlds = true
                 closeHomePick()
-            } else selectHomeCategory(Game.HOME_TAB_HOUSE)
-            "roof" -> selectHomeCategory(Game.HOME_TAB_ROOF)
-            "garden", "fence", "mailbox", "swing", "perch", "pool" -> selectHomeCategory(Game.HOME_TAB_DECO)
+            } else if (!(homeEditing && (pickArmedTab == Game.HOME_TAB_HOUSE || pickArmedTab == Game.HOME_TAB_ROOF) &&
+                    confirmArmedPurchase())
+            ) {
+                selectHomeCategory(Game.HOME_TAB_HOUSE)
+            }
+            "roof" -> if (!(homeEditing && pickArmedTab == Game.HOME_TAB_ROOF && confirmArmedPurchase())) {
+                selectHomeCategory(Game.HOME_TAB_ROOF)
+            }
+            "garden", "fence", "mailbox", "swing", "perch", "pool" ->
+                if (!(homeEditing && pickArmedTab == Game.HOME_TAB_DECO && confirmArmedPurchase())) {
+                    selectHomeCategory(Game.HOME_TAB_DECO)
+                }
             // 点猫 = 摸一把 + 摊开装扮面板。原先只在「已经处在猫装扮分类里」时才开面板，
             // 而进那个分类唯一的入口就是商店条的 tab——tab 删掉后就成了死循环，装扮再也点不到。
             // 长按撸猫（startStrokeCat）不受影响，那才是持续给币的那个动作。
             "cat" -> {
                 petYardCat()
-                selectHomeCategory(Game.HOME_TAB_COLOR)
+                if (!(homeEditing && game.isCatHomeTab(pickArmedTab) && confirmArmedPurchase())) {
+                    selectHomeCategory(Game.HOME_TAB_COLOR)
+                }
             }
             "name" -> showRenameDialog(firstTime = false)
             "leave" -> leaveHomePage()
@@ -3030,7 +3129,9 @@ class HudView(context: Context, private val game: Game) : View(context) {
             butterflyHit.contains(x, y) && butterflyVisible -> pokeButterfly()
             yardCatHit.contains(x, y) -> {
                 petYardCat()
-                selectHomeCategory(Game.HOME_TAB_COLOR)
+                if (!(homeEditing && game.isCatHomeTab(pickArmedTab) && confirmArmedPurchase())) {
+                    selectHomeCategory(Game.HOME_TAB_COLOR)
+                }
             }
         }
     }
