@@ -73,6 +73,9 @@ class Game {
         const val HIT_X_SWITCH = 0.78f
         const val HIT_Z = 0.72f
         const val LANE_SNAP = 14.5f
+        /** 捡到冲刺后短暂无敌，避免「吃到就撞死」 */
+        const val BOOST_GRAB_INVULN = 0.45f
+        const val PICKUP_INVULN = 0.25f
 
         private const val WAVE_BLOCK = 0
         private const val WAVE_LOW = 1
@@ -2022,10 +2025,11 @@ class Game {
                 slideGrace = (slideGrace - dt).coerceAtLeast(0f)
             }
             for (zip in ziplines) {
-                if (zip.lane == lane && catY < 0.3f &&
-                    zip.entryZ >= 0f && zip.entryZ - dz < 0f &&
-                    abs(catX - LANE_X[lane]) < 0.6f
-                ) {
+                val zipX = LANE_X[zip.lane]
+                val closeX = abs(catX - zipX) < 1.15f
+                val crossing = zip.entryZ >= -1.2f && zip.entryZ - dz < 1.5f
+                if (closeX && catY < 0.55f && crossing) {
+                    if (lane != zip.lane) lane = zip.lane
                     riding = zip
                     rideTargetY = RIDE_Y
                     emit(EV_ZIP, HAPTIC_MED)
@@ -2090,7 +2094,9 @@ class Game {
             gapRemaining += gapAfterWave(z)
         }
         zipGap -= dz
-        if (zipGap <= 0f && ziplines.isEmpty() && distance > 400f) {
+        if (zipGap <= 0f && ziplines.isEmpty() && distance > 400f &&
+            !chaseActive && !portalActive
+        ) {
             spawnZipline()
             zipGap = if (distance > 700f) 130f + Random.nextFloat() * 110f
             else 160f + Random.nextFloat() * 160f
@@ -2379,6 +2385,10 @@ class Game {
         entities.removeAll {
             it.kind == COIN && it.lane == laneZ && it.z <= zip.entryZ && it.z >= zip.exitZ
         }
+        // 入口前一串地面金币，把人引到索道上
+        for (i in 1..4) {
+            entities.add(makeCoin(laneZ, SPAWN_Z + 2f + i * 1.6f, 1.0f))
+        }
         // 高度统一，贴着骑乘可达的最高点：视觉上更靠近缆绳，代价是要上滑到顶才够得到
         val coinY = RIDE_Y_MAX + 1.0f
         var cz = SPAWN_Z - 8f
@@ -2457,6 +2467,16 @@ class Game {
             return WAVE_RAMP
         }
         if (!early && wavesSinceRest >= 4 && distance > 220f) return WAVE_COINS
+        // 追击是第二层玩法：路上只留单动作，不和组合波抢注意力
+        if (chaseActive && !early) {
+            val r = Random.nextFloat()
+            return when {
+                r < 0.38f -> WAVE_BLOCK
+                r < 0.60f -> WAVE_LOW
+                barOpen && r < 0.76f -> WAVE_BAR
+                else -> WAVE_COINS
+            }
+        }
 
         val setOpen = !early && distance > 350f && !introBarPending
         val w = FloatArray(12)
@@ -2527,7 +2547,7 @@ class Game {
     private fun spawnBlockWave(zBase: Float) {
         val freeLanes = mutableListOf(0, 1, 2)
         freeLanes.shuffle()
-        val n = 1 + Random.nextInt(2)
+        val n = if (distance < 200f || chaseActive) 1 else 1 + Random.nextInt(2)
         for (i in 0 until n) entities.add(Entity(OBST_BLOCK, freeLanes[i], zBase))
         coinRow(freeLanes.last(), zBase)
     }
@@ -2535,7 +2555,7 @@ class Game {
     private fun spawnLowWave(zBase: Float) {
         val freeLanes = mutableListOf(0, 1, 2)
         freeLanes.shuffle()
-        val n = 1 + Random.nextInt(2)
+        val n = if (distance < 200f || chaseActive) 1 else 1 + Random.nextInt(2)
         for (i in 0 until n) entities.add(Entity(OBST_LOW, freeLanes[i], zBase))
         coinArc(freeLanes[0], zBase)
     }
@@ -2543,7 +2563,7 @@ class Game {
     private fun spawnSpikeWave(zBase: Float) {
         val freeLanes = mutableListOf(0, 1, 2)
         freeLanes.shuffle()
-        val n = 1 + Random.nextInt(2)
+        val n = if (distance < 400f) 1 else 1 + Random.nextInt(2)
         for (i in 0 until n) entities.add(Entity(OBST_SPIKE, freeLanes[i], zBase))
         coinArc(freeLanes[0], zBase)
     }
@@ -2844,6 +2864,8 @@ class Game {
                     if (!immortalMode && helmetLayers > 0) {
                         helmetLayers--
                         invulnTime = 1.2f
+                        triggerPaceSlow(0.9f)
+                        clearObstaclesAhead((speed * 1.8f).coerceAtLeast(36f))
                         shake = 0.45f
                         resetCombo()
                         spawnBurst(e.x, catY + 1f, e.z, floatArrayOf(1f, 0.76f, 0.12f, 1f), 8)
@@ -2964,9 +2986,13 @@ class Game {
             }
             P_BOOST -> {
                 boostTime = min(BOOST_CAP, boostTime + BOOST_BASE)
+                invulnTime = invulnTime.coerceAtLeast(BOOST_GRAB_INVULN)
                 pushFloat("冲刺！", 0xFF4DE8FF.toInt())
                 emit(EV_BOOST, HAPTIC_MED)
             }
+        }
+        if (e.kind != P_BOOST) {
+            invulnTime = invulnTime.coerceAtLeast(PICKUP_INVULN)
         }
         spawnBurst(e.x, e.y, e.z, floatArrayOf(0.9f, 0.5f, 1f, 1f), 10)
     }
