@@ -680,7 +680,7 @@ class Game {
     @Volatile var dayPhase = 0.12f + Random.nextFloat() * 0.2f
     private var daySpeed = 1f / 90f
 
-    var lane = 1
+    @Volatile var lane = 1
     /** 已在边道时再往外拨：短暂计时驱动猫身抖一下再弹回，给个「到头了」的反馈 */
     @Volatile var edgeBumpTime = 0f
     @Volatile var edgeBumpDir = 0f

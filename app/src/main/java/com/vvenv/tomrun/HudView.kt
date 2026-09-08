@@ -70,6 +70,9 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private var downX = 0f
     private var downY = 0f
     private var consumed = false
+    private var runSwipeFired = false
+    private var lastSwipeX = 0f
+    private var lastSwipeY = 0f
     private var toast = ""
     private var toastLife = 0f
     private var secretTapCount = 0
@@ -482,6 +485,9 @@ class HudView(context: Context, private val game: Game) : View(context) {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 downX = event.x; downY = event.y; consumed = false
+                runSwipeFired = false
+                lastSwipeX = event.x
+                lastSwipeY = event.y
                 yardLongPressTriggered = false
                 homeDragId = null
                 homeDragActive = false
@@ -518,18 +524,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
                         consumed = true
                     }
                 }
-                if (!consumed && game.state == Game.State.RUNNING && !game.paused) {
-                    val dx = event.x - downX
-                    val dy = event.y - downY
-                    if (abs(dx) > swipeMin || abs(dy) > swipeMin) {
-                        consumed = true
-                        if (abs(dx) > abs(dy)) {
-                            if (dx > 0) game.onSwipeRight() else game.onSwipeLeft()
-                        } else {
-                            if (dy < 0) game.onSwipeUp() else game.onSwipeDown()
-                        }
-                    }
-                }
+                tryRunSwipe(event.x, event.y)
                 // 追手模式：手指在庭院内滑动，目标跟随
                 if (catState == CAT_CHASE_HAND && yardSceneHit.contains(event.x, event.y)) {
                     aimHandAt(event.x, event.y)
@@ -554,21 +549,60 @@ class HudView(context: Context, private val game: Game) : View(context) {
                     consumed = true
                 }
                 if (!consumed && event.actionMasked == MotionEvent.ACTION_UP) {
-                    val dx = event.x - downX
-                    val dy = event.y - downY
-                    if (showLeaderboard && abs(dx) > swipeMin && abs(dx) > abs(dy) * 1.2f) {
-                        stepLeaderboardTab(if (dx < 0f) 1 else -1)
-                        consumed = true
-                    } else if (tryCatalogPageSwipe(dx, dy, swipeMin)) {
-                        consumed = true
-                    } else if (!yardLongPressTriggered) {
-                        handleTap(event.x, event.y)
+                    if (tryRunSwipe(event.x, event.y)) {
+                        // 抬手才凑够位移的左右滑，不要再当成点跳
+                    } else {
+                        val dx = event.x - downX
+                        val dy = event.y - downY
+                        if (showLeaderboard && abs(dx) > swipeMin && abs(dx) > abs(dy) * 1.2f) {
+                            stepLeaderboardTab(if (dx < 0f) 1 else -1)
+                            consumed = true
+                        } else if (tryCatalogPageSwipe(dx, dy, swipeMin)) {
+                            consumed = true
+                        } else if (!yardLongPressTriggered) {
+                            handleTap(event.x, event.y)
+                        }
                     }
                 }
                 yardFingerDown = false
             }
         }
         return true
+    }
+
+    /**
+     * 跑酷手势：左右换道优先，轴要分得清才落锤。
+     * 斜着滑时旧逻辑会先把微小上下当成跳/铲并吃掉整次手势，左右就失灵。
+     */
+    private fun tryRunSwipe(x: Float, y: Float): Boolean {
+        if (consumed && !runSwipeFired) return false
+        if (game.state != Game.State.RUNNING || game.paused) return false
+        val s = hudScale(width.toFloat(), height.toFloat())
+        val minH = 36f * s
+        val minV = 52f * s
+        val originX = if (runSwipeFired) lastSwipeX else downX
+        val originY = if (runSwipeFired) lastSwipeY else downY
+        val dx = x - originX
+        val dy = y - originY
+        val adx = abs(dx)
+        val ady = abs(dy)
+        val horizontal = adx >= minH && adx > ady * 1.15f
+        val vertical = !runSwipeFired && ady >= minV && ady > adx * 1.25f
+        if (horizontal) {
+            if (dx > 0f) game.onSwipeRight() else game.onSwipeLeft()
+            lastSwipeX = x
+            lastSwipeY = y
+            runSwipeFired = true
+            consumed = true
+            return true
+        }
+        if (vertical) {
+            if (dy < 0f) game.onSwipeUp() else game.onSwipeDown()
+            runSwipeFired = true
+            consumed = true
+            return true
+        }
+        return false
     }
 
     private fun isHomeDraggable(): Boolean =
