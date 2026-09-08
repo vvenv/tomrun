@@ -1,4 +1,4 @@
-# Tomrun 全服纪录榜 API — HTTP only（首次申请证书前使用）
+# Tomrun 官网 + 纪录榜 — HTTP only（首次申请证书前使用）
 upstream tomrun_leaderboard {
     server 127.0.0.1:8787;
     keepalive 4;
@@ -8,6 +8,9 @@ server {
     listen 80;
     server_name run.edao.plus;
 
+    root /var/www/run.edao.plus;
+    index index.html;
+
     client_max_body_size 64k;
 
     location ^~ /.well-known/acme-challenge/ {
@@ -15,7 +18,7 @@ server {
         default_type "text/plain";
     }
 
-    location / {
+    location /api/ {
         proxy_pass http://tomrun_leaderboard;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
@@ -23,5 +26,9 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header Connection "";
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
     }
 }

@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://run.edao.plus/sitemap.xml

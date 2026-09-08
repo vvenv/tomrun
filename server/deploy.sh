@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# 部署纪录榜 API + run.edao.plus Nginx（凭证通过环境变量传入，勿写入仓库）
+# 部署纪录榜 API，并刷新 run.edao.plus Nginx（静态官网 + /api 反代）。
+# 官网产物请用 scripts/release-website.sh 单独同步，本脚本不会清空 /var/www。
 set -euo pipefail
 
 HOST="${DEPLOY_HOST:?set DEPLOY_HOST}"

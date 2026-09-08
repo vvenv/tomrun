@@ -1,0 +1,31 @@
+# 汤姆猫跑酷
+
+> 汤姆猫跑酷是一款面向中小学的原生 Android 3D 像素无尽跑酷：三道换线、跳跃铲滑，穿过传送门探索六大平行宇宙，沿途收集 88 件中国文物，用金币装扮汤姆的小屋。免费无广告。官网与全服纪录榜 API 同域：https://run.edao.plus
+
+## 官方链接
+
+- 网站: https://run.edao.plus/
+- 开源仓库: https://github.com/vvenv/tomrun
+- Android 下载: https://run.edao.plus/downloads/tomrun-1.0.apk
+- 全服纪录榜 API: https://run.edao.plus/api/v1/leaderboard/{slug}
+
+## 产品要点
+
+- 三道无尽跑酷：左右滑动换道，上滑跳跃，下滑铲滑；速度随距离爬升
+- 平行宇宙：草原 / 水下 / 天空 / 熔岩 / 糖果 / 星空，各有物理与金币福利
+- 文物博物馆：88 件课本文物，拾取后才出现小知识，不弹题、不考问
+- 汤姆的小屋：钱包金币装扮房屋与庭院，小屋能量开局赠送 buff
+- 道具：磁铁、头盔、加倍、闪电冲刺、高空索道
+- 护眼调色：降饱和、抬黑压白、削蓝光，减弱震动与闪光
+- 全服纪录榜：单场距离 / 得分 / 藏品图鉴 / 荣誉（可选同步）
+- 隐私：进度存在本机；榜单只上传角色名、成绩与匿名设备编号
+
+## 平台
+
+- 当前支持 Android 7.0+；iOS 即将推出
+- 单机可玩；全服榜为可选项
+
+## 联系
+
+- GitHub Issues: https://github.com/vvenv/tomrun/issues
+- 邮箱: vvenvw[at]gmail.com
