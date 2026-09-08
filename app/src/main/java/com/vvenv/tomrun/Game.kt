@@ -2444,20 +2444,38 @@ class Game {
     private fun pickWaveKind(
         early: Boolean, barOpen: Boolean, rampOpen: Boolean, spikeOpen: Boolean
     ): Int {
-        val setOpen = !early && distance > 350f
-        val w = FloatArray(9)
-        w[WAVE_BLOCK] = if (distance < 500f && !early) 0.30f else 0.26f
-        w[WAVE_LOW] = 0.22f
-        w[WAVE_BAR] = if (barOpen) 0.16f else 0f
-        w[WAVE_SPIKE] = if (spikeOpen) 0.08f else 0f
-        w[WAVE_RAMP] = if (rampOpen) 0.10f else 0f
-        w[WAVE_COINS] = if (early || distance < 500f) 0.22f else 0.10f
-        w[WAVE_WEAVE] = if (setOpen) 0.10f else 0f
-        w[WAVE_BAR_LOW] = if (setOpen && barOpen && distance > 400f) 0.08f else 0f
-        w[WAVE_GATE] = if (setOpen && barOpen && distance > 600f) 0.06f else 0f
+        if (!early && introBarPending && barOpen) {
+            introBarPending = false
+            return WAVE_BAR
+        }
+        if (!early && introSpikePending && spikeOpen) {
+            introSpikePending = false
+            return WAVE_SPIKE
+        }
+        if (!early && introRampPending && rampOpen) {
+            introRampPending = false
+            return WAVE_RAMP
+        }
+        if (!early && wavesSinceRest >= 4 && distance > 220f) return WAVE_COINS
+
+        val setOpen = !early && distance > 350f && !introBarPending
+        val w = FloatArray(12)
+        w[WAVE_BLOCK] = if (distance < 500f && !early) 0.30f else 0.24f
+        w[WAVE_LOW] = 0.20f
+        w[WAVE_BAR] = if (barOpen) 0.14f else 0f
+        w[WAVE_SPIKE] = if (spikeOpen) 0.07f else 0f
+        w[WAVE_RAMP] = if (rampOpen) 0.09f else 0f
+        w[WAVE_COINS] = if (early || distance < 500f) 0.22f else 0.09f
+        w[WAVE_WEAVE] = if (setOpen) 0.08f else 0f
+        w[WAVE_BAR_LOW] = if (setOpen && barOpen && distance > 400f) 0.07f else 0f
+        w[WAVE_GATE] = if (setOpen && barOpen && distance > 600f) 0.05f else 0f
+        w[WAVE_CHOICE] = if (setOpen && barOpen && distance > 480f) 0.07f else 0f
+        w[WAVE_HURDLE] = if (setOpen && distance > 420f) 0.06f else 0f
+        w[WAVE_DENY] = if (setOpen && distance > 380f) 0.05f else 0f
         if (distance > 900f) {
-            w[WAVE_WEAVE] += 0.04f
-            w[WAVE_BAR_LOW] += 0.03f
+            w[WAVE_WEAVE] += 0.03f
+            w[WAVE_BAR_LOW] += 0.02f
+            w[WAVE_HURDLE] += 0.02f
             w[WAVE_COINS] *= 0.7f
         }
         when (universe) {
@@ -2481,7 +2499,11 @@ class Game {
             w[WAVE_WEAVE] = 0f
             w[WAVE_BAR_LOW] = 0f
             w[WAVE_GATE] = 0f
+            w[WAVE_CHOICE] = 0f
+            w[WAVE_HURDLE] = 0f
+            w[WAVE_DENY] = 0f
         }
+        if (!barOpen) w[WAVE_CHOICE] = 0f
         var sum = 0f
         for (i in w.indices) {
             if (w[i] < 0f) w[i] = 0f
@@ -2562,6 +2584,40 @@ class Game {
             else entities.add(Entity(OBST_BLOCK, l, zBase))
         }
         coinRow(open, zBase - coinObstClear())
+    }
+
+    /** 三条路三种解：跳 / 铲 / 不能走。竞品里最常见的「读路选择题」 */
+    private fun spawnChoiceWave(zBase: Float) {
+        val lanes = mutableListOf(0, 1, 2)
+        lanes.shuffle()
+        entities.add(Entity(OBST_BLOCK, lanes[0], zBase))
+        entities.add(Entity(OBST_LOW, lanes[1], zBase))
+        entities.add(Entity(OBST_BAR, lanes[2], zBase))
+        coinArc(lanes[1], zBase)
+        coinRow(lanes[2], zBase - coinObstClear())
+    }
+
+    /** 同道连续矮栏，落地立刻再跳，对节拍 */
+    private fun spawnHurdleWave(zBase: Float) {
+        val l = Random.nextInt(3)
+        val hops = if (distance > 900f) 3 else 2
+        val hop = (speed * 0.82f).coerceIn(11f, 17f)
+        for (i in 0 until hops) {
+            val z = zBase - hop * i
+            entities.add(Entity(OBST_LOW, l, z))
+            if (i == 0) coinArc(l, z)
+        }
+    }
+
+    /** 同一道连堵两拍，像地铁里的长车厢：那条道暂时不能待 */
+    private fun spawnDenyWave(zBase: Float) {
+        val l = Random.nextInt(3)
+        val span = (speed * 0.50f).coerceIn(8f, 12f)
+        entities.add(Entity(OBST_BLOCK, l, zBase))
+        entities.add(Entity(OBST_BLOCK, l, zBase - span))
+        val open = if (l == 1) (if (Random.nextBoolean()) 0 else 2) else 1
+        coinRow(open, zBase)
+        coinRow(open, zBase - span)
     }
 
     private fun freeLaneNear(z: Float, slop: Float = 3f): Int {
@@ -2750,8 +2806,8 @@ class Game {
             when (e.kind) {
                 COIN -> {
                     val magnetPull = magnetTime > 0f || e.magneted
-                    val radius = if (magnetPull) 1.8f else 1.15f
-                    val zSlop = if (magnetPull) 5.5f else 1.2f
+                    val radius = if (magnetPull) 1.8f else 1.22f
+                    val zSlop = if (magnetPull) 5.5f else 1.25f
                     val dx = e.x - catX
                     val dy = e.y - catCenterY
                     if (abs(e.z) < zSlop && dx * dx + dy * dy < radius * radius) {
@@ -2760,18 +2816,20 @@ class Game {
                     }
                 }
                 P_MAGNET, P_HELMET, P_DOUBLE, P_BOOST, P_RELIC -> {
-                    if (abs(e.z) < 1.0f && abs(e.x - catX) < 1.1f && abs(e.y - catCenterY) < 1.3f) {
+                    if (abs(e.z) < 1.05f && abs(e.x - catX) < 1.2f && abs(e.y - catCenterY) < 1.35f) {
                         e.taken = true
                         if (e.kind == P_RELIC) collectRelic(e) else pickupPower(e)
                     }
                 }
                 else -> {
                     if (onZip || invulnTime > 0f) continue
-                    if (abs(e.z) > 0.9f) continue
-                    if (abs(e.x - catX) >= 1.1f) continue
+                    if (abs(e.z) > HIT_Z) continue
+                    val switching = abs(catX - LANE_X[lane]) > 0.35f
+                    val hitX = if (switching) HIT_X_SWITCH else HIT_X
+                    if (abs(e.x - catX) >= hitX) continue
                     val hit = when (e.kind) {
                         OBST_LOW -> catY < 0.55f
-                        OBST_BAR -> !sliding || catY > 0.3f
+                        OBST_BAR -> !slidingForBar || catY > 0.3f
                         OBST_RAMP -> false
                         // 到这个判定窗口时地刺早已完全弹起，和矮障碍一样得跳过去
                         OBST_SPIKE -> catY < 0.55f
@@ -2785,7 +2843,7 @@ class Game {
                     }
                     if (!immortalMode && helmetLayers > 0) {
                         helmetLayers--
-                        invulnTime = 1f
+                        invulnTime = 1.2f
                         shake = 0.45f
                         resetCombo()
                         spawnBurst(e.x, catY + 1f, e.z, floatArrayOf(1f, 0.76f, 0.12f, 1f), 8)
@@ -2874,8 +2932,9 @@ class Game {
             }
             if (!skilled) continue
             nearMissCool = NEAR_MISS_COOL
-            keepCombo()
+            advanceCombo(NEAR_MISS_SCORE)
             missionBonus += NEAR_MISS_SCORE
+            shake = max(shake, 0.12f)
             pushFloat("好险", 0xFFE8EEF8.toInt())
             emit(EV_COIN, HAPTIC_LIGHT)
             break
