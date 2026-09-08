@@ -15,6 +15,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:enableOnBackInvokedCallback="true"
             android:screenOrientation="fullSensor"
             android:configChanges="orientation|screenSize|keyboardHidden|screenLayout">
             <intent-filter>

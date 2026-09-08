@@ -589,13 +589,13 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         Matrix.setIdentityM(model, 0)
         stack.clear()
 
-        // 正在浏览、还没买下的东西按「幽灵」预览，与选物面板的第一下点击对应
-        val house = if (game.homeTab == Game.HOME_TAB_HOUSE) game.homeBrowseHouse else game.houseStyle
-        val roof = if (game.homeTab == Game.HOME_TAB_ROOF) game.homeBrowseRoof else game.roofStyle
-        val ghostDeco = if (game.homeTab == Game.HOME_TAB_DECO) game.homeBrowseDeco else -1
-        val catColor = if (game.homeTab == Game.HOME_TAB_COLOR) game.shopBrowseColor else game.catColor
-        val catScarf = if (game.homeTab == Game.HOME_TAB_SCARF) game.shopBrowseScarf else game.scarfStyle
-        val catHat = if (game.homeTab == Game.HOME_TAB_HAT) game.shopBrowseHat else game.hatStyle
+        // 选物面板打开时才用浏览游标做幽灵预览；关面板后与跑酷同一套已装备值
+        val house = game.displayHouseStyle()
+        val roof = game.displayRoofStyle()
+        val ghostDeco = game.displayGhostDeco()
+        val catColor = game.displayCatColor()
+        val catScarf = game.displayCatScarf()
+        val catHat = game.displayCatHat()
 
         HomeScene3D.draw(homePainter, game, homePhase, house, roof, ghostDeco, catColor, catScarf, catHat)
         publishHomeHits(house)
@@ -2203,7 +2203,8 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         drawPart(0f, 0.12f, -0.05f, 0.14f, 0.26f, 0.08f, CatPalette.PINK)
         popModel()
 
-        if (!g.helmet && g.hatStyle > 0) {
+        // 头盔叠在帽子上，不再整顶摘掉——家园开局赠送头盔时否则整局看不见已买的帽子
+        if (g.hatStyle > 0) {
             when (g.hatStyle) {
                 1 -> {
                     drawPart(0f, 0.47f, 0.05f, 0.82f, 0.26f, 0.75f, CatPalette.HAT_RED)

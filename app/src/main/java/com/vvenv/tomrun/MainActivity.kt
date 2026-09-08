@@ -11,6 +11,8 @@ import android.os.VibratorManager
 import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
+import android.window.OnBackInvokedCallback
+import android.window.OnBackInvokedDispatcher
 import android.widget.FrameLayout
 
 class MainActivity : Activity() {
@@ -20,6 +22,8 @@ class MainActivity : Activity() {
     private val game = Game()
     private var soundFx: SoundFx? = null
     private var vibrator: Vibrator? = null
+    /** API 33+ 才有 [OnBackInvokedCallback]，用 Any 避免低版本加载 MainActivity 时解析失败 */
+    private var backCallback: Any? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -64,6 +68,22 @@ class MainActivity : Activity() {
         root.addView(hud)
         setContentView(root)
         hideSystemUi()
+        registerPredictiveBack()
+    }
+
+    /**
+     * targetSdk 36 默认走预测性返回：不注册回调时 [onBackPressed] 不会被叫到，
+     * 系统直接把本页滑向桌面。跑酷左缘换道和死后惯性滑都会误触。
+     */
+    private fun registerPredictiveBack() {
+        if (Build.VERSION.SDK_INT < 33) return
+        val cb = OnBackInvokedCallback {
+            if (!hud.handleBackPressed()) finish()
+        }
+        backCallback = cb
+        onBackInvokedDispatcher.registerOnBackInvokedCallback(
+            OnBackInvokedDispatcher.PRIORITY_DEFAULT, cb
+        )
     }
 
     @Deprecated("Deprecated in Java")
@@ -122,6 +142,12 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        if (Build.VERSION.SDK_INT >= 33) {
+            (backCallback as? OnBackInvokedCallback)?.let {
+                onBackInvokedDispatcher.unregisterOnBackInvokedCallback(it)
+            }
+            backCallback = null
+        }
         super.onDestroy()
         game.onEvent = null
         soundFx?.release()

@@ -390,7 +390,7 @@ class Game {
         val TRAIL_PRICES = intArrayOf(0, 500, 1200, 2500)
         val COLOR_NAMES = arrayOf("蓝灰", "橘黄", "乌黑", "粉红")
         val TRAIL_NAMES = arrayOf("无光迹", "青色", "金色", "彩虹")
-        // 围巾（跑动时飘动）与帽子（吃到头盔时暂被头盔遮住）
+        // 围巾（跑动时飘动）与帽子（头盔叠在帽子上，不摘掉）
         const val SCARF_COUNT = 4
         const val HAT_COUNT = 4
         val SCARF_NAMES = arrayOf("无围巾", "火红围巾", "天青围巾", "星紫围巾")
@@ -662,6 +662,13 @@ class Game {
     @Volatile var shopBrowseTrail = 0
     @Volatile var shopBrowseScarf = 0
     @Volatile var shopBrowseHat = 0
+    /**
+     * 选物面板打开时才用浏览游标画幽灵预览。
+     * 关面板后必须关掉：否则 [homeTab] 还停在配色/围巾上，院子里继续画未买下的预览，
+     * 出门跑酷却读装备值，看起来就像「家里换了、路上没换」。
+     */
+    @Volatile var homePreviewing = false
+        private set
 
     val floatTexts = ArrayList<FloatText>()
     val particles = ArrayList<Particle>()
@@ -1373,6 +1380,36 @@ class Game {
 
     fun isCatHomeTab(tab: Int = homeTab) = tab in HOME_TAB_COLOR..HOME_TAB_HAT
 
+    /** 院子里此刻该画的猫装扮：预览中用浏览游标，否则用已装备。 */
+    fun displayCatColor(): Int =
+        if (homePreviewing && isCatHomeTab()) shopBrowseColor else catColor
+    fun displayCatScarf(): Int =
+        if (homePreviewing && isCatHomeTab()) shopBrowseScarf else scarfStyle
+    fun displayCatHat(): Int =
+        if (homePreviewing && isCatHomeTab()) shopBrowseHat else hatStyle
+    fun displayHouseStyle(): Int =
+        if (homePreviewing && homeTab == HOME_TAB_HOUSE) homeBrowseHouse else houseStyle
+    fun displayRoofStyle(): Int =
+        if (homePreviewing && homeTab == HOME_TAB_ROOF) homeBrowseRoof else roofStyle
+    fun displayGhostDeco(): Int =
+        if (homePreviewing && homeTab == HOME_TAB_DECO) homeBrowseDeco else -1
+
+    @Synchronized fun setHomePreviewing(on: Boolean) {
+        homePreviewing = on
+        if (!on) revertHomeBrowseToEquipped()
+    }
+
+    /** 关掉预览时把游标收回已装备，避免下次开面板或出门带着幽灵色。 */
+    @Synchronized fun revertHomeBrowseToEquipped() {
+        shopBrowseColor = catColor
+        shopBrowseTrail = trailStyle
+        shopBrowseScarf = scarfStyle
+        shopBrowseHat = hatStyle
+        homeBrowseHouse = houseStyle
+        homeBrowseRoof = roofStyle
+        homeBrowseDeco = HomeWorldContent.clampDecoBrowse(homeWorld, homeBrowseDeco)
+    }
+
     @Synchronized fun switchMenuPanel(panel: Int) {
         if (state == State.RUNNING) return
         menuPanel = panel
@@ -1381,6 +1418,8 @@ class Game {
     /** 从家园出门：清叠层后直接上路，不再经过主菜单空点一下 */
     @Synchronized fun startRunFromHome() {
         if (state == State.RUNNING) return
+        homePreviewing = false
+        revertHomeBrowseToEquipped()
         reset()
         state = State.RUNNING
     }
