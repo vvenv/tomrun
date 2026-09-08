@@ -386,27 +386,26 @@ class HudView(context: Context, private val game: Game) : View(context) {
         private const val ROW_NAME_MIN = 16f
         private const val ROW_DETAIL_MIN = 12f
         private const val ROW_VALUE_MIN = 16f
-        private const val TILE_COMMON_BG = 0xFFE2F0E6.toInt()
-        private const val TILE_RARE_BG = 0xFFDCECF4.toInt()
-        private const val TILE_LEGEND_BG = 0xFFF5E8C4.toInt()
-        /** 亮色浮窗配色（藏品 / 荣誉共用） */
-        private const val LIGHT_PANEL = 0xFFF7F1E6.toInt()
-        private const val LIGHT_PANEL_EDGE = 0xFF6B4E28.toInt()
-        private const val LIGHT_DIVIDER = 0x55B07A18
-        private const val LIGHT_TITLE = 0xFF5C3D0A.toInt()
-        private const val LIGHT_SUB = 0xFF2F4A66.toInt()
-        private const val LIGHT_ROW = 0xFFFFFCF5.toInt()
-        private const val LIGHT_ROW_EDGE = 0xFFD9CDB8.toInt()
-        private const val LIGHT_TEXT = 0xFF1E1E24.toInt()
-        private const val LIGHT_MUTED = 0xFF4A5560.toInt()
-        private const val LIGHT_HINT = 0xFF5A6068.toInt()
-        private const val LIGHT_BTN = 0xFFF0E4C8.toInt()
-        private const val LIGHT_BTN_EDGE = 0xFF6B4E28.toInt()
-        private const val LIGHT_LOCKED = 0xFF6E7680.toInt()
-        /** 亮色底上的稀有度字色（比 HUD 霓虹色更深） */
-        private const val LIGHT_RELIC_COMMON = 0xFF2E7A4A.toInt()
-        private const val LIGHT_RELIC_RARE = 0xFF1A6F98.toInt()
-        private const val LIGHT_RELIC_LEGEND = 0xFFA06A00.toInt()
+        private const val TILE_COMMON_BG = 0xFFF0F0EE.toInt()
+        private const val TILE_RARE_BG = 0xFFF0F0EE.toInt()
+        private const val TILE_LEGEND_BG = 0xFFF0F0EE.toInt()
+        /** 亮色浮窗：近白底 + 近黑字，不用木色 */
+        private const val LIGHT_PANEL = 0xFFF6F5F2.toInt()
+        private const val LIGHT_PANEL_EDGE = 0x33111111
+        private const val LIGHT_DIVIDER = 0x22111111
+        private const val LIGHT_TITLE = 0xFF1A1A1A.toInt()
+        private const val LIGHT_SUB = 0xFF6E6E6E.toInt()
+        private const val LIGHT_ROW = 0xFFFFFFFF.toInt()
+        private const val LIGHT_ROW_EDGE = 0x22111111
+        private const val LIGHT_TEXT = 0xFF222222.toInt()
+        private const val LIGHT_MUTED = 0xFF6A6A6A.toInt()
+        private const val LIGHT_HINT = 0xFF8A8A8A.toInt()
+        private const val LIGHT_BTN = 0xFFECEBE7.toInt()
+        private const val LIGHT_BTN_EDGE = 0x22111111
+        private const val LIGHT_LOCKED = 0xFF9A9A9A.toInt()
+        private const val LIGHT_RELIC_COMMON = 0xFF3A3A3A.toInt()
+        private const val LIGHT_RELIC_RARE = 0xFF3A3A3A.toInt()
+        private const val LIGHT_RELIC_LEGEND = 0xFF3A3A3A.toInt()
         /** 商店 / 小屋面板标题：同字号、同相对返回按钮的纵坐标 */
         private const val PANEL_TITLE_SIZE = 48f
         private const val PANEL_TITLE_DY = 64f
@@ -1103,43 +1102,18 @@ class HudView(context: Context, private val game: Game) : View(context) {
         if (game.riding != null) token("索", 0xFF7DEBA0.toInt())
     }
 
-    /** 追击时才出现的底栏：名字、倒计时、该切哪条道。不常驻。 */
     private fun drawChaseHud(canvas: Canvas, w: Float, h: Float, s: Float, sdx: Float, sdy: Float) {
-        val pad = 18f * s
-        val barH = 58f * s
-        val left = pad + safeL
-        val right = w - pad - safeR
-        val bottom = h - safeB - 16f * s
-        val top = bottom - barH
-        val color = game.yokaiColor
-        PixelUi.drawRect(
-            canvas, btnPaint, left, top, right, bottom,
-            withAlpha(0xFF1C2634.toInt(), 220), s,
-            edge = color, edgeW = max(1f, 2f * s), shadow = true
-        )
+        val left = 24f * s + safeL
+        val right = w - 24f * s - safeR
+        val bottom = h - safeB - 28f * s
         val hint = game.chaseLaneHint()
-        val sameLane = hint.startsWith("同道")
-        val nameSize = 22f * s
-        val hintSize = 20f * s
         textPaint.textAlign = Paint.Align.LEFT
-        pixText(canvas, game.yokaiName, left + 14f * s, top + 22f * s, nameSize, color, sdx, sdy)
+        pixText(canvas, game.yokaiName, left, bottom - 14f * s, 22f * s, Color.WHITE, sdx, sdy)
         textPaint.textAlign = Paint.Align.RIGHT
-        pixText(
-            canvas, hint, right - 14f * s, top + 22f * s, hintSize,
-            if (sameLane) 0xFF7DEBA0.toInt() else 0xFFFFD426.toInt(), sdx, sdy
-        )
-        val meterL = left + 14f * s
-        val meterR = right - 14f * s
-        val meterT = top + 32f * s
-        val meterB = bottom - 10f * s
+        pixText(canvas, hint, right, bottom - 14f * s, 20f * s, 0xFFB0B8C0.toInt(), sdx, sdy)
         val frac = if (game.chaseTimeMax > 0.01f) game.chaseTimeLeft / game.chaseTimeMax else 0f
-        PixelUi.drawMeter(canvas, btnPaint, meterL, meterT, meterR, meterB, color, frac, s)
-        val secs = max(0, kotlin.math.ceil(game.chaseTimeLeft.toDouble()).toInt())
+        PixelUi.drawMeter(canvas, btnPaint, left, bottom, right, bottom + 3f * s, Color.WHITE, frac, s)
         textPaint.textAlign = Paint.Align.CENTER
-        pixText(
-            canvas, "${secs}秒", (meterL + meterR) * 0.5f,
-            centeredBaselineY((meterT + meterB) * 0.5f, 16f * s), 16f * s, Color.WHITE, sdx, sdy
-        )
     }
 
     private fun noticeBandTop(h: Float, s: Float): Float = h * RUN_BANNER_Y
@@ -1197,55 +1171,9 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val dead = game.state == Game.State.DEAD
         val portrait = h > w
         if (dead) {
-            pixText(canvas, "游戏结束", w / 2f, h * 0.22f, if (portrait) 56f * s else 44f * s, Color.WHITE, sdx, sdy)
-            val record = when {
-                game.runNewDistRecord && game.runNewScoreRecord -> "  新纪录！"
-                game.runNewDistRecord -> "  最远纪录！"
-                game.runNewScoreRecord -> "  得分纪录！"
-                else -> ""
-            }
-            pixText(canvas, "${game.distance.toInt()} m$record", w / 2f, h * 0.32f, 40f * s, Color.WHITE, sdx, sdy)
-            pixText(canvas, "得分 ${game.score}", w / 2f, h * 0.38f, 26f * s, 0xFFB8C4D0.toInt(), sdx, sdy)
-            pixText(
-                canvas, "本局金币 ${game.coins}  ·  钱包 +${game.runWalletEarn}  ·  连击 ${game.bestComboRun}",
-                w / 2f, h * 0.43f, 22f * s, 0xFFFFD54A.toInt(), sdx, sdy
-            )
-            val questStep = if (portrait) 0.036f else 0.048f
-            var questY = h * 0.49f
-            for (q in game.quests) {
-                val mark = if (q.done) "✓" else "·"
-                val line = "$mark ${q.label}  ${q.progress}/${q.target}"
-                val qc = if (q.done) 0xFF7DEBA0.toInt() else 0xFFB8C4D0.toInt()
-                pixText(canvas, line, w / 2f, questY, 22f * s, qc, sdx, sdy)
-                questY += h * questStep
-            }
-            val goal = "下一目标  ${game.nextGoalLine()}"
-            pixText(
-                canvas, goal, w / 2f, questY, fittedTextSize(goal, 20f * s, w * 0.88f, 14f * s),
-                0xFFC77DFF.toInt(), sdx, sdy
-            )
-            questY += h * questStep
-            if (game.runRelics > 0) {
-                pixText(
-                    canvas, "发现文物 ×${game.runRelics}  ·  图鉴 ${game.relicsFound}/${Game.RELIC_COUNT}",
-                    w / 2f, questY, 20f * s, 0xFFC77DFF.toInt(), sdx, sdy
-                )
-                questY += h * questStep
-            }
-            // 纪录榜入口：主菜单底栏的奖杯按钮已删，改成结算屏这一行。
-            val lbHits = game.lastRunLeaderboardHits
-            val lbY = questY
-            val lbLabel = if (lbHits.isNotEmpty()) {
-                val names = lbHits.map { game.leaderboardTitle(it) }.distinct().take(3).joinToString(" · ")
-                "入榜 $names${if (lbHits.size > 3) "…" else ""}  ›"
-            } else "纪录榜  ›"
-            val lbSize = fittedTextSize(lbLabel, 22f * s, w * 0.86f, 16f * s)
-            pixText(canvas, lbLabel, w / 2f, lbY, lbSize, 0xFFFFD426.toInt(), sdx, sdy)
-            val lbHalfW = textPaint.measureText(lbLabel) / 2f + 20f * s
-            btnLeaderboard.set(w / 2f - lbHalfW, lbY - 28f * s, w / 2f + lbHalfW, lbY + 14f * s)
-
+            drawSettleSheet(canvas, w, h, s, sdx, sdy)
             if (game.deadTime > 0.6f) {
-                pixText(canvas, "点击屏幕再来一次", w / 2f, h * 0.86f, 26f * s, Color.WHITE, sdx, sdy)
+                pixText(canvas, "点击屏幕再来一次", w / 2f, h * 0.88f, 24f * s, Color.WHITE, sdx, sdy)
             }
         } else {
             btnLeaderboard.setEmpty()
@@ -1260,11 +1188,11 @@ class HudView(context: Context, private val game: Game) : View(context) {
             val progress = game.menuProgressLine()
             pixText(
                 canvas, progress, w / 2f, h * 0.38f,
-                fittedTextSize(progress, 22f * s, w * 0.90f, 14f * s),
-                0xFFB8C4D0.toInt(), sdx, sdy
+                fittedTextSize(progress, 20f * s, w * 0.88f, 14f * s),
+                0xFFB0B8C0.toInt(), sdx, sdy
             )
             val blink = if (kotlin.math.sin(homePhase * 3f) > -0.3f) 255 else 120
-            pixText(canvas, "点击屏幕开始", w / 2f, h * 0.48f, 32f * s, withAlpha(Color.WHITE, blink), sdx, sdy)
+            pixText(canvas, "点击屏幕开始", w / 2f, h * 0.50f, 32f * s, withAlpha(Color.WHITE, blink), sdx, sdy)
         }
 
         // 结算屏已有任务与下一目标，展签只在等待开跑时轮播，避免和三条任务抢行
@@ -1281,6 +1209,57 @@ class HudView(context: Context, private val game: Game) : View(context) {
 
         if (showLeaderboard) drawLeaderboardOverlay(canvas, w, h, s, sdx, sdy)
         if (showHelp) drawHelpOverlay(canvas, w, h, s, sdx, sdy)
+    }
+
+    private fun drawSettleSheet(
+        canvas: Canvas, w: Float, h: Float, s: Float, sdx: Float, sdy: Float
+    ) {
+        val portrait = h > w
+        val muted = 0xFFB0B8C0.toInt()
+        pixText(canvas, "游戏结束", w / 2f, h * 0.20f, if (portrait) 48f * s else 36f * s, Color.WHITE, sdx, sdy)
+        val record = when {
+            game.runNewDistRecord && game.runNewScoreRecord -> "  新纪录"
+            game.runNewDistRecord -> "  最远纪录"
+            game.runNewScoreRecord -> "  得分纪录"
+            else -> ""
+        }
+        pixText(canvas, "${game.distance.toInt()} m$record", w / 2f, h * 0.28f, 36f * s, Color.WHITE, sdx, sdy)
+        val step = if (portrait) 0.048f else 0.055f
+        var y = h * 0.36f
+        pixText(canvas, "得分 ${game.score}", w / 2f, y, 22f * s, muted, sdx, sdy)
+        y += h * step
+        pixText(
+            canvas, "金币 ${game.coins}  ·  钱包 +${game.runWalletEarn}  ·  连击 ${game.bestComboRun}",
+            w / 2f, y, fittedTextSize(
+                "金币 ${game.coins}  ·  钱包 +${game.runWalletEarn}  ·  连击 ${game.bestComboRun}",
+                20f * s, w * 0.86f, 14f * s
+            ), muted, sdx, sdy
+        )
+        y += h * step
+        for (q in game.quests) {
+            val mark = if (q.done) "✓" else "·"
+            pixText(canvas, "$mark ${q.label}  ${q.progress}/${q.target}", w / 2f, y, 20f * s, muted, sdx, sdy)
+            y += h * step
+        }
+        val goal = game.nextGoalLine()
+        pixText(canvas, goal, w / 2f, y, fittedTextSize(goal, 18f * s, w * 0.86f, 14f * s), muted, sdx, sdy)
+        y += h * step
+        if (game.runRelics > 0) {
+            pixText(
+                canvas, "文物 ×${game.runRelics}  ·  ${game.relicsFound}/${Game.RELIC_COUNT}",
+                w / 2f, y, 18f * s, muted, sdx, sdy
+            )
+            y += h * step
+        }
+        val lbHits = game.lastRunLeaderboardHits
+        val lbLabel = if (lbHits.isNotEmpty()) {
+            val names = lbHits.map { game.leaderboardTitle(it) }.distinct().take(3).joinToString(" · ")
+            "入榜 $names${if (lbHits.size > 3) "…" else ""}  ›"
+        } else "纪录榜  ›"
+        val lbSize = fittedTextSize(lbLabel, 20f * s, w * 0.86f, 14f * s)
+        pixText(canvas, lbLabel, w / 2f, y, lbSize, Color.WHITE, sdx, sdy)
+        val lbHalfW = textPaint.measureText(lbLabel) / 2f + 18f * s
+        btnLeaderboard.set(w / 2f - lbHalfW, y - 22f * s, w / 2f + lbHalfW, y + 12f * s)
     }
 
     /**
@@ -1858,7 +1837,6 @@ class HudView(context: Context, private val game: Game) : View(context) {
         if (homeShown("name")) {
             canvas.save(); canvas.scale(nameSc, nameSc, nameCx, nameCy)
             drawHomeNamePlaque(canvas, plaqueL + ndx, plaqueT + ndy, plaqueR + ndx, plaqueB + ndy, s)
-            drawTinyHouseIcon(canvas, plaqueL + 22f * s + ndx, plaqueCy + ndy, s * 0.85f)
             pixText(
                 canvas, title, titleCx + 6f * s + ndx, centeredBaselineY(plaqueCy, titleSize) + ndy,
                 titleSize, 0xFFFFF6E8.toInt(), sdx, sdy
@@ -1989,7 +1967,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private fun drawHomeWalletPlate(canvas: Canvas, r: RectF, s: Float, sdx: Float, sdy: Float) {
         val pulse = 0.72f + 0.28f * (0.5f + 0.5f * kotlin.math.sin(homePhase * 2.4f))
         PixelUi.drawBtn(canvas, btnPaint, r.left, r.top, r.right, r.bottom,
-            0xFF6B5238.toInt(), s)
+            0xFF2C3138.toInt(), s)
 
         val labelSize = homeWalletLabelSize
         textPaint.textSize = labelSize
@@ -2012,7 +1990,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
     }
 
     private fun drawHomeNamePlaque(canvas: Canvas, l: Float, t: Float, r: Float, b: Float, s: Float) {
-        PixelUi.drawBtn(canvas, btnPaint, l, t, r, b, 0xFF7A5232.toInt(), s)
+        PixelUi.drawBtn(canvas, btnPaint, l, t, r, b, 0xFF2C3138.toInt(), s)
     }
 
     private fun drawTinyHouseIcon(canvas: Canvas, cx: Float, cy: Float, s: Float) {
@@ -2174,27 +2152,8 @@ class HudView(context: Context, private val game: Game) : View(context) {
         invalidate()
     }
 
-    /** 主菜单右下角「家」入口：简洁圆角按钮 + 像素小房子 */
     private fun drawHomeEntryBtn(canvas: Canvas, r: RectF, s: Float) {
-        PixelUi.drawBtn(canvas, btnPaint, r.left, r.top, r.right, r.bottom,
-            0xFF7A5232.toInt(), s)
-        val cx = r.centerX()
-        val cy = r.centerY()
-        btnPaint.style = Paint.Style.FILL
-        btnPaint.color = 0xFFFFF0D8.toInt()
-        val wallL = cx - 14f * s
-        val wallR = cx + 14f * s
-        val wallT = cy - 2f * s
-        val wallB = cy + 14f * s
-        canvas.drawRect(wallL, wallT, wallR, wallB, btnPaint)
-        btnPaint.color = 0xFFE85848.toInt()
-        canvas.drawRect(cx - 17f * s, cy - 10f * s, cx + 17f * s, cy - 1f * s, btnPaint)
-        btnPaint.color = 0xFFFF7868.toInt()
-        canvas.drawRect(cx - 14f * s, cy - 10f * s, cx + 14f * s, cy - 6f * s, btnPaint)
-        btnPaint.color = 0xFF5A3E22.toInt()
-        canvas.drawRect(cx + 4f * s, wallT + 4f * s, cx + 11f * s, wallB - 2f * s, btnPaint)
-        btnPaint.color = 0xFFFFD75E.toInt()
-        canvas.drawRect(cx - 8f * s, wallT + 5f * s, cx - 3f * s, wallT + 11f * s, btnPaint)
+        drawBtn(canvas, r, "家", s)
     }
 
     /** 家页左下角「出门」：简洁圆角按钮 + 像素门与箭头 */
@@ -2210,33 +2169,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
     }
 
     private fun drawLeaveHomeBtn(canvas: Canvas, r: RectF, s: Float) {
-        PixelUi.drawBtn(canvas, btnPaint, r.left, r.top, r.right, r.bottom,
-            0xFF4A6A8A.toInt(), s)
-
-        val doorCx = r.left + 34f * s
-        val doorCy = r.centerY()
-        val doorW = 11f * s
-        val doorH = 16f * s
-
-        btnPaint.style = Paint.Style.FILL
-        btnPaint.color = 0xFF2A3A4A.toInt()
-        canvas.drawRect(doorCx - doorW, doorCy - doorH, doorCx + doorW, doorCy + doorH, btnPaint)
-        btnPaint.color = 0xFFE8F0FF.toInt()
-        canvas.drawRect(doorCx - doorW + 2f * s, doorCy - doorH + 2f * s, doorCx + doorW - 2f * s, doorCy + doorH - 2f * s, btnPaint)
-        btnPaint.color = 0xFF4A6A8A.toInt()
-        canvas.drawRect(doorCx + doorW - 6f * s, doorCy - 2f * s, doorCx + doorW - 2f * s, doorCy + 2f * s, btnPaint)
-
-        val arrowBaseX = doorCx + doorW + 10f * s
-        val shaftY = doorCy
-        btnPaint.color = 0xFF7DEBA0.toInt()
-        canvas.drawRect(arrowBaseX, shaftY - 2f * s, arrowBaseX + 10f * s, shaftY + 2f * s, btnPaint)
-        canvas.drawRect(arrowBaseX + 8f * s, shaftY - 6f * s, arrowBaseX + 12f * s, shaftY - 2f * s, btnPaint)
-        canvas.drawRect(arrowBaseX + 8f * s, shaftY + 2f * s, arrowBaseX + 12f * s, shaftY + 6f * s, btnPaint)
-
-        textPaint.textAlign = Paint.Align.LEFT
-        val labelSize = min(28f * s, r.height() * 0.38f).coerceAtLeast(22f * s)
-        pixText(canvas, "出门", r.left + 68f * s, centeredBaselineY(r.centerY(), labelSize), labelSize, 0xFFF0F8FF.toInt(), 0f, 0f)
-        textPaint.textAlign = Paint.Align.CENTER
+        drawBtn(canvas, r, "出门", s)
     }
 
     /**
@@ -3688,8 +3621,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
 
     private fun drawPauseOverlay(canvas: Canvas, w: Float, h: Float, s: Float, sdx: Float, sdy: Float) {
         dim(canvas, w, h)
-        dim(canvas, w, h)   // 双层压暗，突出暂停菜单
-        pixText(canvas, "已暂停", w / 2f, h * 0.34f, 64f * s, Color.WHITE, sdx, sdy)
+        pixText(canvas, "已暂停", w / 2f, h * 0.34f, 56f * s, Color.WHITE, sdx, sdy)
 
         val portrait = h > w
         val halfW = if (portrait) min(180f * s, w * 0.40f) else 150f * s
@@ -3785,13 +3717,9 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val contentTop = headerBottom + 10f * s
         val contentBottom = bottom - OVERLAY_FOOTER_H * s
 
-        // 背景铺满；标题 / X / 列表落在 safe area 内
-        drawHallBackdrop(canvas, w, h, s, hall, headerBottom, contentBottom + 14f * s)
-        btnPaint.style = Paint.Style.STROKE
-        btnPaint.strokeWidth = 2.5f * s
-        btnPaint.color = LIGHT_PANEL_EDGE
-        canvas.drawRect(1.5f * s, 1.5f * s, w - 1.5f * s, h - 1.5f * s, btnPaint)
         btnPaint.style = Paint.Style.FILL
+        btnPaint.color = LIGHT_PANEL
+        canvas.drawRect(0f, 0f, w, h, btnPaint)
 
         homeOverlayPanel.set(0f, 0f, w, h)
 
@@ -3802,75 +3730,6 @@ class HudView(context: Context, private val game: Game) : View(context) {
         lightText(canvas, subtitle, titleCx, top + 80f * s, subSize, LIGHT_SUB)
 
         return OverlayFrame(left, top, right, bottom, right - left, contentTop, contentBottom)
-    }
-
-    /**
-     * 图鉴内页的"房间"：博物馆展厅（抹灰墙 + 木地板 + 顶部射灯）
-     * 或荣誉厅（石砖墙 + 木护墙板）。底色仍偏亮，沿用原有深色字。
-     */
-    private fun drawHallBackdrop(
-        canvas: Canvas, w: Float, h: Float, s: Float, hall: Int, ceilY: Float, floorY: Float
-    ) {
-        fun rc(l: Float, t: Float, r: Float, b: Float, color: Int) {
-            btnPaint.style = Paint.Style.FILL
-            btnPaint.color = color
-            canvas.drawRect(l, t, r, b, btnPaint)
-        }
-        if (hall == HALL_MUSEUM) {
-            rc(0f, 0f, w, floorY, 0xFFF3EAD6.toInt())
-            rc(0f, 0f, w, ceilY, 0xFFE7DAC0.toInt())
-            // 木质檐口
-            rc(0f, ceilY - 9f * s, w, ceilY, 0xFF8A6A3E.toInt())
-            rc(0f, ceilY - 9f * s, w, ceilY - 6f * s, 0xFFB08B56.toInt())
-            // 墙裙 + 踢脚线
-            rc(0f, floorY - 34f * s, w, floorY, 0xFFDFD1B4.toInt())
-            rc(0f, floorY - 37f * s, w, floorY - 32f * s, 0xFF8A6A3E.toInt())
-            // 木地板
-            rc(0f, floorY, w, h, 0xFFC79A66.toInt())
-            var fy = floorY + 20f * s
-            while (fy < h) {
-                rc(0f, fy, w, fy + 2f * s, 0xFFAB8250.toInt())
-                fy += 22f * s
-            }
-            // 顶部射灯：分段矩形拼出像素光锥
-            for (t in floatArrayOf(0.22f, 0.5f, 0.78f)) {
-                val lx = w * t
-                rc(lx - 8f * s, ceilY, lx + 8f * s, ceilY + 10f * s, 0xFF6B4A2B.toInt())
-                rc(lx - 5f * s, ceilY + 8f * s, lx + 5f * s, ceilY + 13f * s, 0xFFFFE9A6.toInt())
-                val segs = 10
-                val span = floorY - ceilY - 13f * s
-                for (i in 0 until segs) {
-                    val p0 = i / segs.toFloat()
-                    val p1 = (i + 1) / segs.toFloat()
-                    val hw = (7f + 58f * p0) * s
-                    rc(
-                        lx - hw, ceilY + 13f * s + span * p0,
-                        lx + hw, ceilY + 13f * s + span * p1,
-                        withAlpha(0xFFFFF0C0.toInt(), (34 * (1f - p0)).toInt())
-                    )
-                }
-            }
-        } else {
-            // 石砖墙：错缝大砖，缝色比砖面稍深
-            rc(0f, 0f, w, floorY, 0xFFEFE6D4.toInt())
-            val brickH = 34f * s
-            val brickW = 96f * s
-            var row = 0
-            var by = 0f
-            while (by < floorY) {
-                rc(0f, by, w, by + 2.5f * s, 0xFFDBCDB2.toInt())
-                var bx = if (row % 2 == 0) 0f else brickW * 0.5f
-                while (bx < w) {
-                    rc(bx, by, bx + 2.5f * s, min(by + brickH, floorY), 0xFFDBCDB2.toInt())
-                    bx += brickW
-                }
-                by += brickH
-                row++
-            }
-            // 木护墙板
-            rc(0f, floorY, w, h, 0xFF9C7245.toInt())
-            rc(0f, floorY, w, floorY + 5f * s, 0xFFC79A66.toInt())
-        }
     }
 
     /** 底栏：页码居中，多页时提示左右滑动 */
@@ -3894,39 +3753,14 @@ class HudView(context: Context, private val game: Game) : View(context) {
         drawOverlayCloseRow(canvas, frame.left, frame.right, frame.bottom, s, hint, btnCatalogClose)
     }
 
-    /** 钉在荣誉墙上的木质匾额：木框 + 内板 + 四角螺钉，已解锁的镶一圈金属边 */
     private fun drawHonorPlaque(
-        canvas: Canvas, left: Float, top: Float, right: Float, bottom: Float, s: Float, lv: Int
+        canvas: Canvas, left: Float, top: Float, right: Float, bottom: Float, s: Float, lv: Int,
+        accent: Int? = null
     ) {
-        PixelUi.drawBtn(canvas, btnPaint, left, top, right, bottom,
-            0xFF7A5230.toInt(), s)
-        val inset = 8f * s
         PixelUi.drawRect(
-            canvas, btnPaint, left + inset, top + inset, right - inset, bottom - inset,
-            LIGHT_ROW, s, bevel = PixelUi.Bevel.INSET
+            canvas, btnPaint, left, top, right, bottom,
+            LIGHT_ROW, s, edge = accent ?: LIGHT_ROW_EDGE, edgeW = max(1f, s)
         )
-        if (lv > 0) {
-            val edge = when (lv) {
-                1 -> 0xFFC87A3A.toInt()
-                2 -> 0xFFAEB6C4.toInt()
-                3 -> 0xFFF2C14E.toInt()
-                else -> 0xFF6FD3E0.toInt()
-            }
-            btnPaint.style = Paint.Style.STROKE
-            btnPaint.strokeWidth = 2f * s
-            btnPaint.color = edge
-            canvas.drawRect(left + inset, top + inset, right - inset, bottom - inset, btnPaint)
-            btnPaint.style = Paint.Style.FILL
-        }
-        val d = 3f * s
-        for (px in floatArrayOf(left + 4.5f * s, right - 4.5f * s)) {
-            for (py in floatArrayOf(top + 5.5f * s, bottom - 5.5f * s)) {
-                btnPaint.color = 0xFFC9B48C.toInt()
-                canvas.drawRect(px - d, py - d, px + d, py + d, btnPaint)
-                btnPaint.color = 0xFF6B5540.toInt()
-                canvas.drawRect(px - d * 0.4f, py - d, px + d * 0.4f, py + d, btnPaint)
-            }
-        }
     }
 
     private fun drawLightBtn(
@@ -4123,7 +3957,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private fun drawMuseumTabs(
         canvas: Canvas, frame: OverlayFrame, s: Float
     ): Float {
-        val tabH = 36f * s
+        val tabH = 40f * s
         val gap = 10f * s
         val tabW = min(150f * s, (frame.pw - 40f * s - gap) * 0.5f)
         val cy = frame.contentTop + tabH * 0.5f
@@ -4131,23 +3965,9 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val yokaiCx = frame.left + frame.pw * 0.5f + gap * 0.5f + tabW * 0.5f
         btnMuseumTabRelic.set(relicCx - tabW * 0.5f, cy - tabH * 0.5f, relicCx + tabW * 0.5f, cy + tabH * 0.5f)
         btnMuseumTabYokai.set(yokaiCx - tabW * 0.5f, cy - tabH * 0.5f, yokaiCx + tabW * 0.5f, cy + tabH * 0.5f)
-        drawMuseumTabChip(canvas, btnMuseumTabRelic, "文物", museumTab == MUSEUM_TAB_RELIC, s)
-        drawMuseumTabChip(canvas, btnMuseumTabYokai, "妖怪", museumTab == MUSEUM_TAB_YOKAI, s)
+        drawLightBtn(canvas, btnMuseumTabRelic, "文物", s, selected = museumTab == MUSEUM_TAB_RELIC)
+        drawLightBtn(canvas, btnMuseumTabYokai, "妖怪", s, selected = museumTab == MUSEUM_TAB_YOKAI)
         return frame.contentTop + tabH
-    }
-
-    private fun drawMuseumTabChip(
-        canvas: Canvas, r: RectF, label: String, selected: Boolean, s: Float
-    ) {
-        PixelUi.drawBtn(
-            canvas, btnPaint, r.left, r.top, r.right, r.bottom,
-            if (selected) 0xFF8A6A3E.toInt() else 0xFFC4B396.toInt(), s
-        )
-        textPaint.textAlign = Paint.Align.CENTER
-        lightText(
-            canvas, label, r.centerX(), centeredBaselineY(r.centerY(), 22f * s),
-            22f * s, if (selected) LIGHT_TITLE else LIGHT_TEXT
-        )
     }
 
     private fun drawYokaiGrid(
@@ -4155,103 +3975,158 @@ class HudView(context: Context, private val game: Game) : View(context) {
         s: Float, sdx: Float, sdy: Float, previewAll: Boolean
     ) {
         for (i in museumTileHits.indices) museumTileHits[i].setEmpty()
-        val cols = 2
-        val rows = Game.UNIVERSE_COUNT
-        val gap = 8f * s
-        val padX = 16f * s
+        for (i in yokaiTileHits.indices) yokaiTileHits[i].setEmpty()
+        val cols = 3
+        val rows = 4
+        val gap = 10f * s
+        val padX = 18f * s
         val availW = frame.pw - padX * 2f
         val availH = frame.contentBottom - contentTop
         val cellW = (availW - gap * (cols - 1)) / cols
         val cellH = (availH - gap * (rows - 1)) / rows
-        val originX = frame.left + (frame.pw - (cols * cellW + (cols - 1) * gap)) * 0.5f
-        for (i in yokaiTileHits.indices) yokaiTileHits[i].setEmpty()
+        val tileW = min(cellW, cellH * 1.05f)
+        val tileH = min(cellH, tileW * 1.45f)
+        val gridW = cols * tileW + (cols - 1) * gap
+        val gridH = rows * tileH + (rows - 1) * gap
+        val originX = frame.left + (frame.pw - gridW) * 0.5f
+        val originY = contentTop + (availH - gridH) * 0.42f
+        val iconHalf = min(tileW, tileH * 0.72f) * 0.38f
         for (slot in 0 until Game.YOKAI_COUNT) {
-            val uni = game.yokaiUniverseOf(slot)
-            val kind = game.yokaiKindOf(slot)
-            val col = kind
-            val row = uni
-            val left = originX + col * (cellW + gap)
-            val top = contentTop + row * (cellH + gap)
-            val right = left + cellW
-            val bottom = top + cellH
+            val col = slot % cols
+            val row = slot / cols
+            val left = originX + col * (tileW + gap)
+            val top = originY + row * (tileH + gap)
+            val right = left + tileW
+            val bottom = top + tileH
             yokaiTileHits[slot].set(left, top, right, bottom)
             val seen = game.yokaiSeen(slot) || previewAll
-            val color = Game.YOKAI_COLORS[uni][kind]
-            PixelUi.drawRect(
-                canvas, btnPaint, left, top, right, bottom,
-                if (seen) relicTileFill(Game.RELIC_RARE, true) else 0xFFE8E2D4.toInt(),
-                s, edge = if (seen) color else withAlpha(color, 0x66),
-                edgeW = max(1f, 2f * s), shadow = true
-            )
-            val name = if (seen) Game.YOKAI_NAMES[uni][kind] else "？？？"
-            val world = Game.UNIVERSE_NAMES[uni]
-            val desc = if (seen) Game.YOKAI_DESC[uni][kind] else "尚未遇见"
-            val midY = (top + bottom) * 0.5f
-            textPaint.textAlign = Paint.Align.LEFT
-            val textL = left + 12f * s
-            val maxW = cellW - 24f * s
-            lightText(canvas, name, textL, midY - 8f * s, fittedTextSize(name, 20f * s, maxW, 14f * s), if (seen) LIGHT_TITLE else LIGHT_LOCKED)
-            val sub = "$world · $desc"
-            lightText(canvas, sub, textL, midY + 14f * s, fittedTextSize(sub, 14f * s, maxW, 12f * s), LIGHT_SUB)
-            textPaint.textAlign = Paint.Align.CENTER
+            drawYokaiCase(canvas, left, top, right, bottom, s, slot, seen, iconHalf)
             if (previewAll && !game.yokaiSeen(slot)) {
                 btnPaint.style = Paint.Style.FILL
                 btnPaint.color = 0xFF4DE8FF.toInt()
-                val d = cellH * 0.12f
-                canvas.drawRect(right - d * 2.2f, top + d * 0.7f, right - d * 0.7f, top + d * 2.2f, btnPaint)
+                val d = tileW * 0.08f
+                canvas.drawRect(right - d * 2.4f, top + d * 0.9f, right - d * 0.9f, top + d * 2.4f, btnPaint)
             }
         }
     }
 
-    /**
-     * 文物展柜：木质底座 + 玻璃罩 + 斜向反光，柜顶一盏小射灯。
-     * 未收集时玻璃罩内是空的，只剩 RelicIcons 的剪影。
-     */
+    private fun drawYokaiCase(
+        canvas: Canvas, left: Float, top: Float, right: Float, bottom: Float,
+        s: Float, slot: Int, showArt: Boolean, iconHalf: Float
+    ) {
+        val uni = game.yokaiUniverseOf(slot)
+        val kind = game.yokaiKindOf(slot)
+        PixelUi.drawRect(
+            canvas, btnPaint, left, top, right, bottom - 22f * s,
+            LIGHT_ROW, s, edge = LIGHT_ROW_EDGE, edgeW = max(1f, s)
+        )
+        drawYokaiIcon(
+            canvas, slot, (left + right) * 0.5f, (top + bottom - 22f * s) * 0.5f,
+            iconHalf, showArt
+        )
+        val name = if (showArt) Game.YOKAI_NAMES[uni][kind] else "？"
+        val nameSize = fittedTextSize(name, 14f * s, right - left - 6f * s, 12f * s)
+        lightText(
+            canvas, name, (left + right) * 0.5f,
+            centeredBaselineY(bottom - 11f * s, nameSize),
+            nameSize, if (showArt) LIGHT_TEXT else LIGHT_LOCKED
+        )
+    }
+
+    /** 十二只妖怪各一块像素剪影；未见时只留深色轮廓。 */
+    private fun drawYokaiIcon(
+        canvas: Canvas, slot: Int, cx: Float, cy: Float, half: Float, seen: Boolean
+    ) {
+        val uni = game.yokaiUniverseOf(slot)
+        val kind = game.yokaiKindOf(slot)
+        val color = if (seen) Game.YOKAI_COLORS[uni][kind] else 0xFF7A6A58.toInt()
+        val dk = PixelUi.darken(color, 0.32f)
+        val hi = if (seen) PixelUi.lighten(color, 0.28f) else PixelUi.darken(color, 0.12f)
+        val u = (half / 7f).coerceAtLeast(1f)
+        btnPaint.style = Paint.Style.FILL
+        fun box(lx: Float, ty: Float, rx: Float, by: Float, c: Int) {
+            btnPaint.color = c
+            canvas.drawRect(cx + lx * u, cy + ty * u, cx + rx * u, cy + by * u, btnPaint)
+        }
+        when (slot) {
+            0 -> { // 疾风妖狼
+                box(-2f, -5f, -0.4f, -2.2f, dk); box(0.4f, -5f, 2f, -2.2f, dk)
+                box(-3f, -2.5f, 3f, 3.2f, color); box(-2.2f, -1.6f, 2.2f, 2.2f, hi)
+                box(-4.2f, 0.4f, -2.6f, 1.8f, color); box(3.4f, 1.2f, 5.2f, 2.6f, dk)
+            }
+            1 -> { // 草妖
+                box(-1.2f, -5.2f, 1.2f, -2f, dk); box(-2.8f, -2.2f, 2.8f, 4f, color)
+                box(-1.8f, -1.2f, 1.8f, 2.8f, hi); box(-0.7f, 0.2f, 0.7f, 1.4f, dk)
+            }
+            2 -> { // 深海妖鱿
+                box(-2.4f, -4.4f, 2.4f, 0.6f, color); box(-1.4f, -3.4f, 1.4f, -0.2f, hi)
+                box(-2.6f, 0.4f, -1.2f, 5f, dk); box(-0.7f, 0.4f, 0.7f, 5.2f, color)
+                box(1.2f, 0.4f, 2.6f, 5f, dk)
+            }
+            3 -> { // 晶壳妖蟹
+                box(-5f, -1.6f, -2.6f, 0.4f, dk); box(2.6f, -1.6f, 5f, 0.4f, dk)
+                box(-3.2f, -2.8f, 3.2f, 3.2f, color); box(-2f, -1.6f, 2f, 2f, hi)
+                box(-2.4f, 2.8f, -1.2f, 5f, dk); box(1.2f, 2.8f, 2.4f, 5f, dk)
+            }
+            4 -> { // 雷鸟妖
+                box(-5.4f, -1.2f, -1.6f, 1.4f, dk); box(1.6f, -1.2f, 5.4f, 1.4f, dk)
+                box(-2f, -3.6f, 2f, 3.2f, color); box(-1.1f, -2.4f, 1.1f, 1.8f, hi)
+                box(-0.5f, -5.2f, 0.5f, -3.2f, dk)
+            }
+            5 -> { // 云鲸妖
+                box(-5f, -2.2f, 4.2f, 2.6f, color); box(-3.4f, -1.2f, 2.8f, 1.6f, hi)
+                box(3.4f, -0.4f, 5.6f, 1.4f, dk); box(-2.2f, 2.4f, -0.6f, 4.4f, dk)
+            }
+            6 -> { // 熔岩妖兽
+                box(-3.2f, -4.8f, -1.4f, -2.4f, dk); box(1.4f, -4.8f, 3.2f, -2.4f, dk)
+                box(-3.6f, -2.6f, 3.6f, 3.6f, color); box(-2.2f, -1.4f, 2.2f, 2.4f, hi)
+            }
+            7 -> { // 火羽妖
+                box(-1.6f, -5f, 1.6f, 2.8f, color); box(-0.8f, -3.6f, 0.8f, 1.4f, hi)
+                box(-3.6f, 0.2f, -1.2f, 2.2f, dk); box(1.2f, 0.2f, 3.6f, 2.2f, dk)
+                box(-1.2f, 2.6f, 1.2f, 5.2f, hi)
+            }
+            8 -> { // 糖妖
+                box(-3f, -3.4f, 3f, 3.6f, color); box(-1.8f, -2.2f, 1.8f, 2.4f, hi)
+                box(-0.8f, -5f, 0.8f, -3f, dk); box(-1.2f, 0.4f, -0.2f, 1.4f, dk)
+                box(0.2f, 0.4f, 1.2f, 1.4f, dk)
+            }
+            9 -> { // 巧妖龙
+                box(-4.6f, -1.8f, 3.2f, 1.8f, color); box(-3.2f, -0.8f, 2f, 0.8f, hi)
+                box(2.6f, -3.6f, 5f, 0.2f, dk); box(-2.4f, 1.6f, -0.8f, 4.6f, color)
+                box(0.6f, 1.6f, 2.2f, 4.6f, color)
+            }
+            10 -> { // 星外妖
+                box(-2.4f, -4.6f, 2.4f, -1.6f, color); box(-3.4f, -1.8f, 3.4f, 3.4f, color)
+                box(-2f, -0.6f, 2f, 2.2f, hi); box(-1.4f, -3.6f, -0.4f, -2.4f, dk)
+                box(0.4f, -3.6f, 1.4f, -2.4f, dk)
+            }
+            else -> { // 猎光妖
+                box(-1.8f, -4.8f, 1.8f, 2.4f, color); box(-1f, -3.4f, 1f, 1.2f, hi)
+                box(-4.6f, -0.6f, -1.4f, 1.2f, dk); box(1.4f, -0.6f, 4.6f, 1.2f, dk)
+                box(-1.2f, 2.2f, -0.2f, 5f, color); box(0.2f, 2.2f, 1.2f, 5f, color)
+            }
+        }
+        if (!seen) {
+            btnPaint.color = 0x33201810
+            canvas.drawRect(cx - half, cy - half, cx + half, cy + half, btnPaint)
+        }
+    }
+
     private fun drawRelicCase(
         canvas: Canvas, left: Float, top: Float, right: Float, bottom: Float,
         s: Float, id: Int, showArt: Boolean, iconHalf: Float
     ) {
-        val rarity = Game.RELIC_RARITY[id]
-        val ink = relicInkOnLight(rarity)
-        val baseH = (bottom - top) * 0.16f
-        val glassB = bottom - baseH
-        fun rc(l: Float, t: Float, r: Float, b: Float, color: Int) {
-            btnPaint.style = Paint.Style.FILL
-            btnPaint.color = color
-            canvas.drawRect(l, t, r, b, btnPaint)
-        }
-        // 投影：让展柜从墙面/地板底色上脱离出来，呼应荣誉匾额的投影处理
-        rc(left + 3f * s, top + 4f * s, right + 3f * s, bottom + 4f * s, 0x2E000000)
-        // 柜顶射灯
-        rc((left + right) * 0.5f - 4f * s, top - 7f * s, (left + right) * 0.5f + 4f * s, top - 1f * s, 0xFF6B4A2B.toInt())
-        // 玻璃罩
-        rc(left, top, right, glassB, relicTileFill(rarity, showArt))
+        PixelUi.drawRect(
+            canvas, btnPaint, left, top, right, bottom,
+            relicTileFill(Game.RELIC_RARITY[id], showArt), s,
+            edge = LIGHT_ROW_EDGE, edgeW = max(1f, s)
+        )
         RelicIcons.draw(
             canvas, btnPaint, id,
-            (left + right) * 0.5f, (top + glassB) * 0.5f,
+            (left + right) * 0.5f, (top + bottom) * 0.5f,
             iconHalf, showArt, lightSurface = true, withChrome = false, richArt = true
         )
-        // 斜向反光：裁剪在罩内，斜条穿过整块玻璃
-        canvas.save()
-        canvas.clipRect(left, top, right, glassB)
-        canvas.rotate(-32f, left, top)
-        btnPaint.style = Paint.Style.FILL
-        btnPaint.color = 0x38FFFFFF
-        val span = (right - left) * 2.4f
-        canvas.drawRect(left + span * 0.30f, top - span, left + span * 0.40f, top + span, btnPaint)
-        canvas.drawRect(left + span * 0.46f, top - span, left + span * 0.50f, top + span, btnPaint)
-        canvas.restore()
-        // 罩体边框
-        btnPaint.style = Paint.Style.STROKE
-        btnPaint.strokeWidth = if (showArt) 2.5f * s else 1.5f * s
-        btnPaint.color = relicTileStroke(rarity, showArt)
-        canvas.drawRect(left, top, right, glassB, btnPaint)
-        btnPaint.style = Paint.Style.FILL
-        // 木质底座 + 铭牌
-        rc(left - 2f * s, glassB, right + 2f * s, bottom, 0xFF8A6238.toInt())
-        rc(left - 2f * s, glassB, right + 2f * s, glassB + 3f * s, 0xFFB08B56.toInt())
-        rc(left + baseH * 0.5f, bottom - baseH * 0.62f, right - baseH * 0.5f, bottom - baseH * 0.22f,
-            if (showArt) withAlpha(ink, 0xCC) else 0xFF6B5540.toInt())
     }
 
     /**

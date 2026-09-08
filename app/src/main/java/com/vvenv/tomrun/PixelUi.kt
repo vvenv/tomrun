@@ -7,8 +7,8 @@ import kotlin.math.max
 import kotlin.math.min
 
 /**
- * 简洁像素风 UI：圆角按钮 + 切角面板 + 顶部高光 / 底部暗边。
- * 按钮走干净统一的圆角风格，避免过多装饰元素堆叠。
+ * 极简像素 UI：平涂、细描边、几乎没有阴影和斜面。
+ * 3D 世界负责体积感，HUD 只负责读得清。
  */
 object PixelUi {
 
@@ -82,142 +82,6 @@ object PixelUi {
         return chamferPathBuf
     }
 
-    /** 外框厚度：SDV 按钮约 3px */
-    private fun frameW(s: Float): Float = max(3f * s, 3f)
-
-    /** 内斜面亮/暗带厚度 */
-    private fun bandW(s: Float): Float = max(3f * s, 3f)
-
-    private fun drawDropShadow(
-        canvas: Canvas, paint: Paint,
-        l: Float, t: Float, r: Float, b: Float, s: Float, notch: Float?
-    ) {
-        paint.style = Paint.Style.FILL
-        paint.color = 0x88000000.toInt()
-        val dx1 = 4f * s
-        val dy1 = 5f * s
-        if (notch != null && notch > 0f) {
-            canvas.drawPath(chamferPath(l + dx1, t + dy1, r + dx1, b + dy1, notch), paint)
-        } else {
-            canvas.drawRect(l + dx1, t + dy1, r + dx1, b + dy1, paint)
-        }
-        paint.color = 0x44000000
-        val dx0 = 2f * s
-        val dy0 = 3f * s
-        if (notch != null && notch > 0f) {
-            canvas.drawPath(chamferPath(l + dx0, t + dy0, r + dx0, b + dy0, notch * 0.85f), paint)
-        } else {
-            canvas.drawRect(l + dx0, t + dy0, r + dx0, b + dy0, paint)
-        }
-    }
-
-    /**
-     * 轴对齐立体框：外圈 [outer] 填色 + 内芯 [fill] + 多层斜面带。
-     * 这是 SDV 按钮质感的核心。
-     */
-    private fun drawDepthFrameRect(
-        canvas: Canvas, paint: Paint,
-        l: Float, t: Float, r: Float, b: Float,
-        palette: DepthPalette, s: Float, bevel: Bevel
-    ) {
-        val ow = frameW(s)
-        val bw = bandW(s)
-        val il = l + ow
-        val it = t + ow
-        val ir = r - ow
-        val ib = b - ow
-        if (ir <= il || ib <= it) return
-
-        paint.style = Paint.Style.FILL
-        paint.color = palette.outer
-        canvas.drawRect(l, t, r, b, paint)
-
-        paint.color = palette.fill
-        canvas.drawRect(il, it, ir, ib, paint)
-
-        when (bevel) {
-            Bevel.RAISED -> drawRaisedBands(canvas, paint, il, it, ir, ib, palette, s, bw)
-            Bevel.PRESSED, Bevel.INSET -> drawInsetBands(canvas, paint, il, it, ir, ib, palette, s, bw)
-        }
-    }
-
-    private fun drawRaisedBands(
-        canvas: Canvas, paint: Paint,
-        il: Float, it: Float, ir: Float, ib: Float,
-        palette: DepthPalette, s: Float, bw: Float
-    ) {
-        val specH = max(1f, 1f * s)
-        paint.color = palette.specular
-        canvas.drawRect(il, it, ir, it + specH, paint)
-
-        paint.color = palette.hi
-        canvas.drawRect(il, it + specH, ir, it + specH + bw, paint)
-        canvas.drawRect(il, it + specH, il + bw, ib, paint)
-
-        paint.color = palette.midHi
-        canvas.drawRect(il + bw * 0.25f, it + specH + bw, ir - bw * 0.5f, it + specH + bw * 1.55f, paint)
-
-        paint.color = palette.lo
-        canvas.drawRect(il, ib - bw * 1.45f, ir, ib, paint)
-        canvas.drawRect(ir - bw * 1.45f, it, ir, ib, paint)
-
-        paint.color = palette.deep
-        canvas.drawRect(ir - bw, ib - bw, ir, ib, paint)
-        canvas.drawRect(il, ib - bw, il + bw * 0.55f, ib, paint)
-    }
-
-    private fun drawInsetBands(
-        canvas: Canvas, paint: Paint,
-        il: Float, it: Float, ir: Float, ib: Float,
-        palette: DepthPalette, s: Float, bw: Float
-    ) {
-        paint.color = palette.deep
-        canvas.drawRect(il, it, ir, it + bw, paint)
-        canvas.drawRect(il, it, il + bw, ib, paint)
-
-        paint.color = palette.lo
-        canvas.drawRect(il + bw, it + bw, ir, it + bw * 1.5f, paint)
-        canvas.drawRect(il + bw, it + bw, il + bw * 1.5f, ib, paint)
-
-        paint.color = palette.midHi
-        canvas.drawRect(il, ib - bw, ir, ib, paint)
-        canvas.drawRect(ir - bw, it, ir, ib, paint)
-
-        paint.color = palette.specular
-        val specH = max(1f, s)
-        canvas.drawRect(ir - bw * 1.2f, ib - specH, ir, ib, paint)
-    }
-
-    /** 切角形状：外框 path 填色 + 内缩 path 填芯 + 矩形斜面带（裁剪在切角内） */
-    private fun drawDepthFrameChamfer(
-        canvas: Canvas, paint: Paint,
-        l: Float, t: Float, r: Float, b: Float, notch: Float,
-        palette: DepthPalette, s: Float, bevel: Bevel
-    ) {
-        val ow = frameW(s)
-        val nn = notch.coerceAtLeast(ow + 1f)
-
-        paint.style = Paint.Style.FILL
-        paint.color = palette.outer
-        canvas.drawPath(chamferPath(l, t, r, b, nn), paint)
-
-        val il = l + ow
-        val it = t + ow
-        val ir = r - ow
-        val ib = b - ow
-        val innerNotch = (nn - ow).coerceAtLeast(0f)
-        paint.color = palette.fill
-        canvas.drawPath(chamferPath(il, it, ir, ib, innerNotch), paint)
-
-        canvas.save()
-        canvas.clipPath(chamferPath(il, it, ir, ib, innerNotch))
-        when (bevel) {
-            Bevel.RAISED -> drawRaisedBands(canvas, paint, il, it, ir, ib, palette, s, bandW(s))
-            Bevel.PRESSED, Bevel.INSET -> drawInsetBands(canvas, paint, il, it, ir, ib, palette, s, bandW(s))
-        }
-        canvas.restore()
-    }
-
     fun drawPanel(
         canvas: Canvas, paint: Paint,
         l: Float, t: Float, r: Float, b: Float,
@@ -227,21 +91,14 @@ object PixelUi {
         shadow: Boolean = true,
         bevel: Boolean = true
     ) {
-        if (shadow) drawDropShadow(canvas, paint, l, t, r, b, s, notch)
-        val palette = paletteFor(fill, edge)
-        if (bevel) {
-            drawDepthFrameChamfer(canvas, paint, l, t, r, b, notch, palette, s, Bevel.RAISED)
-        } else {
-            paint.style = Paint.Style.FILL
-            paint.color = fill
-            canvas.drawPath(chamferPath(l, t, r, b, notch), paint)
-            if (edgeW > 0f) {
-                paint.style = Paint.Style.STROKE
-                paint.strokeWidth = edgeW
-                paint.color = edge
-                canvas.drawPath(chamferPath(l, t, r, b, notch), paint)
-            }
-        }
+        paint.style = Paint.Style.FILL
+        paint.color = fill
+        canvas.drawRect(l, t, r, b, paint)
+        val stroke = if (edgeW > 0f) edgeW else max(1f, s)
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = stroke
+        paint.color = withAlpha(edge, 0x66)
+        canvas.drawRect(l + stroke * 0.5f, t + stroke * 0.5f, r - stroke * 0.5f, b - stroke * 0.5f, paint)
         paint.style = Paint.Style.FILL
     }
 
@@ -254,22 +111,17 @@ object PixelUi {
         edgeW: Float = 0f,
         shadow: Boolean = false
     ) {
-        val bw = bandW(s)
-        val dy = if (bevel == Bevel.PRESSED) bw * 0.5f else 0f
-        val tl = l
-        val tt = t + dy
-        val tr = r
-        val tb = b + dy
-        val edgeColor = edge ?: darken(fill, 0.35f)
-
-        if (shadow && bevel == Bevel.RAISED) drawDropShadow(canvas, paint, tl, tt, tr, tb, s, null)
-        drawDepthFrameRect(canvas, paint, tl, tt, tr, tb, paletteFor(fill, edgeColor), s, bevel)
+        paint.style = Paint.Style.FILL
+        paint.color = fill
+        canvas.drawRect(l, t, r, b, paint)
+        val stroke = if (edgeW > 0f) edgeW else max(1f, s)
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = stroke
+        paint.color = withAlpha(edge ?: 0xFFFFFFFF.toInt(), if (bevel == Bevel.INSET) 0x22 else 0x33)
+        canvas.drawRect(l + stroke * 0.5f, t + stroke * 0.5f, r - stroke * 0.5f, b - stroke * 0.5f, paint)
         paint.style = Paint.Style.FILL
     }
 
-    /**
-     * 精致的能量水晶/进度格：比普通矩形格更有立体感和光泽。
-     */
     fun drawCrystalPip(
         canvas: Canvas, paint: Paint,
         cx: Float, cy: Float, w: Float, h: Float,
@@ -279,61 +131,32 @@ object PixelUi {
         val t = cy - h / 2f
         val r = cx + w / 2f
         val b = cy + h / 2f
-        val bevel = max(2f, 2f * s)
-
+        paint.style = Paint.Style.FILL
         if (filled) {
-            paint.style = Paint.Style.FILL
-            paint.color = withAlpha(darken(color, 0.3f), (glow * 255).toInt())
-            canvas.drawRect(l - 1f * s, t - 1f * s, r + 1f * s, b + 1f * s, paint)
-
-            paint.color = withAlpha(color, (glow * 255).toInt())
+            paint.color = withAlpha(color, (glow * 220).toInt())
             canvas.drawRect(l, t, r, b, paint)
-
-            paint.color = withAlpha(lighten(color, 0.45f), (glow * 255).toInt())
-            canvas.drawRect(l + bevel, t + bevel, r - bevel, t + bevel * 1.5f, paint)
-            canvas.drawRect(l + bevel, t + bevel, l + bevel * 1.5f, b - bevel, paint)
-
-            paint.color = withAlpha(lighten(color, 0.7f), (glow * 180).toInt())
-            canvas.drawRect(l + bevel * 1.5f, t + bevel * 1.3f, l + w * 0.35f, t + bevel * 2.2f, paint)
         } else {
-            paint.style = Paint.Style.FILL
-            paint.color = 0xFF2A303A.toInt()
+            paint.color = 0x332A303A
             canvas.drawRect(l, t, r, b, paint)
             paint.style = Paint.Style.STROKE
-            paint.strokeWidth = max(1f, 1f * s)
-            paint.color = 0x555A6A7E.toInt()
+            paint.strokeWidth = max(1f, s)
+            paint.color = 0x445A6A7E
             canvas.drawRect(l, t, r, b, paint)
             paint.style = Paint.Style.FILL
         }
     }
 
-    /**
-     * 绘制装饰性分隔线：双线中间带点，用于铭牌/面板内部。
-     */
     fun drawDivider(
         canvas: Canvas, paint: Paint,
         x1: Float, y: Float, x2: Float,
         s: Float, color: Int
     ) {
         paint.style = Paint.Style.FILL
-        val midX = (x1 + x2) / 2f
-        val lineH = max(1f, 1f * s)
-        val dotR = max(1.5f, 2f * s)
-
-        paint.color = withAlpha(color, 120)
-        canvas.drawRect(x1, y - lineH / 2f, midX - dotR * 2f, y + lineH / 2f, paint)
-        canvas.drawRect(midX + dotR * 2f, y - lineH / 2f, x2, y + lineH / 2f, paint)
-
-        paint.color = color
-        canvas.drawCircle(midX, y, dotR, paint)
-        paint.color = lighten(color, 0.4f)
-        canvas.drawCircle(midX - dotR * 0.3f, y - dotR * 0.3f, dotR * 0.45f, paint)
+        paint.color = withAlpha(color, 80)
+        val h = max(1f, s)
+        canvas.drawRect(x1, y - h * 0.5f, x2, y + h * 0.5f, paint)
     }
 
-    /**
-     * 简洁统一按钮：纯色填充 + 顶部高光 + 底部暗边 + 圆角描边。
-     * 去掉木纹、钉头、切角等多余装饰，整体更干净精致。
-     */
     fun drawBtn(
         canvas: Canvas, paint: Paint,
         l: Float, t: Float, r: Float, b: Float,
@@ -341,84 +164,39 @@ object PixelUi {
         pressed: Boolean = false,
         radius: Float? = null
     ) {
-        val rr = (radius ?: min(r - l, b - t) * 0.18f).coerceAtMost(min(r - l, b - t) * 0.5f)
-        val bw = max(2f, 2f * s)
-        val dy = if (pressed) bw * 0.5f else 0f
-
-        if (!pressed) {
-            paint.color = 0x44000000.toInt()
-            canvas.drawRoundRect(l + 2f * s, t + dy + 3f * s, r + 2f * s, b + dy + 3f * s, rr, rr, paint)
-        }
-
-        paint.color = fill
-        canvas.drawRoundRect(l, t + dy, r, b + dy, rr, rr, paint)
-
-        paint.color = lighten(fill, 0.34f)
-        canvas.drawRoundRect(l + bw, t + dy + bw, r - bw, t + dy + bw * 1.4f, bw * 0.5f, bw * 0.5f, paint)
-
-        paint.color = darken(fill, 0.22f)
-        canvas.drawRoundRect(l + bw, b + dy - bw * 1.4f, r - bw, b + dy - bw, bw * 0.5f, bw * 0.5f, paint)
-
+        val rr = (radius ?: min(r - l, b - t) * 0.12f).coerceAtMost(8f * s)
+        val use = if (pressed) darken(fill, 0.08f) else fill
+        paint.style = Paint.Style.FILL
+        paint.color = use
+        canvas.drawRoundRect(l, t, r, b, rr, rr, paint)
         paint.style = Paint.Style.STROKE
-        paint.strokeWidth = max(1.5f, 1.5f * s)
-        paint.color = darken(fill, 0.32f)
-        canvas.drawRoundRect(l, t + dy, r, b + dy, rr, rr, paint)
+        paint.strokeWidth = max(1f, s)
+        paint.color = withAlpha(0xFFFFFFFF.toInt(), if (pressed) 0x18 else 0x28)
+        canvas.drawRoundRect(l, t, r, b, rr, rr, paint)
         paint.style = Paint.Style.FILL
     }
 
-    /**
-     * 横向进度条：深槽 + 填充 + 顶部高光。用于追击倒计时等瞬时提示。
-     */
     fun drawMeter(
         canvas: Canvas, paint: Paint,
         l: Float, t: Float, r: Float, b: Float,
         fill: Int, frac: Float, s: Float
     ) {
         val f = frac.coerceIn(0f, 1f)
-        val bw = max(1f, 1.5f * s)
         paint.style = Paint.Style.FILL
-        paint.color = 0xFF1A222C.toInt()
+        paint.color = 0x331A222C
         canvas.drawRect(l, t, r, b, paint)
-        paint.color = darken(fill, 0.45f)
-        canvas.drawRect(l, t, r, t + bw, paint)
-        canvas.drawRect(l, b - bw, r, b, paint)
-        canvas.drawRect(l, t, l + bw, b, paint)
-        canvas.drawRect(r - bw, t, r, b, paint)
-        val innerL = l + bw
-        val innerR = r - bw
-        val innerT = t + bw
-        val innerB = b - bw
-        val mid = innerL + (innerR - innerL) * f
-        if (mid > innerL) {
+        val mid = l + (r - l) * f
+        if (mid > l) {
             paint.color = fill
-            canvas.drawRect(innerL, innerT, mid, innerB, paint)
-            paint.color = lighten(fill, 0.35f)
-            canvas.drawRect(innerL, innerT, mid, innerT + bw, paint)
+            canvas.drawRect(l, t, mid, b, paint)
         }
     }
 
-    /**
-     * 金币图标：比简单矩形更精致的像素金币。
-     */
     fun drawCoin(canvas: Canvas, paint: Paint, cx: Float, cy: Float, r: Float, pulse: Float = 1f) {
-        val inner = r * 0.72f
-        val core = r * 0.42f
-        val shine = r * 0.28f
-
         paint.style = Paint.Style.FILL
-        paint.color = 0xFFB8860B.toInt()
-        canvas.drawCircle(cx, cy, r, paint)
-
         paint.color = 0xFFFFC21F.toInt()
-        canvas.drawCircle(cx, cy, inner, paint)
-
-        paint.color = 0xFFFFE878.toInt()
-        canvas.drawCircle(cx, cy, core, paint)
-
-        paint.color = withAlpha(0xFFFFFFFF.toInt(), (180 * pulse).toInt())
-        canvas.drawCircle(cx - shine * 0.6f, cy - shine * 0.6f, shine, paint)
-
-        paint.color = 0xFF8A6508.toInt()
-        canvas.drawRect(cx - r * 0.12f, cy - inner * 0.8f, cx + r * 0.12f, cy + inner * 0.8f, paint)
+        canvas.drawCircle(cx, cy, r, paint)
+        paint.color = withAlpha(0xFFFFFFFF.toInt(), (40 * pulse).toInt())
+        canvas.drawCircle(cx, cy, r * 0.55f, paint)
     }
 }
