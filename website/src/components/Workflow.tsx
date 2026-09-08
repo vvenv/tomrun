@@ -35,7 +35,7 @@ export function Workflow() {
           </div>
           <h2 className="heading-display text-4xl sm:text-5xl">
             四步就懂，
-            <span className="text-ember"> 一局就上瘾</span>
+            <span className="text-ember"> 一局就上手</span>
           </h2>
         </div>
 
