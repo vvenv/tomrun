@@ -37,7 +37,7 @@ class Game {
         const val SPAWN_Z = -150f
         const val GRAVITY = 24f
         const val JUMP_V = 8.6f
-        const val SLIDE_TIME = 0.75f
+        const val SLIDE_TIME = 0.88f
         const val RAMP_LENGTH = 9f
         const val RAMP_HEIGHT = 2.4f
         const val CABLE_H = 5.4f
@@ -66,6 +66,13 @@ class Game {
         const val JUMP_BUFFER_SECS = 0.14f
         const val NEAR_MISS_COOL = 0.48f
         const val NEAR_MISS_SCORE = 8
+        /** 刚结束铲滑后，横杆仍认作「在铲」——早铲 0.1 秒不该死 */
+        const val SLIDE_GRACE_SECS = 0.12f
+        /** 障碍判定比模型窄一圈；变道中途再窄，避免「人已经走了还蹭死」 */
+        const val HIT_X = 0.92f
+        const val HIT_X_SWITCH = 0.78f
+        const val HIT_Z = 0.72f
+        const val LANE_SNAP = 14.5f
 
         private const val WAVE_BLOCK = 0
         private const val WAVE_LOW = 1
@@ -76,6 +83,9 @@ class Game {
         private const val WAVE_WEAVE = 6
         private const val WAVE_BAR_LOW = 7
         private const val WAVE_GATE = 8
+        private const val WAVE_CHOICE = 9
+        private const val WAVE_HURDLE = 10
+        private const val WAVE_DENY = 11
 
         // 连击阈值：x2/x3/x4/x5。
         // 窗口拉长到 2.6s，覆盖住波与波之间的正常空档，让高档位靠「持续好好玩」够得到，
@@ -697,6 +707,13 @@ class Game {
     private var coyoteTime = 0f
     private var jumpBuffer = 0f
     private var nearMissCool = 0f
+    private var slideGrace = 0f
+    private var breathExtra = 0f
+    private var wavesSinceRest = 0
+    private var introBarPending = true
+    private var introSpikePending = true
+    private var introRampPending = true
+    private val slidingForBar get() = sliding || slideGrace > 0f
     /** 本波金币串铺到的最深 z（最后一枚）；用于给下一波障碍留出间距 */
     private var waveCoinMinZ = Float.POSITIVE_INFINITY
 
@@ -1749,12 +1766,13 @@ class Game {
             }
             return
         }
-        slideTimer = SLIDE_TIME
-        if (!onGround) velY = -14f
-        runSlides++
-        bumpQuest(Q_SLIDE, 1)
-        keepCombo()
-        emit(EV_SLIDE, HAPTIC_LIGHT)
+        if (slideTimer > 0f) {
+            slideTimer = SLIDE_TIME
+            slideGrace = 0f
+            if (!onGround) velY = -14f
+            return
+        }
+        performSlide()
     }
 
     @Synchronized fun onSwipeLeft() {
@@ -1792,6 +1810,16 @@ class Game {
         else jumpBuffer = JUMP_BUFFER_SECS
     }
 
+    private fun performSlide() {
+        slideTimer = SLIDE_TIME
+        slideGrace = 0f
+        if (!onGround) velY = -14f
+        runSlides++
+        bumpQuest(Q_SLIDE, 1)
+        keepCombo()
+        emit(EV_SLIDE, HAPTIC_LIGHT)
+    }
+
     @Synchronized fun reset() {
         entities.clear()
         ziplines.clear()
@@ -1825,6 +1853,12 @@ class Game {
         coyoteTime = 0f
         jumpBuffer = 0f
         nearMissCool = 0f
+        slideGrace = 0f
+        breathExtra = 0f
+        wavesSinceRest = 0
+        introBarPending = true
+        introSpikePending = true
+        introRampPending = true
         menuPanel = PANEL_MAIN
         paused = false
         zipGap = 90f + Random.nextFloat() * 80f
@@ -1893,8 +1927,10 @@ class Game {
      */
     private fun gapAfterWave(zBase: Float): Float {
         val gap = nextGap()
-        if (!waveCoinMinZ.isFinite()) return gap
-        return max(gap, (zBase - waveCoinMinZ) + coinObstClear())
+        val clear = if (!waveCoinMinZ.isFinite()) gap else max(gap, (zBase - waveCoinMinZ) + coinObstClear())
+        val extra = breathExtra
+        breathExtra = 0f
+        return clear + extra
     }
 
     private fun triggerPaceSlow(secs: Float) {
@@ -1949,7 +1985,7 @@ class Game {
         if (floatFlash > 0f) floatFlash -= dt
 
         val targetX = LANE_X[lane]
-        catX += (targetX - catX) * min(1f, dt * 12f)
+        catX += (targetX - catX) * min(1f, dt * LANE_SNAP)
 
         val wasGrounded = onGround && velY <= 0f
         val nextGroundY = rampSurfaceAtPlayer(dz)
@@ -1976,7 +2012,15 @@ class Game {
                 catY += velY * dt
                 if (catY <= groundY) { catY = groundY; velY = 0f }
             }
-            if (slideTimer > 0f) slideTimer -= dt
+            if (slideTimer > 0f) {
+                slideTimer -= dt
+                if (slideTimer <= 0f) {
+                    slideTimer = 0f
+                    slideGrace = SLIDE_GRACE_SECS
+                }
+            } else if (slideGrace > 0f) {
+                slideGrace = (slideGrace - dt).coerceAtLeast(0f)
+            }
             for (zip in ziplines) {
                 if (zip.lane == lane && catY < 0.3f &&
                     zip.entryZ >= 0f && zip.entryZ - dz < 0f &&
@@ -2048,7 +2092,8 @@ class Game {
         zipGap -= dz
         if (zipGap <= 0f && ziplines.isEmpty() && distance > 400f) {
             spawnZipline()
-            zipGap = 160f + Random.nextFloat() * 160f
+            zipGap = if (distance > 700f) 130f + Random.nextFloat() * 110f
+            else 160f + Random.nextFloat() * 160f
         }
 
         // 传送门：随世界前移，穿过即切换平行宇宙
@@ -2358,7 +2403,8 @@ class Game {
         val rampOpen = distance > 450f && !early
         val spikeOpen = distance > 280f && !early
 
-        when (pickWaveKind(early, barOpen, rampOpen, spikeOpen)) {
+        val kind = pickWaveKind(early, barOpen, rampOpen, spikeOpen)
+        when (kind) {
             WAVE_RAMP -> spawnRampWave(zBase)
             WAVE_BAR -> spawnBarWave(zBase)
             WAVE_BLOCK -> spawnBlockWave(zBase)
@@ -2367,7 +2413,16 @@ class Game {
             WAVE_WEAVE -> spawnWeaveWave(zBase)
             WAVE_BAR_LOW -> spawnBarLowWave(zBase)
             WAVE_GATE -> spawnGateWave(zBase)
+            WAVE_CHOICE -> spawnChoiceWave(zBase)
+            WAVE_HURDLE -> spawnHurdleWave(zBase)
+            WAVE_DENY -> spawnDenyWave(zBase)
             else -> spawnCoinWave(zBase)
+        }
+        if (kind == WAVE_COINS) wavesSinceRest = 0 else wavesSinceRest++
+        if (kind == WAVE_WEAVE || kind == WAVE_GATE || kind == WAVE_BAR_LOW ||
+            kind == WAVE_RAMP || kind == WAVE_HURDLE || kind == WAVE_CHOICE
+        ) {
+            breathExtra = (speed * 0.42f).coerceIn(8f, 16f)
         }
 
         // 道具 / 藏品：随机 + 保底；妖怪追击期间只留金币与障碍
