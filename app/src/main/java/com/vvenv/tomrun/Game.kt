@@ -851,6 +851,8 @@ class Game {
         stargazeReadMask = p.getInt("stargazeReadMask", 0)
         stargazeDayKey = p.getString("stargazeDayKey", "") ?: ""
         stargazeDailyNewDone = p.getBoolean("stargazeDailyNewDone", false)
+        homeYardHintSeen = p.getBoolean("homeYardHintSeen", false)
+        homeDoorHintSeen = p.getBoolean("homeDoorHintSeen", false)
         refreshStargazeDay()
         // 新类别可能已达标（旧存档），启动时静默补发解锁与奖励
         tryUnlockAchievements(persist = true, quiet = true)
@@ -1033,6 +1035,25 @@ class Game {
         var n = 0
         for (i in 0 until UNIVERSE_COUNT) if (homeWorldUnlocked(i)) n++
         return n
+    }
+
+    private var homeYardHintSeen = false
+    private var homeDoorHintSeen = false
+
+    fun shouldShowHomeYardHint() = !homeYardHintSeen
+
+    fun markHomeYardHintSeen() {
+        if (homeYardHintSeen) return
+        homeYardHintSeen = true
+        prefs?.edit()?.putBoolean("homeYardHintSeen", true)?.apply()
+    }
+
+    /** 进家时调用：第一次拥有两处以上的家，门口需要教一次点门。 */
+    fun consumeHomeDoorHint(): Boolean {
+        if (homeDoorHintSeen || homeWorldsUnlockedCount() <= 1) return false
+        homeDoorHintSeen = true
+        prefs?.edit()?.putBoolean("homeDoorHintSeen", true)?.apply()
+        return true
     }
 
     /** 直接搬到某个已解锁世界的家；返回新家所在世界名，切不过去时返回空串 */
@@ -3354,6 +3375,8 @@ class Game {
             .putInt("stargazeReadMask", stargazeReadMask)
             .putString("stargazeDayKey", stargazeDayKey)
             .putBoolean("stargazeDailyNewDone", stargazeDailyNewDone)
+            .putBoolean("homeYardHintSeen", homeYardHintSeen)
+            .putBoolean("homeDoorHintSeen", homeDoorHintSeen)
             .putString("characterName", characterName)
         for (i in 0 until ACHIEVE_CATS) ed.putInt("achieveLv$i", achieveLevels[i])
         ed.apply()

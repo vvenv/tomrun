@@ -205,6 +205,17 @@ object HomeYard {
     @Volatile var lightDusk = -1f
     @Volatile var lightNight = 0f
 
+    // ---------- 家页相机 / 门垫提示（HudView 写，渲染层读） ----------
+    const val CAM_REST = 0
+    const val CAM_HOUSE = 1
+    const val CAM_CAT = 2
+    /** 选物时镜头让开：0 静物机位，1 看房子，2 看猫 */
+    @Volatile var camFocus = CAM_REST
+    /** 0 静物机位 ↔ 1 看选中的主体，进门时清零 */
+    @Volatile var camBlend = 0f
+    /** 第一次解锁第二家时门口多亮一会儿，秒 */
+    @Volatile var doorHint = 0f
+
     fun ensureLight(game: Game) {
         if (lightDusk < 0f) {
             lightDusk = game.duskAmount()
@@ -215,5 +226,8 @@ object HomeYard {
     /** 离开家页面时清掉，下次进门重新取当时的天色 */
     fun resetLight() {
         lightDusk = -1f
+        camFocus = CAM_REST
+        camBlend = 0f
+        doorHint = 0f
     }
 }

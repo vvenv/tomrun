@@ -106,13 +106,13 @@
       }
     },
     "text": {
-      "nameDX": -570,
+      "nameDX": 0,
       "nameDY": 0,
       "nameS": 1,
-      "energyDX": -570,
+      "energyDX": 0,
       "energyDY": 0,
       "energyS": 1,
-      "rewardDX": -570,
+      "rewardDX": 0,
       "rewardDY": 0,
       "rewardS": 1
     },

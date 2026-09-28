@@ -65,34 +65,34 @@ object HomePalette {
             win = 0xFFBFF2E8.toInt(),
             water = intArrayOf(0xFF1E9E8E.toInt(), 0xFF5EDCC8.toInt())
         ),
-        // 2 天空：云白 + 金，靠明度而非色相拉开层次
+        // 2 天空：云白 + 金，靠明度而非色相拉开层次。hi / 地面不到纯白，教室灯下才不晃。
         Ramp(
-            deep = 0xFF8FA8C4.toInt(), body = 0xFFE8EEF6.toInt(), light = 0xFFFBFDFF.toInt(),
-            accent = 0xFFF2C14E.toInt(), accent2 = 0xFF9FC8EE.toInt(), hi = 0xFFFFFFFF.toInt(),
+            deep = 0xFF8FA8C4.toInt(), body = 0xFFE0E8F0.toInt(), light = 0xFFE8F0F6.toInt(),
+            accent = 0xFFF2C14E.toInt(), accent2 = 0xFF9FC8EE.toInt(), hi = 0xFFE8F2FA.toInt(),
             organic = 0xFF7AA86B.toInt(),
-            sky = intArrayOf(0xFF3D8FE0.toInt(), 0xFF7CC0F2.toInt(), 0xFFEAF7FF.toInt()),
-            ground = intArrayOf(0xFFEFF8FF.toInt(), 0xFFCFE4F6.toInt(), 0xFFAACCE8.toInt()),
-            far = intArrayOf(0xFFF7FBFF.toInt(), 0xFFD9EBF9.toInt()),
+            sky = intArrayOf(0xFF4A8ED4.toInt(), 0xFF7AB6E6.toInt(), 0xFFD4E8F6.toInt()),
+            ground = intArrayOf(0xFFD4E4F0.toInt(), 0xFFB6D0E4.toInt(), 0xFF96B8D0.toInt()),
+            far = intArrayOf(0xFFE4EEF6.toInt(), 0xFFC8DCEC.toInt()),
             win = 0xFFFFE9A8.toInt(),
-            water = intArrayOf(0xFF57B6E8.toInt(), 0xFFB8E8FF.toInt())
+            water = intArrayOf(0xFF57B6E8.toInt(), 0xFFA8DCEC.toInt())
         ),
-        // 3 熔岩：焦黑基底，只有裂缝在发光
+        // 3 熔岩：焦黑基底，只有裂缝在发光。台地边用焦土，不整圈铺橙。
         Ramp(
             deep = 0xFF241713.toInt(), body = 0xFF4E3730.toInt(), light = 0xFF7A5A4A.toInt(),
             accent = 0xFFFF7A2A.toInt(), accent2 = 0xFFE03A28.toInt(), hi = 0xFFFFD9A0.toInt(),
             organic = 0xFF6E4A3A.toInt(),
-            sky = intArrayOf(0xFF2A0F0E.toInt(), 0xFF5A1E14.toInt(), 0xFF93401B.toInt()),
-            ground = intArrayOf(0xFF4A3B36.toInt(), 0xFF352A27.toInt(), 0xFFFF7A2A.toInt()),
+            sky = intArrayOf(0xFF2A0F0E.toInt(), 0xFF5A1E14.toInt(), 0xFF7A3818.toInt()),
+            ground = intArrayOf(0xFF4A3B36.toInt(), 0xFF352A27.toInt(), 0xFF3E2C28.toInt()),
             far = intArrayOf(0xFF564540.toInt(), 0xFF3E312D.toInt()),
             win = 0xFFFFC48A.toInt(),
             water = intArrayOf(0xFFC85A1E.toInt(), 0xFFFF9A4A.toInt())
         ),
-        // 4 糖果：满屏粉靠柠檬黄压住，巧克力做深影
+        // 4 糖果：粉收在小屋和花上，天空偏奶油，整屏才不「糖霜呛眼」
         Ramp(
             deep = 0xFF6B4230.toInt(), body = 0xFFF2A0BC.toInt(), light = 0xFFFFD9E8.toInt(),
             accent = 0xFFFFD54A.toInt(), accent2 = 0xFFFF8FBE.toInt(), hi = 0xFFFFF8F0.toInt(),
             organic = 0xFF7ADBC8.toInt(),
-            sky = intArrayOf(0xFFFFA8CF.toInt(), 0xFFFFC9E1.toInt(), 0xFFFFF0D8.toInt()),
+            sky = intArrayOf(0xFFE090B0.toInt(), 0xFFF0C8D4.toInt(), 0xFFF8EAD8.toInt()),
             ground = intArrayOf(0xFF98DE7A.toInt(), 0xFF7CC75F.toInt(), 0xFF6B4230.toInt()),
             far = intArrayOf(0xFFA8E68C.toInt(), 0xFF86CE69.toInt()),
             win = 0xFFFFE2F0.toInt(),
@@ -193,4 +193,33 @@ object HomePalette {
             else -> intArrayOf(mix(p.light, p.hi, 0.55f), shade(mix(p.light, p.hi, 0.55f), 0.86f), p.accent2)
         }
     }
+
+    // ---------- 家页 HUD：从 ramp 派生木牌，不再用跑酷菜单的石板灰 ----------
+
+    fun luma(c: Int): Float {
+        val r = (c ushr 16 and 0xFF)
+        val g = (c ushr 8 and 0xFF)
+        val b = (c and 0xFF)
+        return (0.299f * r + 0.587f * g + 0.114f * b) / 255f
+    }
+
+    /** 铭牌 / 出门 / 钱包的底：压暗的建材，半透明让院子透一点 */
+    fun hudFill(world: Int): Int {
+        val p = of(world)
+        return alpha(mix(shade(p.body, 0.72f), p.deep, 0.22f), 0xE8)
+    }
+
+    /** 木牌上的字：亮底用深墨，暗底用浅象牙 */
+    fun hudInk(world: Int): Int {
+        val p = of(world)
+        val fill = mix(shade(p.body, 0.72f), p.deep, 0.22f)
+        return if (luma(fill) > 0.48f) mix(p.deep, 0xFF1A1410.toInt(), 0.35f)
+        else mix(p.hi, p.light, 0.28f)
+    }
+
+    fun hudMuted(world: Int): Int = alpha(hudInk(world), 0x99)
+
+    fun hudAccent(world: Int): Int = of(world).accent
+
+    fun hudEdge(world: Int): Int = alpha(of(world).light, 0x55)
 }

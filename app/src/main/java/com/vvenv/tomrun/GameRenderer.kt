@@ -541,6 +541,7 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
     // ---------- 家园：同一套管线，另一套相机与内容 ----------
 
     private var homePhase = 0f
+    private var homeCamFocusMem = HomeYard.CAM_HOUSE
     private val homeBounds = FloatArray(6)
     private val homeVpInv = FloatArray(16)
     private val homeSkyCol = FloatArray(4) { 1f }
@@ -561,6 +562,7 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         val pal = HomePalette.of(world)
         val dusk = HomeYard.lightDusk.coerceAtLeast(0f)
         val night = HomeYard.lightNight
+        if (HomeYard.doorHint > 0f) HomeYard.doorHint = (HomeYard.doorHint - dt).coerceAtLeast(0f)
 
         argbTo(pal.sky[0], homeSkyCol)
         DayNight.apply(homeSkyCol, dusk, night)
@@ -573,14 +575,49 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         setSkyFog()
 
         val portrait = aspect < 1f
-        applyPlainProjection(if (portrait) 76f else 52f)
+        val focus = HomeYard.camFocus
+        if (focus != HomeYard.CAM_REST) homeCamFocusMem = focus
+        val pose = if (focus != HomeYard.CAM_REST) focus else homeCamFocusMem
+        val camTarget = if (focus == HomeYard.CAM_REST) 0f else 1f
+        HomeYard.camBlend += (camTarget - HomeYard.camBlend) * min(1f, dt * 3.2f)
+        val t = HomeYard.camBlend
+        val restFov = if (portrait) 76f else 52f
+        val closeFov = if (portrait) 66f else 46f
+        applyPlainProjection(restFov + (closeFov - restFov) * t)
         // 极慢的横向漂移：静物构图里一点点视差就够「活着」，又不会晃得人晕
         val sway = sin(homePhase * 0.11f) * 1.2f
-        if (portrait) {
-            Matrix.setLookAtM(view, 0, sway, 12.5f, 23f, sway * 0.4f, 3.0f, -4f, 0f, 1f, 0f)
+        val restEyeY = if (portrait) 12.5f else 9.5f
+        val restEyeZ = if (portrait) 23f else 19.5f
+        val restLookY = if (portrait) 3.0f else 2.6f
+        val hx = HomeYard.posX(game, HomeYard.HOUSE)
+        val hz = HomeYard.posZ(game, HomeYard.HOUSE)
+        val cx = HomeYard.catX
+        val cz = HomeYard.catZ
+        val focusEyeY: Float
+        val focusEyeZ: Float
+        val focusLookX: Float
+        val focusLookY: Float
+        val focusLookZ: Float
+        if (pose == HomeYard.CAM_CAT) {
+            focusEyeY = if (portrait) 10.4f else 8.2f
+            focusEyeZ = if (portrait) 16.5f else 14.2f
+            focusLookX = cx * 0.55f
+            focusLookY = 1.7f + HomeYard.catY * 0.35f
+            focusLookZ = cz * 0.45f
         } else {
-            Matrix.setLookAtM(view, 0, sway, 9.5f, 19.5f, sway * 0.4f, 2.6f, -4f, 0f, 1f, 0f)
+            focusEyeY = if (portrait) 11.2f else 8.8f
+            focusEyeZ = if (portrait) 18.0f else 15.6f
+            focusLookX = hx * 0.4f
+            focusLookY = 3.7f
+            focusLookZ = hz * 0.35f - 1.5f
         }
+        val eyeX = sway * (1f - 0.4f * t)
+        val eyeY = restEyeY + (focusEyeY - restEyeY) * t
+        val eyeZ = restEyeZ + (focusEyeZ - restEyeZ) * t
+        val lookX = sway * 0.4f * (1f - t) + focusLookX * t
+        val lookY = restLookY + (focusLookY - restLookY) * t
+        val lookZ = -4f + (focusLookZ + 4f) * t
+        Matrix.setLookAtM(view, 0, eyeX, eyeY, eyeZ, lookX, lookY, lookZ, 0f, 1f, 0f)
         Matrix.multiplyMM(vp, 0, proj, 0, view, 0)
 
         drawSkyGradient()

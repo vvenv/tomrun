@@ -374,11 +374,17 @@ object HomeScene3D {
         p.push(x, HomeYard.DECK_Y, z + 2.1f)
         p.part(0f, 0.06f, 0f, 2.2f, 0.12f, 1.3f, c(pal.accent))
         p.part(0f, 0.13f, 0f, 1.8f, 0.06f, 1.0f, c(pal.hi, 0.75f))
-        val bob = 0.12f + 0.12f * sin(phase * 2.2f)
+        val hint = HomeYard.doorHint.coerceAtLeast(0f)
+        val bob = 0.12f + 0.12f * sin(phase * (if (hint > 0f) 4.2f else 2.2f))
+        val glow = if (hint > 0f) (0.55f + 0.45f * (hint / 5f)) else 0.75f
         p.mode(3)
+        if (hint > 0f) {
+            val pulse = 0.35f + 0.25f * (0.5f + 0.5f * sin(phase * 6f))
+            p.part(0f, 1.15f + bob, 0.18f, 2.6f, 2.4f, 0.18f, c(pal.hi, pulse * (hint / 5f)))
+        }
         for (k in 0 until 3) {
             val w = 0.8f - k * 0.22f
-            p.part(0f, 1.5f + bob + k * 0.16f, 0.1f, w, 0.12f, 0.12f, c(pal.hi, 0.75f - k * 0.2f))
+            p.part(0f, 1.5f + bob + k * 0.16f, 0.1f, w, 0.12f, 0.12f, c(pal.hi, glow - k * 0.18f))
         }
         p.mode(0)
         p.pop()
