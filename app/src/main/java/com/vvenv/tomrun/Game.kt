@@ -2396,9 +2396,20 @@ class Game {
     // ---------- 生成 ----------
     /** 安全缓冲：清掉前方一段距离内的障碍物，给玩家留足反应时间 */
     private fun clearObstaclesAhead(dist: Float) {
-        entities.removeAll {
-            it.z > -dist && (it.kind == OBST_LOW || it.kind == OBST_BAR ||
-                it.kind == OBST_BLOCK || it.kind == OBST_RAMP || it.kind == OBST_SPIKE)
+        clearObstaclesIn(-dist, Float.POSITIVE_INFINITY)
+    }
+
+    /** 清掉 z ∈ (fromZ, toZ) 内所有道的障碍物；被清的坡道连同沿坡面铺的金币一起清 */
+    private fun clearObstaclesIn(fromZ: Float, toZ: Float) {
+        val half = RAMP_LENGTH / 2f
+        val ramps = entities.filter { it.kind == OBST_RAMP && it.z > fromZ && it.z < toZ }
+        entities.removeAll { e ->
+            if (e.z > fromZ && e.z < toZ && (e.kind == OBST_LOW || e.kind == OBST_BAR ||
+                    e.kind == OBST_BLOCK || e.kind == OBST_RAMP || e.kind == OBST_SPIKE)
+            ) return@removeAll true
+            // 坡面金币高于地面金币(1.0)、低于滑索金币，按道与坡道区间认领
+            e.kind == COIN && !e.taken && !e.magneted && e.y > 1.05f && e.y < RIDE_Y_MAX &&
+                ramps.any { r -> r.lane == e.lane && abs(e.z - r.z) <= half }
         }
     }
 
@@ -2420,6 +2431,10 @@ class Game {
         val length = 30f + Random.nextFloat() * 50f
         val zip = Zip(laneZ, SPAWN_Z, length)
         ziplines.add(zip)
+        // 上索缓冲：入口前一段三条道都不留障碍（含坡道），
+        // 保证从坡顶/跳跃落下后有时间落地、变道并低空抓索
+        val approach = (speed * 1.7f).coerceIn(40f, 110f)
+        clearObstaclesIn(zip.entryZ - 3f, zip.entryZ + approach)
         // 骑索时够不到地面高度，清掉区间内已排的地面金币，避免变成摆设
         entities.removeAll {
             it.kind == COIN && it.lane == laneZ && it.z <= zip.entryZ && it.z >= zip.exitZ
