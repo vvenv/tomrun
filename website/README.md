@@ -1,8 +1,8 @@
 # 汤姆猫跑酷 · 官网
 
-<https://run.edao.plus> —— 产品介绍、APK 下载与全服纪录榜。
+<https://run.wenfu.dev> —— 产品介绍、APK 下载与全服纪录榜。
 
-和 [Alice 听写官网](https://github.com/vvenv/alice/tree/main/website) 同一套骨架：Vite + React 19 + Tailwind CSS v4 的静态站，构建时用 Playwright 预渲染成纯 HTML（`scripts/prerender.mjs`）。页面部署在 `run.edao.plus`，`/api/` 仍反代到纪录榜服务。
+和 [Alice 听写官网](https://github.com/vvenv/alice/tree/main/website) 同一套骨架：Vite + React 19 + Tailwind CSS v4 的静态站，构建时用 Playwright 预渲染成纯 HTML（`scripts/prerender.mjs`）。页面部署在 `run.wenfu.dev`，`/api/` 仍反代到纪录榜服务。
 
 ```bash
 cd website

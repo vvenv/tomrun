@@ -1,4 +1,4 @@
-export const SITE_URL = "https://run.edao.plus";
+export const SITE_URL = "https://run.wenfu.dev";
 export const SITE_NAME = "汤姆猫跑酷";
 export const SITE_TAGLINE = "三道换线，穿越六大宇宙";
 export const SITE_TITLE = `${SITE_NAME} — ${SITE_TAGLINE}`;

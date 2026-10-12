@@ -1,4 +1,4 @@
-# Tomrun 官网 + 全服纪录榜 — run.edao.plus
+# Tomrun 官网 + 全服纪录榜 — run.wenfu.dev
 upstream tomrun_leaderboard {
     server 127.0.0.1:8787;
     keepalive 4;
@@ -6,14 +6,14 @@ upstream tomrun_leaderboard {
 
 server {
     listen 443 ssl;
-    server_name run.edao.plus;
+    server_name run.wenfu.dev;
 
-    ssl_certificate /etc/letsencrypt/live/run.edao.plus/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/run.edao.plus/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/run.wenfu.dev/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/run.wenfu.dev/privkey.pem;
     include /etc/letsencrypt/options-ssl-nginx.conf;
     ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
 
-    root /var/www/run.edao.plus;
+    root /var/www/run.wenfu.dev;
     index index.html;
 
     client_max_body_size 64k;
@@ -47,7 +47,7 @@ server {
 
 server {
     listen 80;
-    server_name run.edao.plus;
+    server_name run.wenfu.dev;
 
     location ^~ /.well-known/acme-challenge/ {
         root /var/www/certbot;

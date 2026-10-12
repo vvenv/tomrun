@@ -2,13 +2,13 @@
 
 > 三道换线，穿越六大宇宙。
 
-[![Android](https://img.shields.io/badge/Android-7.0%2B-3DDC84?logo=android&logoColor=white)](https://run.edao.plus)
-[![Website](https://img.shields.io/badge/官网-run.edao.plus-E8B43A)](https://run.edao.plus)
+[![Android](https://img.shields.io/badge/Android-7.0%2B-3DDC84?logo=android&logoColor=white)](https://run.wenfu.dev)
+[![Website](https://img.shields.io/badge/官网-run.wenfu.dev-E8B43A)](https://run.wenfu.dev)
 [![Kotlin](https://img.shields.io/badge/Kotlin-OpenGL%20ES%202.0-7F52FF?logo=kotlin&logoColor=white)](https://github.com/vvenv/tomrun)
 
 原生 Android 3D 像素跑酷。猫在三条跑道上自己往前跑，左右换道、跳跃铲滑；穿过传送门，还能在路上捡到中国文物。
 
-**免费、无广告、无内购。** 进度存在手机里。官网与下载：**<https://run.edao.plus>**
+**免费、无广告、无内购。** 进度存在手机里。官网与下载：**<https://run.wenfu.dev>**
 
 面向中小学：画面做过护眼调色，文物知识只在自己捡到之后出现——不弹题、不考问。
 
@@ -77,7 +77,7 @@
 
 ## 下载
 
-到官网扫码或直接下 APK：**<https://run.edao.plus>**
+到官网扫码或直接下 APK：**<https://run.wenfu.dev>**
 
 需要 **Android 7.0** 或更新。安装时允许「未知来源」，或用文件管理器打开 APK。
 
@@ -98,11 +98,11 @@ pnpm install
 pnpm dev
 ```
 
-发版：`bash scripts/release-website.sh`（读 `.env.deploy`）。`run.edao.plus` 的 `/` 是官网，`/api/` 仍是纪录榜。
+发版：`bash scripts/release-website.sh`（读 `.env.deploy`）。`run.wenfu.dev` 的 `/` 是官网，`/api/` 仍是纪录榜。
 
 ## 全服纪录榜
 
-游戏里的奖杯页可以看本机榜，也可以同步到 <https://run.edao.plus>。
+游戏里的奖杯页可以看本机榜，也可以同步到 <https://run.wenfu.dev>。
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -120,7 +120,7 @@ python3 server/leaderboard_server.py
 | 构建 | 默认 API |
 |------|----------|
 | debug | `http://10.0.2.2:8787`（模拟器访问本机） |
-| release | `https://run.edao.plus`（见 `gradle.properties`） |
+| release | `https://run.wenfu.dev`（见 `gradle.properties`） |
 
 真机调试可在 `gradle.properties` 写成局域网地址。部署服务端：
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 构建并发布官网到 run.edao.plus（/api 仍走纪录榜，不被这次 rsync 碰到）。
+# 构建并发布官网到 run.wenfu.dev（/api 仍走纪录榜，不被这次 rsync 碰到）。
 #
 # Usage:
 #   bash scripts/release-website.sh
@@ -35,7 +35,7 @@ fi
 HOST="${DEPLOY_HOST:?DEPLOY_HOST not set — add it to .env.deploy}"
 USER="${DEPLOY_SSH_USER:-root}"
 PORT="${DEPLOY_SSH_PORT:-22}"
-DOMAIN="${LEADERBOARD_DOMAIN:-run.edao.plus}"
+DOMAIN="${LEADERBOARD_DOMAIN:-run.wenfu.dev}"
 WEB_ROOT="${WEBSITE_REMOTE_DIR:-/var/www/${DOMAIN}}"
 PUBLIC_HOST="https://${DOMAIN}"
 
@@ -82,7 +82,7 @@ else
 fi
 
 echo "▶ [4/4] Refresh nginx site config"
-${SCP} "$ROOT/server/nginx/run.edao.plus" "${USER}@${HOST}:/etc/nginx/sites-available/${DOMAIN}"
+${SCP} "$ROOT/server/nginx/run.wenfu.dev" "${USER}@${HOST}:/etc/nginx/sites-available/${DOMAIN}"
 ${SSH} "ln -sf /etc/nginx/sites-available/${DOMAIN} /etc/nginx/sites-enabled/${DOMAIN} && nginx -t && systemctl reload nginx"
 
 echo ""

@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://run.edao.plus/sitemap.xml
+Sitemap: https://run.wenfu.dev/sitemap.xml

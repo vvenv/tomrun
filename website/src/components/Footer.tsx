@@ -78,7 +78,7 @@ export function Footer() {
 
         <div className="flex flex-col items-center justify-between gap-4 text-xs text-ink/40 sm:flex-row">
           <p>© 2026 汤姆猫跑酷</p>
-          <p className="font-pixel text-[10px] tracking-wider">run.edao.plus</p>
+          <p className="font-pixel text-[10px] tracking-wider">run.wenfu.dev</p>
         </div>
       </div>
     </footer>

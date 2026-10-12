@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 部署纪录榜 API，并刷新 run.edao.plus Nginx（静态官网 + /api 反代）。
+# 部署纪录榜 API，并刷新 run.wenfu.dev Nginx（静态官网 + /api 反代）。
 # 官网产物请用 scripts/release-website.sh 单独同步，本脚本不会清空 /var/www。
 set -euo pipefail
 
@@ -8,7 +8,7 @@ USER="${DEPLOY_SSH_USER:-root}"
 PORT="${DEPLOY_SSH_PORT:-22}"
 REMOTE_DIR="${DEPLOY_REMOTE_DIR:-/opt/tomrun}"
 SERVICE="${DEPLOY_SERVICE:-tomrun-leaderboard}"
-DOMAIN="${LEADERBOARD_DOMAIN:-run.edao.plus}"
+DOMAIN="${LEADERBOARD_DOMAIN:-run.wenfu.dev}"
 CERTBOT_EMAIL="${CERTBOT_EMAIL:-}"
 PUBLIC_URL="${LEADERBOARD_PUBLIC_URL:-https://${DOMAIN}}"
 
@@ -39,7 +39,7 @@ echo "leaderboard local OK"
 EOF
 
 echo "→ Install Nginx (${DOMAIN})"
-${SCP} "${ROOT}/server/nginx/run.edao.plus.http-only" "${USER}@${HOST}:/etc/nginx/sites-available/${DOMAIN}"
+${SCP} "${ROOT}/server/nginx/run.wenfu.dev.http-only" "${USER}@${HOST}:/etc/nginx/sites-available/${DOMAIN}"
 ${SSH} bash <<EOF
 set -e
 ln -sf /etc/nginx/sites-available/${DOMAIN} /etc/nginx/sites-enabled/${DOMAIN}
@@ -58,11 +58,11 @@ fi
 PUBLIC_URL="http://${DOMAIN}"
 if ${SSH} "${CERT_ARGS[*]}"; then
   echo "→ Enable HTTPS nginx config"
-  ${SCP} "${ROOT}/server/nginx/run.edao.plus" "${USER}@${HOST}:/etc/nginx/sites-available/${DOMAIN}"
+  ${SCP} "${ROOT}/server/nginx/run.wenfu.dev" "${USER}@${HOST}:/etc/nginx/sites-available/${DOMAIN}"
   ${SSH} "nginx -t && systemctl reload nginx"
   PUBLIC_URL="https://${DOMAIN}"
 else
-  echo "⚠ Certbot failed — 请先在 DNSPod 添加 A 记录: ${DOMAIN} → ${HOST}"
+  echo "⚠ Certbot failed — 请先在 Cloudflare 添加 A 记录（仅 DNS，不开代理）: ${DOMAIN} → ${HOST}"
 fi
 
 echo "→ Smoke test via Host header"

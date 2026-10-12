@@ -6,9 +6,9 @@ upstream tomrun_leaderboard {
 
 server {
     listen 80;
-    server_name run.edao.plus;
+    server_name run.wenfu.dev;
 
-    root /var/www/run.edao.plus;
+    root /var/www/run.wenfu.dev;
     index index.html;
 
     client_max_body_size 64k;

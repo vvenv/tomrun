@@ -10,7 +10,7 @@ export default defineConfig({
   server: {
     proxy: {
       "/api": {
-        target: "https://run.edao.plus",
+        target: "https://run.wenfu.dev",
         changeOrigin: true,
       },
     },
