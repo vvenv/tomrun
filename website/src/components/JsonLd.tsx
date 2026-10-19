@@ -51,7 +51,7 @@ export function JsonLd() {
       "三条跑道无尽跑酷，滑动换道、跳跃、铲滑",
       `${UNIVERSE_COUNT} 个平行宇宙，传送门切换`,
       `${RELIC_COUNT} 件中国文物图鉴，寓教于乐`,
-      "汤姆的小屋装扮与开局 buff",
+      "亲手搭房子：自动长出屋顶、露台、尖塔，文物摆进家里",
       "可选全服纪录榜同步",
     ],
     isAccessibleForFree: true,

@@ -3,7 +3,7 @@ export const SITE_NAME = "汤姆猫跑酷";
 export const SITE_TAGLINE = "三道换线，穿越六大宇宙";
 export const SITE_TITLE = `${SITE_NAME} — ${SITE_TAGLINE}`;
 export const SITE_DESCRIPTION =
-  "汤姆猫跑酷 — 原生 Android 3D 像素无尽跑酷。左右换道、跳跃铲滑，穿过传送门探索草原、水下、天空、熔岩、糖果与星空。沿途收集 88 件中国文物，装扮汤姆的小屋。免费无广告，数据保存在本机。";
+  "汤姆猫跑酷 — 原生 Android 3D 像素无尽跑酷。左右换道、跳跃铲滑，穿过传送门探索草原、水下、天空、熔岩、糖果与星空。沿途收集 88 件中国文物，亲手一块块搭起汤姆的家。免费无广告，数据保存在本机。";
 export const SITE_KEYWORDS = [
   "汤姆猫跑酷",
   "像素跑酷",
