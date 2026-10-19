@@ -759,7 +759,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
                     }
                     btnHome.contains(x, y) -> openHomePage()
                     btnSound.contains(x, y) -> showToast(if (game.toggleSound()) "声音已打开" else "已静音")
-                    !btnUpdate.isEmpty && btnUpdate.contains(x, y) -> openDownloadPage()
+                    !btnUpdate.isEmpty && btnUpdate.contains(x, y) -> handleUpdateTap()
                     else -> game.onTap()
                 }
             }
@@ -943,20 +943,42 @@ class HudView(context: Context, private val game: Game) : View(context) {
         return true
     }
 
-    fun showUpdateAvailable(versionName: String) {
-        updateVersionName = versionName
+    /** 查到新版：主菜单挂一行入口；在主菜单待着、又没别的对话框时，顺手问一句要不要现在更新 */
+    fun showUpdateAvailable(release: UpdateCheck.Release) {
+        updateVersionName = release.versionName
+        AppUpdater.restore(context, release)
+        if (game.state == Game.State.READY && game.menuPanel == Game.PANEL_MAIN &&
+            renameDialog?.isShowing != true && AppUpdater.shouldPrompt(context)
+        ) {
+            showUpdatePrompt(release)
+        }
         invalidate()
     }
 
-    private fun openDownloadPage() {
-        try {
-            context.startActivity(
-                android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(UpdateCheck.DOWNLOAD_PAGE))
-            )
-        } catch (_: Exception) {
-            showToast("请在浏览器打开 run.wenfu.dev")
+    private fun showUpdatePrompt(release: UpdateCheck.Release) {
+        val mb = if (release.size > 0) "（约 ${(release.size + 524_288L) / 1_048_576L} MB）" else ""
+        AlertDialog.Builder(context)
+            .setTitle("发现新版本 v${release.versionName}")
+            .setMessage("更新后进度、金币和房子都会保留。现在下载吗？$mb")
+            .setPositiveButton("更新") { _, _ -> handleUpdateTap() }
+            .setNegativeButton("以后再说") { _, _ -> AppUpdater.snooze(context) }
+            .show()
+    }
+
+    private fun handleUpdateTap() {
+        val activity = context as? android.app.Activity ?: return
+        when (AppUpdater.state) {
+            AppUpdater.DOWNLOADING, AppUpdater.VERIFYING -> showToast("正在下载，下好会提示安装")
+            AppUpdater.READY -> AppUpdater.install(activity)
+            else -> {
+                AppUpdater.start(activity)
+                if (AppUpdater.state == AppUpdater.DOWNLOADING) showToast("开始下载新版本")
+            }
         }
     }
+
+    /** 下载完成的那一帧：自动拉起安装（只拉一次，取消了就靠菜单那行再点） */
+    private var updateInstallOffered = false
 
     private fun showToast(msg: String) {
         if (msg.isEmpty()) return
@@ -1410,7 +1432,20 @@ class HudView(context: Context, private val game: Game) : View(context) {
             )
             btnUpdate.setEmpty()
             if (updateVersionName.isNotEmpty()) {
-                val line = "有新版本 v$updateVersionName · 点这里去下载"
+                AppUpdater.poll(context)
+                if (AppUpdater.state == AppUpdater.READY && !updateInstallOffered) {
+                    updateInstallOffered = true
+                    (context as? android.app.Activity)?.let { post { AppUpdater.install(it) } }
+                }
+                val line = when (AppUpdater.state) {
+                    AppUpdater.DOWNLOADING -> if (AppUpdater.progress >= 0f) {
+                        "正在下载 v$updateVersionName · ${(AppUpdater.progress * 100).toInt()}%"
+                    } else "正在下载 v$updateVersionName…"
+                    AppUpdater.VERIFYING -> "正在检查下载的文件…"
+                    AppUpdater.READY -> "v$updateVersionName 已下载好 · 点这里安装"
+                    AppUpdater.FAILED -> "${AppUpdater.failReason} · 点这里重试"
+                    else -> "有新版本 v$updateVersionName · 点这里更新"
+                }
                 val ly = h * 0.43f
                 pixText(
                     canvas, line, w / 2f, ly, fittedTextSize(line, 20f * s, w * 0.88f, 14f * s),

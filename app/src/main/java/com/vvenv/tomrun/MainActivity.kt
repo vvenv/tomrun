@@ -66,7 +66,8 @@ class MainActivity : Activity() {
         }
         hud = HudView(this, game)
         game.setLeaderboardSyncListener { hud.postInvalidate() }
-        UpdateCheck.checkAsync { name -> hud.showUpdateAvailable(name) }
+        AppUpdater.cleanup(this)
+        UpdateCheck.checkAsync { release -> hud.showUpdateAvailable(release) }
         val root = FrameLayout(this)
         root.addView(glView)
         root.addView(hud)
@@ -139,6 +140,7 @@ class MainActivity : Activity() {
         super.onResume()
         game.flushLeaderboardSync()
         glView.onResume()
+        AppUpdater.onResume(this)
     }
 
     override fun onPause() {

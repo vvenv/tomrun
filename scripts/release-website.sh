@@ -87,7 +87,11 @@ if [ "$SKIP_APK" -eq 0 ]; then
   VERSION_NAME="$(sed -n 's/^ *versionName = "\(.*\)".*/\1/p' "$ROOT/app/build.gradle.kts")"
   VERSION_JSON="$(mktemp)"
   chmod 644 "$VERSION_JSON"  # mktemp 是 600，scp 会带过去，nginx 读不到就 403
-  printf '{"versionCode":%s,"versionName":"%s"}\n' "$VERSION_CODE" "$VERSION_NAME" > "$VERSION_JSON"
+  # sha256 / size 给 App 内更新校验下载结果；apk 是相对官网根的路径
+  APK_SHA256="$(shasum -a 256 "$APK" | awk '{print $1}')"
+  APK_SIZE="$(wc -c < "$APK" | tr -d ' ')"
+  printf '{"versionCode":%s,"versionName":"%s","apk":"downloads/tomrun.apk","sha256":"%s","size":%s}\n' \
+    "$VERSION_CODE" "$VERSION_NAME" "$APK_SHA256" "$APK_SIZE" > "$VERSION_JSON"
   echo "  version.json → v${VERSION_NAME} (${VERSION_CODE})"
   ${SCP} "$VERSION_JSON" "${USER}@${HOST}:${WEB_ROOT}/version.json"
   rm -f "$VERSION_JSON"
