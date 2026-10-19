@@ -186,6 +186,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private val buildRayNear = FloatArray(3)
     private val buildRayFar = FloatArray(3)
     private val buildPickOut = IntArray(2)
+    private val buildExt = IntArray(5)
     private val btnUpdate = RectF()
     private var updateVersionName = ""
     private val btnSoundPause = RectF()
@@ -203,6 +204,17 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private var catDeco = -1          // 互动目标装饰，-1 为无
     private var catStage = 0          // 猫爬架分段动作
     private var catStageT = 0f
+    /** 去房子时的目标点（世界坐标，y 相对台地面）与起跳点、要蹦几下 */
+    private var catSpot = -1
+    private var catSpotX = 0f
+    private var catSpotY = 0f
+    private var catSpotZ = 0f
+    private var catBaseX = 0f
+    private var catBaseZ = 0f
+    private var catHops = 0
+    /** 有人在搭房子时抬头看一眼（秒） */
+    private var catLookTimer = 0f
+    private val catSpotBuf = IntArray(96)
     private val catRnd = java.util.Random()
     private var yardEventTimer = 6f
     private var pendingYardEvent = YARD_EVENT_NONE
@@ -475,6 +487,9 @@ class HudView(context: Context, private val game: Game) : View(context) {
         private const val CAT_CHASE = 4
         private const val CAT_PET = 5
         private const val CAT_CHASE_HAND = 6
+        /** 去自己搭的房子：门口坐坐、钻拱廊、一层层蹦上露台 */
+        private const val CAT_HOUSE = 7
+        private const val CAT_HOP_SECS = 0.36f
         private const val POSE_STAND = 0
         private const val POSE_WALK = 1
         private const val POSE_SIT = 2
@@ -2496,6 +2511,13 @@ class HudView(context: Context, private val game: Game) : View(context) {
             if (buildPickOut[0] >= 0) game.placeBlock(buildPickOut[0]) else ""
         }
         if (msg.isNotEmpty()) showToast(msg)
+        // 闲着的猫会抬头看一眼：有人在给它盖房子
+        if (catState == CAT_IDLE || catState == CAT_NAP) {
+            catState = CAT_IDLE
+            catTimer = catTimer.coerceAtLeast(1.4f)
+            catLookTimer = 1.4f
+            faceTo(HomeYard.posX(game, HomeYard.HOUSE), HomeYard.posZ(game, HomeYard.HOUSE))
+        }
     }
 
     private fun tapBuildRoof(i: Int) {
@@ -3175,6 +3197,11 @@ class HudView(context: Context, private val game: Game) : View(context) {
         yardEventTimer -= dt
         updateButterfly(dt)
 
+        // 在高处（爬架、露台）被摸或被叫走时，别顶着那个高度在地上走：一边走一边落回地面
+        val grounded = catState == CAT_WALK || catState == CAT_CHASE || catState == CAT_CHASE_HAND ||
+            (catState == CAT_HOUSE && catStage == 0)
+        if (grounded && catY > 0f) catY = (catY - dt * 7f).coerceAtLeast(0f)
+
         when (catState) {
             CAT_IDLE -> if (catTimer <= 0f) pickYardGoal()
             CAT_WALK -> {
@@ -3274,6 +3301,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 catState = CAT_IDLE
                 catTimer = 0.5f
             }
+            CAT_HOUSE -> updateCatHouse(dt)
             CAT_CHASE -> if (butterflyVisible) {
                 stepToward(butterflyX, butterflyZ, 3.1f, dt, stopAt = 0.8f)
             }
@@ -3299,7 +3327,15 @@ class HudView(context: Context, private val game: Game) : View(context) {
         HomeYard.catZ = catZ
         HomeYard.catY = catY
         HomeYard.catYaw = catYaw
+        if (catLookTimer > 0f) catLookTimer -= dt
         HomeYard.catPose = when {
+            catState == CAT_HOUSE -> when (catStage) {
+                0 -> HomeScene3D.POSE_WALK
+                1, 3 -> HomeScene3D.POSE_JUMP
+                else -> if (HomeBuild.spotKind(catSpot) != HomeBuild.SPOT_DOOR && catDeco == 1) HomeScene3D.POSE_NAP
+                    else HomeScene3D.POSE_SIT
+            }
+            catState == CAT_IDLE && catLookTimer > 0f -> HomeScene3D.POSE_LOOKUP
             catState == CAT_PLAY && catDeco == 0 -> HomeScene3D.POSE_SNIFF
             catState == CAT_PLAY && catDeco == 2 -> HomeScene3D.POSE_LOOKUP
             catState == CAT_PLAY && catDeco == 3 -> HomeScene3D.POSE_SIT
@@ -3397,12 +3433,18 @@ class HudView(context: Context, private val game: Game) : View(context) {
             catState = CAT_WALK
             return
         }
-        // 候选：散步（权重 2）、打盹（1）、每个已购可互动装饰（1）
+        // 候选：散步（权重 2）、打盹（1）、每个已购可互动装饰（1）、自己搭的房子（2）
         val opts = ArrayList<Int>()
         opts.add(-1); opts.add(-1)
         opts.add(-2)
         for (i in intArrayOf(0, 2, 3, 4, 5)) if (game.ownsDeco(i)) opts.add(i)
+        if (game.homeElVisible(HomeYard.HOUSE)) { opts.add(-3); opts.add(-3) }
         when (val pick = opts[catRnd.nextInt(opts.size)]) {
+            -3 -> if (!startCatHouse()) {
+                catDeco = -1
+                randomWalkGoal()
+                catState = CAT_WALK
+            }
             -2 -> {
                 catState = CAT_NAP
                 catTimer = 2.5f + catRnd.nextFloat() * 2.5f
@@ -3431,6 +3473,133 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 }
                 catState = CAT_WALK
             }
+        }
+    }
+
+    /**
+     * 挑一个房子上的去处：露台最有意思权重最高，其次拱廊、门口。
+     * 起跳点在房子正前方、目标那一列的前面——猫从正面一层层蹦上去，镜头里看得见。
+     */
+    private fun startCatHouse(): Boolean {
+        val g = game.buildGrid()
+        val n = HomeBuild.catSpots(g, catSpotBuf)
+        if (n == 0 || !HomeBuild.extents(g, buildExt)) return false
+        var total = 0
+        for (i in 0 until n) total += spotWeight(catSpotBuf[i])
+        var r = catRnd.nextInt(total)
+        var code = catSpotBuf[0]
+        for (i in 0 until n) {
+            r -= spotWeight(catSpotBuf[i])
+            if (r < 0) { code = catSpotBuf[i]; break }
+        }
+        val hx = HomeYard.posX(game, HomeYard.HOUSE)
+        val hz = HomeYard.posZ(game, HomeYard.HOUSE)
+        val cell = HomeBuild.spotCell(code)
+        val x = cell % HomeBuild.SX
+        val z = (cell / HomeBuild.SX) % HomeBuild.SZ
+        val y = cell / (HomeBuild.SX * HomeBuild.SZ)
+        catSpot = code
+        catSpotX = HomeBuild.cellX(hx, x)
+        catSpotZ = HomeBuild.cellZ(hz, z)
+        catSpotY = 0f
+        catHops = 0
+        when (HomeBuild.spotKind(code)) {
+            HomeBuild.SPOT_TERRACE -> {
+                catSpotY = (y + 1) * HomeBuild.CELL + 0.05f
+                catHops = y + 1
+                catBaseX = catSpotX
+                catBaseZ = HomeBuild.cellZ(hz, buildExt[4]) + HomeBuild.CELL * 0.5f + 0.9f
+            }
+            HomeBuild.SPOT_DOOR -> {
+                catSpotZ += HomeBuild.CELL * 0.5f + 0.75f
+                catBaseX = catSpotX
+                catBaseZ = catSpotZ
+            }
+            else -> {
+                catBaseX = catSpotX
+                catBaseZ = catSpotZ
+            }
+        }
+        catDeco = -1
+        catStage = 0
+        catStageT = 0f
+        catTargetX = catBaseX
+        catTargetZ = catBaseZ
+        catState = CAT_HOUSE
+        return true
+    }
+
+    private fun spotWeight(code: Int) = when (HomeBuild.spotKind(code)) {
+        HomeBuild.SPOT_TERRACE -> 3
+        HomeBuild.SPOT_ARCADE -> 2
+        else -> 1
+    }
+
+    /** 去房子的分段：0 走到起跳点 → 1 一层层蹦上去 → 2 待着 → 3 蹦下来 → 回到闲逛 */
+    private fun updateCatHouse(dt: Float) {
+        catStageT += dt
+        when (catStage) {
+            0 -> if (stepToward(catBaseX, catBaseZ, 1.9f, dt)) {
+                catStage = if (catHops > 0) 1 else 2
+                catStageT = 0f
+                catTimer = 4f + catRnd.nextFloat() * 4f
+                // 待着时一半打盹一半坐着（借 catDeco 当姿势开关，去房子时它本来就空着）
+                catDeco = if (catRnd.nextBoolean()) 1 else 0
+                if (catHops == 0) catYaw = 180f
+            }
+            1, 3 -> {
+                val up = catStage == 1
+                val total = catHops * CAT_HOP_SECS * (if (up) 1f else 0.7f)
+                val u = (catStageT / total).coerceIn(0f, 1f)
+                val k = if (up) u else 1f - u
+                // 每一下是一个小弧：整体沿直线爬，叠一个每段归零的抛物线
+                val seg = (u * catHops) % 1f
+                val arc = kotlin.math.sin(seg * Math.PI.toFloat()) * 0.45f
+                catX = catBaseX + (catSpotX - catBaseX) * k
+                catZ = catBaseZ + (catSpotZ - catBaseZ) * k
+                catY = catSpotY * k + if (u < 1f) arc else 0f
+                catYaw = if (up) 0f else 180f
+                if (u >= 1f) {
+                    catStageT = 0f
+                    if (up) {
+                        catStage = 2
+                        catYaw = 180f
+                    } else {
+                        catY = 0f
+                        endYardPlay()
+                    }
+                }
+            }
+            else -> {
+                // 待着的时候脚下那块被拆了，就别悬在半空，马上下来
+                if (!catSpotStillThere()) catTimer = 0f
+                catTimer -= dt
+                if (catTimer <= 0f) {
+                    if (HomeBuild.spotKind(catSpot) == HomeBuild.SPOT_TERRACE && catRnd.nextFloat() < 0.3f) {
+                        val n = 2 + catRnd.nextInt(4)
+                        showToast(game.grantYardCoins(n, "小猫在露台上晒太阳，翻出了 $n 枚金币！"))
+                    }
+                    if (catHops > 0) {
+                        catStage = 3
+                        catStageT = 0f
+                    } else {
+                        endYardPlay()
+                    }
+                }
+            }
+        }
+    }
+
+    private fun catSpotStillThere(): Boolean {
+        val g = game.buildGrid()
+        val cell = HomeBuild.spotCell(catSpot)
+        val x = cell % HomeBuild.SX
+        val z = (cell / HomeBuild.SX) % HomeBuild.SZ
+        val y = cell / (HomeBuild.SX * HomeBuild.SZ)
+        return when (HomeBuild.spotKind(catSpot)) {
+            HomeBuild.SPOT_TERRACE -> HomeBuild.filled(g, x, y, z) && !HomeBuild.filled(g, x, y + 1, z)
+            HomeBuild.SPOT_ARCADE -> !HomeBuild.filled(g, x, 0, z)
+            else -> true
         }
     }
 

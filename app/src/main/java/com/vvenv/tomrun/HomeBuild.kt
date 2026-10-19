@@ -201,6 +201,36 @@ object HomeBuild {
         return mask
     }
 
+    // ---------- 猫能去的地方：搭出来的结构就是它的去处 ----------
+    const val SPOT_TERRACE = 0   // 露台：蹦上去晒太阳
+    const val SPOT_DOOR = 1      // 门口台阶：坐着看院子
+    const val SPOT_ARCADE = 2    // 拱廊底下：钻进阴凉打盹
+
+    /** 编码：kind * 512 + 格子下标。露台给的是那块顶块，拱廊给的是地面上那个空格 */
+    fun spotKind(code: Int) = code / 512
+    fun spotCell(code: Int) = code % 512
+
+    fun catSpots(g: ByteArray, out: IntArray): Int {
+        var n = 0
+        fun add(kind: Int, cell: Int) { if (n < out.size) out[n++] = kind * 512 + cell }
+        val door = doorCell(g)
+        if (door >= 0) add(SPOT_DOOR, door)
+        for (y in 0 until SY) for (z in 0 until SZ) for (x in 0 until SX) {
+            if (isTerraceTop(g, x, y, z)) add(SPOT_TERRACE, idx(x, y, z))
+            if (y == 0 && !filled(g, x, 0, z)) {
+                var roofed = false
+                for (yy in 1 until SY) if (filled(g, x, yy, z)) { roofed = true; break }
+                if (roofed) add(SPOT_ARCADE, idx(x, 0, z))
+            }
+        }
+        return n
+    }
+
+    /** 露台：顶上空着，旁边有更高的楼 */
+    fun isTerraceTop(g: ByteArray, x: Int, y: Int, z: Int) = isTop(g, x, y, z) &&
+        (filled(g, x - 1, y + 1, z) || filled(g, x + 1, y + 1, z) ||
+            filled(g, x, y + 1, z - 1) || filled(g, x, y + 1, z + 1))
+
     // ---------- 格子 ↔ 世界 ----------
     /** 格子中心的世界坐标；房子锚点 (hx, hz) 对着格子中央，y 从台地面起算 */
     fun cellX(hx: Float, x: Int) = hx + (x - SX / 2) * CELL
