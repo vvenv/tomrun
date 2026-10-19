@@ -107,6 +107,11 @@ class HudView(context: Context, private val game: Game) : View(context) {
     /** 玩法说明本次进程已自动弹过：不加它的话关掉后下一帧又会被首局条件重新拉起 */
     private var helpAutoShown = false
     private var showLeaderboard = false
+    /** 全服上传的同意弹窗：0 不显示，1 询问是否上传，2 询问是否停止并删除 */
+    private var lbConsentDialog = 0
+    private val btnLbConsentLine = RectF()
+    private val btnLbConsentYes = RectF()
+    private val btnLbConsentNo = RectF()
     private var leaderboardTab = 0
     private var leaderboardScope = LB_SCOPE_LOCAL
     private var homeSubView = HOME_SUB_SCENE
@@ -153,6 +158,10 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private val btnPause = RectF()
     private val btnResume = RectF()
     private val btnQuit = RectF()
+    private val btnSound = RectF()
+    private val btnUpdate = RectF()
+    private var updateVersionName = ""
+    private val btnSoundPause = RectF()
     private var homePhase = 0f
 
     // 庭院猫 AI：站立张望 / 散步 / 与装饰互动 / 打盹。坐标是**世界单位**（见 [HomeYard]）
@@ -638,6 +647,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 game.paused -> when {
                     btnResume.contains(x, y) -> game.resumeGame()
                     btnQuit.contains(x, y) -> game.quitRun()
+                    btnSoundPause.contains(x, y) -> game.toggleSound()
                 }
                 btnPause.contains(x, y) -> game.pauseGame()
                 else -> game.onTap()
@@ -649,6 +659,10 @@ class HudView(context: Context, private val game: Game) : View(context) {
 
         when (game.menuPanel) {
             Game.PANEL_MAIN -> {
+                if (showLeaderboard && lbConsentDialog != 0) {
+                    handleLbConsentTap(x, y)
+                    return
+                }
                 if (showLeaderboard) {
                     when {
                         hitClose(btnLbClose, x, y) -> {
@@ -659,6 +673,8 @@ class HudView(context: Context, private val game: Game) : View(context) {
                         btnLbScopeGlobal.contains(x, y) -> switchLeaderboardScope(LB_SCOPE_GLOBAL)
                         btnLbPrev.contains(x, y) -> stepLeaderboardTab(-1)
                         btnLbNext.contains(x, y) -> stepLeaderboardTab(1)
+                        !btnLbConsentLine.isEmpty && btnLbConsentLine.contains(x, y) ->
+                            lbConsentDialog = if (game.leaderboardConsent() == LeaderboardSync.CONSENT_YES) 2 else 1
                         else -> showLeaderboard = false
                     }
                     return
@@ -675,6 +691,8 @@ class HudView(context: Context, private val game: Game) : View(context) {
                         }
                     }
                     btnHome.contains(x, y) -> openHomePage()
+                    btnSound.contains(x, y) -> showToast(if (game.toggleSound()) "声音已打开" else "已静音")
+                    !btnUpdate.isEmpty && btnUpdate.contains(x, y) -> openDownloadPage()
                     else -> game.onTap()
                 }
             }
@@ -870,6 +888,21 @@ class HudView(context: Context, private val game: Game) : View(context) {
         return true
     }
 
+    fun showUpdateAvailable(versionName: String) {
+        updateVersionName = versionName
+        invalidate()
+    }
+
+    private fun openDownloadPage() {
+        try {
+            context.startActivity(
+                android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(UpdateCheck.DOWNLOAD_PAGE))
+            )
+        } catch (_: Exception) {
+            showToast("请在浏览器打开 run.wenfu.dev")
+        }
+    }
+
     private fun showToast(msg: String) {
         if (msg.isEmpty()) return
         toast = msg
@@ -900,6 +933,11 @@ class HudView(context: Context, private val game: Game) : View(context) {
         }
         if (showStargazing) {
             closeStargazing()
+            invalidate()
+            return true
+        }
+        if (showLeaderboard && lbConsentDialog != 0) {
+            lbConsentDialog = 0
             invalidate()
             return true
         }
@@ -1310,6 +1348,16 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 fittedTextSize(progress, 20f * s, w * 0.88f, 14f * s),
                 0xFFB0B8C0.toInt(), sdx, sdy
             )
+            btnUpdate.setEmpty()
+            if (updateVersionName.isNotEmpty()) {
+                val line = "有新版本 v$updateVersionName · 点这里去下载"
+                val ly = h * 0.43f
+                pixText(
+                    canvas, line, w / 2f, ly, fittedTextSize(line, 20f * s, w * 0.88f, 14f * s),
+                    0xFFFFD426.toInt(), sdx, sdy
+                )
+                btnUpdate.set(w * 0.06f, ly - 34f * s, w * 0.94f, ly + 14f * s)
+            }
             val blink = if (kotlin.math.sin(homePhase * 3f) > -0.3f) 255 else 120
             pixText(canvas, "点击屏幕开始", w / 2f, h * 0.50f, 32f * s, withAlpha(Color.WHITE, blink), sdx, sdy)
         }
@@ -1325,6 +1373,9 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val rowTop = rowBottom - rowH
         btnHome.set(w - margin - rowH, rowTop, w - margin, rowBottom)
         drawHomeEntryBtn(canvas, btnHome, s)
+        // 唯一的设置项：在教室或夜里玩，家长第一个要找的就是静音
+        btnSound.set(margin, rowTop, margin + rowH, rowBottom)
+        drawSoundBtn(canvas, btnSound, s)
 
         if (showLeaderboard) drawLeaderboardOverlay(canvas, w, h, s, sdx, sdy)
         if (showHelp) drawHelpOverlay(canvas, w, h, s, sdx, sdy)
@@ -1451,7 +1502,70 @@ class HudView(context: Context, private val game: Game) : View(context) {
         leaderboardScope = scope
         if (scope == LB_SCOPE_GLOBAL && game.leaderboardRemoteEnabled()) {
             game.refreshLeaderboardRemote(leaderboardTab)
+            // 看榜不需要同意（只下载）；第一次进全服时顺带问一次要不要把自己的纪录传上去
+            if (game.leaderboardConsent() == LeaderboardSync.CONSENT_UNKNOWN) lbConsentDialog = 1
         }
+    }
+
+    private fun handleLbConsentTap(x: Float, y: Float) {
+        val asking = lbConsentDialog == 1
+        when {
+            btnLbConsentYes.contains(x, y) -> {
+                game.setLeaderboardConsent(asking)
+                showToast(if (asking) "好的，纪录会同步到全服" else "已停止上传，并请求删除全服纪录")
+                lbConsentDialog = 0
+            }
+            btnLbConsentNo.contains(x, y) -> {
+                // 第一次询问点「先不了」也要记下来，免得每次进全服都弹
+                if (asking && game.leaderboardConsent() == LeaderboardSync.CONSENT_UNKNOWN) {
+                    game.setLeaderboardConsent(false)
+                }
+                lbConsentDialog = 0
+            }
+        }
+    }
+
+    private fun drawLbConsentDialog(canvas: Canvas, w: Float, h: Float, s: Float) {
+        dim(canvas, w, h)
+        val asking = lbConsentDialog == 1
+        val lines = if (asking) listOf(
+            "把你的纪录同步到全服？",
+            "会上传：角色名、成绩、一个随机设备编号",
+            "不会上传：小屋、图鉴、位置和其它信息",
+            "请和爸爸妈妈一起决定",
+            "以后随时可以在这里停止并删除",
+            "隐私说明：run.wenfu.dev/privacy"
+        ) else listOf(
+            "停止上传全服纪录？",
+            "这台设备传过的全服纪录会一起删除",
+            "本机纪录不受影响"
+        )
+        val panelW = min(w - safeL - safeR - 32f * s, 620f * s)
+        val lineH = 40f * s
+        val btnH = 64f * s
+        val panelH = 56f * s + lines.size * lineH + 24f * s + btnH + 32f * s
+        val left = (w - panelW) / 2f
+        val top = (h - panelH) / 2f
+        PixelUi.drawPanel(
+            canvas, btnPaint, left, top, left + panelW, top + panelH,
+            LIGHT_PANEL, LIGHT_PANEL_EDGE, s, 0f, edgeW = 1f
+        )
+        var y = top + 56f * s
+        for ((i, line) in lines.withIndex()) {
+            val size = if (i == 0) 30f * s else 22f * s
+            lightText(
+                canvas, line, w / 2f, y, fittedTextSize(line, size, panelW - 40f * s, 14f * s),
+                if (i == 0) LIGHT_TITLE else LIGHT_TEXT
+            )
+            y += lineH
+        }
+        val gap = 16f * s
+        val bw = (panelW - 40f * s - gap) / 2f
+        val by = top + panelH - 32f * s - btnH
+        btnLbConsentYes.set(left + 20f * s, by, left + 20f * s + bw, by + btnH)
+        btnLbConsentNo.set(btnLbConsentYes.right + gap, by, btnLbConsentYes.right + gap + bw, by + btnH)
+        drawLightBtn(canvas, btnLbConsentYes, if (asking) "同意上传" else "停止并删除", s)
+        drawLightBtn(canvas, btnLbConsentNo, if (asking) "先不了" else "保留", s)
     }
 
     private fun drawLeaderboardOverlay(canvas: Canvas, w: Float, h: Float, s: Float, sdx: Float, sdy: Float) {
@@ -1532,12 +1646,19 @@ class HudView(context: Context, private val game: Game) : View(context) {
 
         // 底栏内容从 footerTop 往下顺序排布，行数会变（有没有同步状态行）也不会互相叠字
         var fy = footerTop + 12f * s
+        btnLbConsentLine.setEmpty()
         if (leaderboardScope == LB_SCOPE_GLOBAL && game.leaderboardRemoteEnabled()) {
-            val syncLine = game.leaderboardSyncStatus()
-            if (syncLine.isNotEmpty()) {
-                lightText(canvas, syncLine, titleCx, fy + 14f * s, 18f * s, LIGHT_HINT)
-                fy += 30f * s
+            // 这一行同时是上传开关的入口：点它弹同意 / 撤回
+            val uploading = game.leaderboardConsent() == LeaderboardSync.CONSENT_YES
+            val status = game.leaderboardSyncStatus()
+            val syncLine = if (uploading) {
+                (if (status.isNotEmpty()) "$status · " else "") + "点此停止上传"
+            } else {
+                "未上传我的纪录 · 点此开启"
             }
+            lightText(canvas, syncLine, titleCx, fy + 14f * s, 18f * s, LIGHT_HINT)
+            btnLbConsentLine.set(left + 16f * s, fy - 8f * s, right - 16f * s, fy + 30f * s)
+            fy += 30f * s
         }
         val pageLabel = "${tab + 1}/${game.leaderboardCategoryCount()}"
         lightText(canvas, pageLabel, titleCx, fy + 16f * s, 20f * s, LIGHT_HINT)
@@ -1567,6 +1688,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         drawLightBtn(canvas, btnLbNext, ">", s)
 
         drawOverlayCloseRow(canvas, left, right, bottom, s, "左右切换类别 · 点击外部关闭", btnLbClose)
+        if (lbConsentDialog != 0) drawLbConsentDialog(canvas, w, h, s)
     }
 
     /**
@@ -2142,6 +2264,31 @@ class HudView(context: Context, private val game: Game) : View(context) {
 
     private fun drawHomeEntryBtn(canvas: Canvas, r: RectF, s: Float) {
         drawBtn(canvas, r, "家", s)
+    }
+
+    /** 像素喇叭；静音时右侧画一个叉，打开时画两道声波 */
+    private fun drawSoundBtn(canvas: Canvas, r: RectF, s: Float) {
+        drawBtn(canvas, r, "", s)
+        btnPaint.color = Color.WHITE
+        val u = r.height() / 14f
+        val cx = r.centerX() - 2.5f * u
+        val cy = r.centerY()
+        canvas.drawRect(cx - 2f * u, cy - 1.5f * u, cx, cy + 1.5f * u, btnPaint)
+        for (i in 0 until 3) {
+            val x0 = cx + i * u
+            val hh = (2.5f + i) * u
+            canvas.drawRect(x0, cy - hh, x0 + u, cy + hh, btnPaint)
+        }
+        val ox = cx + 4f * u
+        if (game.soundOn) {
+            canvas.drawRect(ox, cy - 1.5f * u, ox + u, cy + 1.5f * u, btnPaint)
+            canvas.drawRect(ox + 2f * u, cy - 3.5f * u, ox + 3f * u, cy + 3.5f * u, btnPaint)
+        } else {
+            for (i in 0 until 4) {
+                canvas.drawRect(ox + i * u, cy - 2f * u + i * u, ox + (i + 1) * u, cy - u + i * u, btnPaint)
+                canvas.drawRect(ox + i * u, cy + u - i * u, ox + (i + 1) * u, cy + 2f * u - i * u, btnPaint)
+            }
+        }
     }
 
     /** 家页左下角「出门」：简洁圆角按钮 + 像素门与箭头 */
@@ -3579,6 +3726,8 @@ class HudView(context: Context, private val game: Game) : View(context) {
         drawBtn(canvas, btnResume, "继续跑酷", s)
         btnQuit.set(w / 2f - halfW, h * 0.60f, w / 2f + halfW, h * 0.60f + bh)
         drawBtn(canvas, btnQuit, "结束本局", s)
+        btnSoundPause.set(w / 2f - halfW, h * 0.72f, w / 2f + halfW, h * 0.72f + bh)
+        drawBtn(canvas, btnSoundPause, if (game.soundOn) "声音：开" else "声音：关", s)
     }
 
     private fun honorPages(): Int =
@@ -4313,7 +4462,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
 
     /** 当前浮层的关闭键被点到则关掉并返回 true，供抬手时抢在翻页滑之前处理。 */
     private fun dismissIfCloseHit(x: Float, y: Float): Boolean {
-        if (showLeaderboard && hitClose(btnLbClose, x, y)) {
+        if (showLeaderboard && lbConsentDialog == 0 && hitClose(btnLbClose, x, y)) {
             showLeaderboard = false
             btnLbClose.setEmpty()
             return true

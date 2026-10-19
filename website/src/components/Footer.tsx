@@ -36,6 +36,7 @@ export function Footer() {
                 { label: "纪录榜", href: "#leaderboard" },
                 { label: "下载", href: "#download" },
                 { label: "常见问题", href: "#faq" },
+                { label: "隐私说明", href: "/privacy/" },
               ].map((link) => (
                 <li key={link.href}>
                   <a href={link.href} className="text-ink/60 transition-colors hover:text-ember">

@@ -63,9 +63,24 @@ object LeaderboardApi {
         return try {
             writeJson(conn, payload)
             val code = conn.responseCode
-            if (code !in 200..299) throw ApiException("HTTP $code")
+            if (code !in 200..299) throw ApiException("HTTP $code", code)
             val resp = JSONObject(readText(conn))
             SubmitResult(resp.optBoolean("accepted", false), resp.optInt("rank", 0))
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    /** 删掉这台设备上传过的全部纪录（撤回同意时调用） */
+    fun deleteMine(deviceId: String) {
+        if (!isEnabled()) throw ApiException("API disabled")
+        val conn = open("DELETE", "$baseUrl/api/v1/records")
+        try {
+            conn.doOutput = true
+            conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            writeJson(conn, JSONObject().put("deviceId", deviceId))
+            val code = conn.responseCode
+            if (code !in 200..299) throw ApiException("HTTP $code", code)
         } finally {
             conn.disconnect()
         }
@@ -112,5 +127,8 @@ object LeaderboardApi {
         return out
     }
 
-    class ApiException(message: String) : Exception(message)
+    class ApiException(message: String, val httpCode: Int = 0) : Exception(message) {
+        /** 服务端明确拒收（数值越界、格式错）：重发也不会过，应当丢掉；429 限流除外 */
+        val rejected: Boolean get() = httpCode in 400..499 && httpCode != 429
+    }
 }

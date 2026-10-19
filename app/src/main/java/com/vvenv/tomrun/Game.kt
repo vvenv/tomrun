@@ -57,6 +57,9 @@ class Game {
         const val SPEED_MAX = 21f
         const val SPEED_RAMP = 0.18f
         const val SPEED_RAMP_EASE_SECS = 110f
+        /** 封顶后继续极慢地爬（约 2.5 分钟再 +3），高手局后半段不至于一直平着跑 */
+        const val SPEED_LATE_RAMP = 0.02f
+        const val SPEED_LATE_MAX = 24f
         const val BOOST_MULT = 1.22f
         /** 拾取/击倒等奖励瞬间：短暂减速让玩家读清反馈 */
         const val PACE_SLOW_MULT = 0.68f
@@ -302,6 +305,12 @@ class Game {
         val RELIC_COUNT = RELIC_NAMES.size
         // 文物图鉴集齐一次性大奖（随件数上调）
         const val MUSEUM_REWARD = 6000
+        /** 跑过这段距离后才可能刷出传说文物 */
+        const val RELIC_LEGEND_MIN_DIST = 400f
+        const val RELIC_LEGEND_CHANCE = 0.10f
+        const val RELIC_RARE_CHANCE = 0.26f
+        /** 连续这么多件都不是传说，下一件必出传说（跨局累计） */
+        const val RELIC_LEGEND_PITY = 10
         const val RELIC_HUD_MAX = 8
         // 文物拾取爆闪时长（秒）
         const val RELIC_POP_DUR = 0.55f
@@ -386,17 +395,17 @@ class Game {
         // 外观：4 色 + 4 双脚光迹（0 免费）
         const val CAT_COLOR_COUNT = 4
         const val TRAIL_COUNT = 4
-        val COLOR_PRICES = intArrayOf(0, 300, 800, 1500)
-        val TRAIL_PRICES = intArrayOf(0, 500, 1200, 2500)
+        val COLOR_PRICES = intArrayOf(0, 200, 500, 1000)
+        val TRAIL_PRICES = intArrayOf(0, 300, 800, 1600)
         val COLOR_NAMES = arrayOf("蓝灰", "橘黄", "乌黑", "粉红")
         val TRAIL_NAMES = arrayOf("无光迹", "青色", "金色", "彩虹")
         // 围巾（跑动时飘动）与帽子（头盔叠在帽子上，不摘掉）
         const val SCARF_COUNT = 4
         const val HAT_COUNT = 4
         val SCARF_NAMES = arrayOf("无围巾", "火红围巾", "天青围巾", "星紫围巾")
-        val SCARF_PRICES = intArrayOf(0, 400, 1000, 2200)
+        val SCARF_PRICES = intArrayOf(0, 250, 650, 1400)
         val HAT_NAMES = arrayOf("无帽子", "红棒球帽", "青草帽", "金皇冠")
-        val HAT_PRICES = intArrayOf(0, 600, 1500, 2800)
+        val HAT_PRICES = intArrayOf(0, 350, 900, 1800)
         // 小屋标签页：房屋 / 屋顶 / 庭院 / 猫装扮（同时可用于庭院）
         val HOUSE_NAMES = arrayOf("小木屋", "砖瓦房", "双层小楼", "梦幻城堡")
         val HOUSE_PRICES = intArrayOf(0, 800, 2000, 4500)
@@ -412,7 +421,8 @@ class Game {
             "金星", "水星", "天王星", "海王星"
         )
         /** 从当前等级升到下一级所需金币 */
-        val TELESCOPE_UPGRADE_PRICES = intArrayOf(400, 800, 1500, 2500, 4000, 6500, 10000, 15000)
+        // 一局钱包收入约 150~250；旧价合计 41700，一项就占全店六成。现合计 11900，每级 2~15 局
+        val TELESCOPE_UPGRADE_PRICES = intArrayOf(300, 500, 800, 1200, 1600, 2000, 2500, 3000)
         const val HOME_TAB_HOUSE = 0
         const val HOME_TAB_ROOF = 1
         const val HOME_TAB_DECO = 2
@@ -535,6 +545,7 @@ class Game {
     private var relicMask = 0       // 图鉴位 0..31
     private var relicMaskHi = 0       // 图鉴位 32..63
     private var relicMaskTop = 0    // 图鉴位 64..87
+    private var relicLegendPity = 0 // 连续未出传说的件数，跨局保存
     private var museumRewarded = false
     /** 上次翻开图鉴时的进度——大于它说明有还没看过的新解锁，家园地标会为此发光 */
     @Volatile var seenRelicsFound = 0
@@ -745,6 +756,14 @@ class Game {
     @Volatile var relicPopAge = 0f
 
     private var prefs: SharedPreferences? = null
+    private var secondWindUsed = false  // 本局的免费复活是否已用掉
+    /** 每天第一局任务的钱包奖励翻倍；只给「今天来了」一个理由，不做连签、不罚断签 */
+    private var dailyBonusDay = ""
+    @Volatile var dailyBonusRun = false
+        private set
+    /** 音效总开关；振动不受影响 */
+    @Volatile var soundOn = true
+        private set
     private var sessionPickupCoins = 0  // 本局拾取计入累计统计
     val leaderboards = Leaderboards()
     private lateinit var leaderboardSync: LeaderboardSync
@@ -761,6 +780,7 @@ class Game {
                 p.edit().putString("deviceId", id).apply()
             }
         leaderboardSync.attachDeviceId(deviceId)
+        leaderboardSync.consent = p.getInt("lbConsent", LeaderboardSync.CONSENT_UNKNOWN)
         leaderboardSync.loadRemoteCache()
         leaderboards.onEntrySubmitted = { cat, entry -> leaderboardSync.onLocalEntry(cat, entry) }
         highScore = p.getInt("high3d", 0)
@@ -777,6 +797,8 @@ class Game {
         totalPlaySeconds = p.getInt("totalPlaySeconds", 0)
         highRunCoins = p.getInt("highRunCoins", 0)
         wallet = p.getInt("wallet", 0)
+        soundOn = p.getBoolean("soundOn", true)
+        dailyBonusDay = p.getString("dailyBonusDay", "") ?: ""
         hasChosenCharacterName = p.contains("characterName")
         characterName = p.getString("characterName", DEFAULT_CHARACTER_NAME)
             ?.trim()
@@ -824,6 +846,7 @@ class Game {
         relicMask = p.getInt("relicMask", 0)
         relicMaskHi = p.getInt("relicMaskHi", 0)
         relicMaskTop = p.getInt("relicMaskTop", 0)
+        relicLegendPity = p.getInt("relicLegendPity", 0)
         sanitizeRelicMasks()
         relicsFound = countRelicsFound()
         museumRewarded = p.getBoolean("museumRewarded", false)
@@ -869,6 +892,20 @@ class Game {
     }
 
     fun leaderboardRemoteEnabled(): Boolean = LeaderboardApi.isEnabled()
+
+    fun leaderboardConsent(): Int =
+        if (::leaderboardSync.isInitialized) leaderboardSync.consent else LeaderboardSync.CONSENT_UNKNOWN
+
+    /**
+     * 同意后补传队列；拒绝时清队列并请服务器删掉这台设备的纪录——
+     * 1.0 版是不问就传的，老用户哪怕从没点过同意，服务器上也可能已有数据。
+     */
+    fun setLeaderboardConsent(allow: Boolean) {
+        if (!::leaderboardSync.isInitialized) return
+        leaderboardSync.consent = if (allow) LeaderboardSync.CONSENT_YES else LeaderboardSync.CONSENT_NO
+        prefs?.edit()?.putInt("lbConsent", leaderboardSync.consent)?.apply()
+        if (allow) leaderboardSync.flushPendingAsync() else leaderboardSync.revokeAndDeleteRemote()
+    }
 
     fun leaderboardRemoteEntries(category: Int): List<Leaderboards.Entry> =
         if (::leaderboardSync.isInitialized) leaderboardSync.remoteEntries(category) else emptyList()
@@ -1652,6 +1689,12 @@ class Game {
         paused = false
     }
 
+    fun toggleSound(): Boolean {
+        soundOn = !soundOn
+        prefs?.edit()?.putBoolean("soundOn", soundOn)?.apply()
+        return soundOn
+    }
+
     /** 暂停菜单里放弃本局：正常结算但不播死亡音效 */
     @Synchronized fun quitRun() {
         if (state != State.RUNNING) return
@@ -1891,6 +1934,7 @@ class Game {
         notices.clear()
         quests.clear()
         lane = 1; catX = 0f; catY = 0f; velY = 0f
+        secondWindUsed = false
         groundY = 0f; rideTargetY = RIDE_Y
         slideTimer = 0f; runPhase = 0f
         baseSpeed = SPEED_START; speed = SPEED_START
@@ -1937,6 +1981,13 @@ class Game {
         nextChaseAt = CHASE_FIRST + Random.nextFloat() * 180f
         runBattleWins = 0
         rollQuests()
+        val today = todayKey()
+        dailyBonusRun = dailyBonusDay != today
+        if (dailyBonusRun) {
+            dailyBonusDay = today
+            prefs?.edit()?.putString("dailyBonusDay", today)?.apply()
+            enqueueBanner("今天第一局：任务金币翻倍", 0xFFFFD426.toInt(), 2.4f)
+        }
         if (quests.isNotEmpty()) {
             enqueueBanner(
                 "本局：" + quests.joinToString(" · ") { it.label },
@@ -2026,6 +2077,8 @@ class Game {
             val u = runTime / SPEED_RAMP_EASE_SECS
             val eased = 1f - (1f - u) * (1f - u)
             baseSpeed = SPEED_START + (SPEED_MAX - SPEED_START) * eased
+        } else {
+            baseSpeed = min(SPEED_MAX + (runTime - SPEED_RAMP_EASE_SECS) * SPEED_LATE_RAMP, SPEED_LATE_MAX)
         }
         speed = if (boosting) baseSpeed * BOOST_MULT else baseSpeed
         paceSlowUntil = (paceSlowUntil - dt).coerceAtLeast(0f)
@@ -2800,13 +2853,23 @@ class Game {
     }
 
     /** 先按稀有度掷骰（传说需 600 米后），再优先未收集的文物 */
+    /**
+     * 抽一件文物。传说档 25 件、只在 400 米后出现；旧规则（6%、600 米后）实测要三百多局才集齐，
+     * 孩子一局多半跑不到 600 米。现在 10% + 跨局保底：连续 [RELIC_LEGEND_PITY] 件没出传说，下一件必出。
+     * 模拟（局长中位 ~850 米）：约 4 局见到第一件传说、约 20 局集齐一半、约 95 局集齐全部。
+     */
     private fun pickRelicForSpawn(): Int {
         val roll = Random.nextFloat()
+        val legendOpen = distance > RELIC_LEGEND_MIN_DIST
+        val legendLeft = (0 until RELIC_COUNT).any { RELIC_RARITY[it] == RELIC_LEGEND && !relicCollected(it) }
         val rarity = when {
-            roll < 0.06f && distance > 600f -> RELIC_LEGEND
-            roll < 0.30f -> RELIC_RARE
+            legendOpen && legendLeft && relicLegendPity >= RELIC_LEGEND_PITY -> RELIC_LEGEND
+            legendOpen && roll < RELIC_LEGEND_CHANCE -> RELIC_LEGEND
+            roll < RELIC_LEGEND_CHANCE + RELIC_RARE_CHANCE -> RELIC_RARE
             else -> RELIC_COMMON
         }
+        // 传说集齐后不再累计，免得保底永远停在「下一件必出」
+        relicLegendPity = if (rarity == RELIC_LEGEND || !legendLeft) 0 else relicLegendPity + 1
         val pool = ArrayList<Int>(RELIC_COUNT)
         for (i in 0 until RELIC_COUNT) {
             if (RELIC_RARITY[i] == rarity && !relicCollected(i)) pool.add(i)
@@ -2944,6 +3007,17 @@ class Game {
                         shake = 0.45f
                         resetCombo()
                         spawnBurst(e.x, catY + 1f, e.z, floatArrayOf(1f, 0.76f, 0.12f, 1f), 8)
+                        emit(EV_SHIELD, HAPTIC_HEAVY)
+                    } else if (!immortalMode && !secondWindUsed) {
+                        // 每局送一次「缓一口气」：一碰就结束对低年级太挫败，不靠广告也不扣金币
+                        secondWindUsed = true
+                        invulnTime = 2.0f
+                        triggerPaceSlow(1.6f)
+                        clearObstaclesAhead((speed * 2.5f).coerceAtLeast(55f))
+                        shake = 0.45f
+                        resetCombo()
+                        spawnBurst(e.x, catY + 1f, e.z, floatArrayOf(0.55f, 0.92f, 0.65f, 1f), 10)
+                        enqueueBanner("好险！缓一口气，接着跑（每局一次）", 0xFF7DEBA0.toInt(), 2.4f)
                         emit(EV_SHIELD, HAPTIC_HEAVY)
                     } else {
                         die()
@@ -3161,9 +3235,10 @@ class Game {
         q.progress = q.target
         missionBonus += q.rewardScore
         totalQuests++
-        grantWallet(q.rewardWallet)
+        val walletReward = if (dailyBonusRun) q.rewardWallet * 2 else q.rewardWallet
+        grantWallet(walletReward)
         enqueueBanner("任务完成：${q.label} +${q.rewardScore}", 0xFF7DEBA0.toInt(), 2.2f)
-        pushFloat("+${q.rewardScore} / 钱包+${q.rewardWallet}", 0xFF7DEBA0.toInt())
+        pushFloat("+${q.rewardScore} / 钱包+$walletReward", 0xFF7DEBA0.toInt())
         emit(EV_QUEST, HAPTIC_MED)
         // 任务数成就可在局中解锁（奖励进钱包）；累计统计在 settle 时一并持久化
         tryUnlockAchievements(persist = false)
@@ -3359,6 +3434,7 @@ class Game {
             .putInt("relicMask", relicMask)
             .putInt("relicMaskHi", relicMaskHi)
             .putInt("relicMaskTop", relicMaskTop)
+            .putInt("relicLegendPity", relicLegendPity)
             .putBoolean("museumRewarded", museumRewarded)
             .putInt("seenRelicsFound", seenRelicsFound)
             .putInt("seenAchieveCount", seenAchieveCount)

@@ -8,6 +8,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * 本地纪录入榜后异步上报；打开全服榜时拉取远端；失败写入待同步队列。
+ *
+ * 上传要先征得同意（[uploadAllowed]）：面向中小学，角色名和设备编号都算个人信息。
+ * 没表态之前纪录照样排进本机队列，同意后一次补传；明确拒绝则不再入队。
  */
 class LeaderboardSync(private val prefs: SharedPreferences) {
 
@@ -30,7 +33,14 @@ class LeaderboardSync(private val prefs: SharedPreferences) {
         const val STATE_SYNCING = 2
         const val STATE_OK = 3
         const val STATE_ERROR = 4
+
+        const val CONSENT_UNKNOWN = 0
+        const val CONSENT_YES = 1
+        const val CONSENT_NO = 2
     }
+
+    @Volatile var consent = CONSENT_UNKNOWN
+    private val uploadAllowed: Boolean get() = consent == CONSENT_YES
 
     private val worker = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -85,7 +95,7 @@ class LeaderboardSync(private val prefs: SharedPreferences) {
     }
 
     fun onLocalEntry(category: Int, entry: Leaderboards.Entry) {
-        if (!LeaderboardApi.isEnabled() || deviceId.isEmpty()) return
+        if (!LeaderboardApi.isEnabled() || deviceId.isEmpty() || consent == CONSENT_NO) return
         enqueuePending(
             PendingSubmit(category, entry.player, entry.value, entry.whenMs, entry.detail)
         )
@@ -107,7 +117,7 @@ class LeaderboardSync(private val prefs: SharedPreferences) {
     }
 
     fun flushPendingAsync() {
-        if (!LeaderboardApi.isEnabled() || deviceId.isEmpty()) return
+        if (!LeaderboardApi.isEnabled() || deviceId.isEmpty() || !uploadAllowed) return
         runAsync { flushPendingBlocking() }
     }
 
@@ -128,6 +138,8 @@ class LeaderboardSync(private val prefs: SharedPreferences) {
                     )
                     sent.add(item)
                     uploadedAny = true
+                } catch (e: LeaderboardApi.ApiException) {
+                    if (e.rejected) sent.add(item) else anyFail = true
                 } catch (_: Exception) {
                     anyFail = true
                 }
@@ -155,6 +167,20 @@ class LeaderboardSync(private val prefs: SharedPreferences) {
             remoteBoards[category].addAll(entries)
         }
         prefs.edit().putString(PREF_REMOTE_PREFIX + category, encodeEntries(entries)).apply()
+    }
+
+    /** 撤回同意：清掉本机待传队列，并请服务器删除这台设备的全部纪录（排在 worker 队尾，不会被 busy 丢弃） */
+    fun revokeAndDeleteRemote() {
+        synchronized(pendingLock) { savePending(emptyList()) }
+        if (!LeaderboardApi.isEnabled() || deviceId.isEmpty()) return
+        worker.execute {
+            try {
+                LeaderboardApi.deleteMine(deviceId)
+                setState(STATE_OK, "已删除全服纪录")
+            } catch (e: Exception) {
+                setState(STATE_ERROR, "删除失败，请联网后重试")
+            }
+        }
     }
 
     private fun enqueuePending(item: PendingSubmit) {

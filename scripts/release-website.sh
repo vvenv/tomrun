@@ -60,23 +60,34 @@ echo "▶ [1/4] Building website..."
 
 echo "▶ [2/4] Sync dist/ (keep remote downloads/)"
 ${SSH} "mkdir -p ${WEB_ROOT}/downloads"
-rsync -avz --delete --exclude=downloads \
+rsync -avz --delete --exclude=downloads --exclude=version.json \
   -e "sshpass -p ${DEPLOY_SSH_PASSWORD} ssh -o StrictHostKeyChecking=accept-new -p ${PORT}" \
   "$ROOT/website/dist/" "${USER}@${HOST}:${WEB_ROOT}/"
 
 if [ "$SKIP_APK" -eq 0 ]; then
-  APK=""
-  if [ -f "$ROOT/app/build/outputs/apk/release/app-release.apk" ]; then
-    APK="$ROOT/app/build/outputs/apk/release/app-release.apk"
-  elif [ -f "$ROOT/app/build/outputs/apk/debug/app-debug.apk" ]; then
-    APK="$ROOT/app/build/outputs/apk/debug/app-debug.apk"
+  # 只发正式签名的 release 包：debug 签名一旦流出去，换签名时老用户只能卸载重装、丢进度
+  [ -f "$ROOT/keystore.properties" ] || error "缺少 keystore.properties，无法打正式签名包（或加 --skip-apk）"
+  echo "▶ [3/4] Building signed release APK..."
+  JAVA_HOME="${JAVA_HOME:-/Applications/Android Studio.app/Contents/jbr/Contents/Home}" \
+    "$ROOT/gradlew" -p "$ROOT" -q assembleRelease
+  APK="$ROOT/app/build/outputs/apk/release/app-release.apk"
+  [ -f "$APK" ] || error "没有生成 $APK"
+  SDK_DIR="$(sed -n 's/^sdk.dir=//p' "$ROOT/local.properties" 2>/dev/null)"
+  APKSIGNER="$(ls -d "${SDK_DIR:-$HOME/Library/Android/sdk}"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1)"
+  [ -n "$APKSIGNER" ] || error "找不到 apksigner，无法确认签名"
+  if "$APKSIGNER" verify --print-certs "$APK" | grep -q "CN=Android Debug"; then
+    error "$APK 是 debug 签名，拒绝上传"
   fi
-  if [ -n "$APK" ]; then
-    echo "▶ [3/4] Upload APK → ${WEB_ROOT}/downloads/tomrun-1.0.apk"
-    ${SCP} "$APK" "${USER}@${HOST}:${WEB_ROOT}/downloads/tomrun-1.0.apk"
-  else
-    echo "▶ [3/4] No APK found — skip (build assembleRelease first)"
-  fi
+  echo "  Upload APK → ${WEB_ROOT}/downloads/tomrun-1.0.apk"
+  ${SCP} "$APK" "${USER}@${HOST}:${WEB_ROOT}/downloads/tomrun-1.0.apk"
+  # APK 传完再更新 version.json，免得游戏提示了新版、下载到的却还是旧包
+  VERSION_CODE="$(sed -n 's/^ *versionCode = \([0-9]*\).*/\1/p' "$ROOT/app/build.gradle.kts")"
+  VERSION_NAME="$(sed -n 's/^ *versionName = "\(.*\)".*/\1/p' "$ROOT/app/build.gradle.kts")"
+  VERSION_JSON="$(mktemp)"
+  printf '{"versionCode":%s,"versionName":"%s"}\n' "$VERSION_CODE" "$VERSION_NAME" > "$VERSION_JSON"
+  echo "  version.json → v${VERSION_NAME} (${VERSION_CODE})"
+  ${SCP} "$VERSION_JSON" "${USER}@${HOST}:${WEB_ROOT}/version.json"
+  rm -f "$VERSION_JSON"
 else
   echo "▶ [3/4] --skip-apk"
 fi

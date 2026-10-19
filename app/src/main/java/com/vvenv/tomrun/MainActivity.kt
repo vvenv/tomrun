@@ -27,6 +27,8 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        CrashReporter.install(applicationContext)
+        CrashReporter.uploadPendingAsync(applicationContext)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         game.attachPrefs(getSharedPreferences("tomrun", MODE_PRIVATE))
@@ -41,7 +43,7 @@ class MainActivity : Activity() {
         }
 
         game.onEvent = { event ->
-            soundFx?.play(event)
+            if (game.soundOn) soundFx?.play(event)
             // 事件自带 hapticPulse；再按事件补一档保底
             val pulse = when (event) {
                 Game.EV_COIN, Game.EV_JUMP, Game.EV_SLIDE, Game.EV_PET, Game.EV_STARGAZE -> Game.HAPTIC_LIGHT
@@ -63,6 +65,7 @@ class MainActivity : Activity() {
         }
         hud = HudView(this, game)
         game.setLeaderboardSyncListener { hud.postInvalidate() }
+        UpdateCheck.checkAsync { name -> hud.showUpdateAvailable(name) }
         val root = FrameLayout(this)
         root.addView(glView)
         root.addView(hud)

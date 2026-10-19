@@ -122,7 +122,7 @@ python3 server/leaderboard_server.py
 | debug | `http://10.0.2.2:8787`（模拟器访问本机） |
 | release | `https://run.wenfu.dev`（见 `gradle.properties`） |
 
-真机调试可在 `gradle.properties` 写成局域网地址。部署服务端：
+真机调试可在 `gradle.properties` 加 `LEADERBOARD_API_BASE_DEBUG=http://<局域网 IP>:8787`。部署服务端：
 
 ```bash
 cp server/deploy.env.example .env.deploy   # 填入 SSH 密码，不要提交

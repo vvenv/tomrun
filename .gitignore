@@ -105,3 +105,6 @@ server/*.db
 
 # Deploy credentials (never commit)
 .env.deploy
+
+# Release signing credentials (never commit)
+keystore.properties
