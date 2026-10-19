@@ -199,6 +199,24 @@ object HomeYard {
         return true
     }
 
+    // ---------- 房子里的藏品展位：GL 线程投影，HUD 叠图标、接点击 ----------
+    private val dispId = IntArray(HomeBuild.DISPLAY_MAX)
+    private val dispX = FloatArray(HomeBuild.DISPLAY_MAX)
+    private val dispY = FloatArray(HomeBuild.DISPLAY_MAX)
+    private val dispS = FloatArray(HomeBuild.DISPLAY_MAX)
+    private var dispN = 0
+
+    @Synchronized fun putDisplays(n: Int, ids: IntArray, xs: FloatArray, ys: FloatArray, ss: FloatArray) {
+        dispN = n.coerceAtMost(HomeBuild.DISPLAY_MAX)
+        for (i in 0 until dispN) { dispId[i] = ids[i]; dispX[i] = xs[i]; dispY[i] = ys[i]; dispS[i] = ss[i] }
+    }
+
+    /** 拷出这一帧的展位：id、归一化屏幕坐标（0~1）、远近缩放；返回件数 */
+    @Synchronized fun displays(ids: IntArray, xs: FloatArray, ys: FloatArray, ss: FloatArray): Int {
+        for (i in 0 until dispN) { ids[i] = dispId[i]; xs[i] = dispX[i]; ys[i] = dispY[i]; ss[i] = dispS[i] }
+        return dispN
+    }
+
     // ---------- 庭院猫（AI 在 HudView，位置在这儿） ----------
     @Volatile var catX = -3.5f
     @Volatile var catZ = 4.2f

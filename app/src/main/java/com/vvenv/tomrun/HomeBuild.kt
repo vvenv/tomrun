@@ -143,9 +143,9 @@ object HomeBuild {
     val SHAPE_NAMES = arrayOf("小楼", "瞭望塔", "拱廊", "露台", "天井", "双塔", "混搭", "大宅")
     val SHAPE_HINTS = arrayOf(
         "把房子搭到 3 层",
-        "把一根柱子单独搭到 5 层高",
-        "从墙上往外伸出 3 块，下面空着",
-        "在高楼旁边留出 3 块平顶",
+        "把一根柱子单独搭到 5 层高（塔顶能摆文物）",
+        "从墙上往外伸出 3 块，下面空着（底下能摆文物）",
+        "在高楼旁边留出 3 块平顶（露台能摆文物）",
         "用房子把一块空地四面围起来",
         "搭两座分开的尖塔（4 层以上）",
         "用上 4 种不同的材料",
@@ -230,6 +230,32 @@ object HomeBuild {
     fun isTerraceTop(g: ByteArray, x: Int, y: Int, z: Int) = isTop(g, x, y, z) &&
         (filled(g, x - 1, y + 1, z) || filled(g, x + 1, y + 1, z) ||
             filled(g, x, y + 1, z - 1) || filled(g, x, y + 1, z + 1))
+
+    // ---------- 展位：藏品住进自己搭的房子 ----------
+    /**
+     * 造型决定能摆几件：瞭望塔顶一件（最显眼，给最珍贵的）、每块露台一件、拱廊下每格一件。
+     * 顺序就是摆放优先级：塔顶 → 露台 → 拱廊，同类按格子下标，结果稳定不跳。
+     */
+    const val DISPLAY_TOWER = 0
+    const val DISPLAY_TERRACE = 1
+    const val DISPLAY_ARCADE = 2
+    const val DISPLAY_MAX = 16
+
+    fun displaySlots(g: ByteArray, out: IntArray): Int {
+        var n = 0
+        for (kind in 0..2) {
+            for (y in 0 until SY) for (z in 0 until SZ) for (x in 0 until SX) {
+                if (n >= out.size || n >= DISPLAY_MAX) return n
+                val hit = when (kind) {
+                    DISPLAY_TOWER -> y >= 4 && isSpire(g, x, y, z)
+                    DISPLAY_TERRACE -> isTerraceTop(g, x, y, z)
+                    else -> y == 0 && !filled(g, x, 0, z) && (1 until SY).any { filled(g, x, it, z) }
+                }
+                if (hit) out[n++] = kind * 512 + idx(x, y, z)
+            }
+        }
+        return n
+    }
 
     // ---------- 格子 ↔ 世界 ----------
     /** 格子中心的世界坐标；房子锚点 (hx, hz) 对着格子中央，y 从台地面起算 */

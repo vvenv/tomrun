@@ -1167,6 +1167,18 @@ class Game {
         return "认出来了：${names.joinToString("、")}！+$reward 金币"
     }
 
+    /** 已收集的文物，传说 → 稀有 → 普通，同档按编号：房子里的展位从头往后摆 */
+    fun displayRelicOrder(out: IntArray): Int {
+        var n = 0
+        for (rarity in intArrayOf(RELIC_LEGEND, RELIC_RARE, RELIC_COMMON)) {
+            for (i in 0 until RELIC_COUNT) {
+                if (n >= out.size) return n
+                if (RELIC_RARITY[i] == rarity && relicCollected(i)) out[n++] = i
+            }
+        }
+        return n
+    }
+
     /** 下一个还没认出的造型的提示；全认齐了返回空串 */
     fun nextShapeHint(): String {
         for (i in HomeBuild.SHAPE_NAMES.indices) {

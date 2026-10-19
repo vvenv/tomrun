@@ -39,6 +39,8 @@ object HomeScene3D {
         fun mode(m: Int)
         /** 接地软阴影（贴地圆片） */
         fun shadow(x: Float, z: Float, r: Float, y: Float = 0.02f)
+        /** 一件文物（器型与跑道上捡到时一样），底座落在 (x, y, z) */
+        fun relic(id: Int, x: Float, y: Float, z: Float, spin: Float, scale: Float)
     }
 
     // ---------- 姿势（HudView 的猫 AI 写、这里读） ----------
@@ -104,7 +106,9 @@ object HomeScene3D {
         val hz = HomeYard.posZ(game, HomeYard.HOUSE)
         if (game.homeElVisible(HomeYard.HOUSE)) {
             val g = game.buildGrid(world)
+            prepareDisplays(game, g)
             drawBuild(p, game, g, world, pal, roof, hx, hz, phase)
+            drawDisplays(p, g, pal, hx, hz, phase)
             val door = HomeBuild.doorCell(g)
             if (door >= 0 && game.homeWorldsUnlockedCount() > 1) {
                 drawDoorMat(
@@ -343,6 +347,72 @@ object HomeScene3D {
     // ---------- 亲手搭的房子：每一格长成什么样，由它的邻居决定 ----------
 
     private val ext = IntArray(5)
+
+    // 展位（GL 线程）：每帧按格子算一遍，画完把世界坐标留给渲染层投影
+    private val dispSlots = IntArray(HomeBuild.DISPLAY_MAX)
+    private val dispRelics = IntArray(Game.RELIC_COUNT)
+    private val dispHasRelic = BooleanArray(HomeBuild.SIZE)
+    private var dispN = 0
+    val displayIds = IntArray(HomeBuild.DISPLAY_MAX)
+    val displayPos = FloatArray(HomeBuild.DISPLAY_MAX * 3)
+    var displayCount = 0
+        private set
+
+    private fun prepareDisplays(game: Game, g: ByteArray) {
+        java.util.Arrays.fill(dispHasRelic, false)
+        val slots = HomeBuild.displaySlots(g, dispSlots)
+        val relics = game.displayRelicOrder(dispRelics)
+        dispN = minOf(slots, relics)
+        for (i in 0 until dispN) dispHasRelic[dispSlots[i] % 512] = true
+    }
+
+    /**
+     * 把文物摆上展位：塔顶的悬在尖顶上方慢慢转（替掉旗子），露台的放在后半格的石墩上
+     * （前半格留给猫晒太阳），拱廊下的就摆在阴凉里正中。
+     */
+    private fun drawDisplays(p: Painter, g: ByteArray, pal: HomePalette.Ramp, hx: Float, hz: Float, phase: Float) {
+        val cell = HomeBuild.CELL
+        displayCount = 0
+        for (i in 0 until dispN) {
+            val code = dispSlots[i]
+            val cellIdx = code % 512
+            val x = cellIdx % HomeBuild.SX
+            val z = (cellIdx / HomeBuild.SX) % HomeBuild.SZ
+            val y = cellIdx / (HomeBuild.SX * HomeBuild.SZ)
+            val id = dispRelics[i]
+            val wx = HomeBuild.cellX(hx, x)
+            var wz = HomeBuild.cellZ(hz, z)
+            val baseY: Float
+            val scale: Float
+            when (code / 512) {
+                HomeBuild.DISPLAY_TOWER -> {
+                    baseY = HomeYard.DECK_Y + (y + 1) * cell + 2.3f + sin(phase * 1.3f + x) * 0.12f
+                    scale = 0.9f
+                }
+                HomeBuild.DISPLAY_TERRACE -> {
+                    wz -= cell * 0.24f
+                    val top = HomeYard.DECK_Y + (y + 1) * cell + 0.1f
+                    p.box(wx, top + 0.18f, wz, 0.46f, 0.36f, 0.46f, c(pal.light))
+                    p.box(wx, top + 0.38f, wz, 0.56f, 0.06f, 0.56f, c(pal.hi))
+                    baseY = top + 0.41f + 0.3f
+                    scale = 0.62f
+                }
+                else -> {
+                    val top = HomeYard.DECK_Y
+                    p.box(wx, top + 0.25f, wz, 0.5f, 0.5f, 0.5f, c(pal.light))
+                    p.box(wx, top + 0.53f, wz, 0.6f, 0.06f, 0.6f, c(pal.hi))
+                    baseY = top + 0.56f + 0.3f
+                    scale = 0.62f
+                }
+            }
+            p.relic(id, wx, baseY, wz, phase * 40f + i * 47f, scale)
+            displayIds[displayCount] = id
+            displayPos[displayCount * 3] = wx
+            displayPos[displayCount * 3 + 1] = baseY + 0.75f * scale
+            displayPos[displayCount * 3 + 2] = wz
+            displayCount++
+        }
+    }
     private const val BUILD_DROP_SECS = 0.28f
     private const val BUILD_SHRINK_SECS = 0.2f
 
@@ -431,7 +501,7 @@ object HomeScene3D {
                     // 楼上的窗按「列」决定（不看 y）：同一竖列要开就层层都开，立面才有秩序；
                     // 一楼另算、开得少一些，留出墙脚的分量
                     val roll = if (y == 0) cellHash(x, 0, z, 10 + dir) % 10 else cellHash(x, 99, z, 20 + dir) % 10
-                    if (roll < (if (y == 0) 4 else 6)) buildWindow(p, pal, m, half, roll)
+                    if (roll < (if (y == 0) 4 else 6)) buildWindow(p, world, pal, m, half, roll)
                     if (HomeBuild.matGlows(mat)) {
                         p.mode(3)
                         p.part(0f, -half * 0.35f, half + 0.02f, cell * 0.8f, 0.05f, 0.03f,
@@ -443,17 +513,7 @@ object HomeScene3D {
             }
 
             if (!up) buildTop(p, g, world, pal, m, roof, x, y, z, nxm, nxp, nzm, nzp, half, phase)
-            if (!down) {
-                // 悬空：往下立柱直到碰到下面的块或地面，拱廊就这么长出来了
-                var gap = 0
-                var yy = y - 1
-                while (yy >= 0 && !HomeBuild.filled(g, x, yy, z)) { gap++; yy-- }
-                val len = gap * cell
-                p.part(0f, -half - 0.05f, 0f, cell, 0.1f, cell, c(m[2]))
-                for (sx in intArrayOf(-1, 1)) for (sz in intArrayOf(-1, 1)) {
-                    p.part(sx * (half - 0.14f), -half - len * 0.5f, sz * (half - 0.14f), 0.2f, len, 0.2f, c(m[1]))
-                }
-            }
+            if (!down) buildUnderside(p, g, world, pal, m, x, y, z, half, phase)
             p.pop()
         }
     }
@@ -463,10 +523,19 @@ object HomeScene3D {
         HomeBuild.filled(g, x - 1, y + 1, z) || HomeBuild.filled(g, x + 1, y + 1, z) ||
             HomeBuild.filled(g, x, y + 1, z - 1) || HomeBuild.filled(g, x, y + 1, z + 1)
 
-    private fun buildWindow(p: Painter, pal: HomePalette.Ramp, m: IntArray, half: Float, roll: Int) {
-        val tall = roll % 3 == 0
-        val w = 0.56f
-        val h = if (tall) 0.78f else 0.56f
+    private fun buildWindow(p: Painter, world: Int, pal: HomePalette.Ramp, m: IntArray, half: Float, roll: Int) {
+        // 水下是舷窗、星空是舱窗：小而方正、框更厚；别的世界才有高窄的竖窗
+        val porthole = world == Game.UNI_WATER || world == Game.UNI_SPACE
+        val tall = !porthole && roll % 3 == 0
+        val w = if (porthole) 0.42f else 0.56f
+        val h = if (tall) 0.78f else w
+        if (porthole) {
+            p.part(0f, 0.04f, half + 0.03f, w + 0.3f, h + 0.3f, 0.08f, c(m[2]))
+            p.mode(if (world == Game.UNI_SPACE) 3 else 2)
+            p.part(0f, 0.04f, half + 0.07f, w, h, 0.06f, c(pal.win))
+            p.mode(0)
+            return
+        }
         p.part(0f, 0.04f, half + 0.03f, w + 0.18f, h + 0.18f, 0.08f, c(m[2]))
         p.mode(2)
         p.part(0f, 0.04f, half + 0.07f, w, h, 0.06f, c(pal.win))
@@ -528,68 +597,227 @@ object HomeScene3D {
         val runX = xNeg + xPos + 1
         val runZ = zNeg + zPos + 1
         if (runX > 1 || runZ > 1) {
-            // 一整片屋顶起一道山脊：沿长边走脊，横截面按这一格在整片里的位置取高度，
-            // 一排格子拼起来就是一个完整的人字坡，而不是每格各起一道小脊
-            val alongX = runX >= runZ
-            val across = if (alongX) runZ else runX
-            val before = if (alongX) zNeg else xNeg
-            val peak = 0.45f + 0.42f * across
-            val ePos = if (alongX) (if (xPos > 0) 0f else 0.14f) else (if (zPos > 0) 0f else 0.14f)
-            val eNeg = if (alongX) (if (xNeg > 0) 0f else 0.14f) else (if (zNeg > 0) 0f else 0.14f)
-            val runLen = cell + ePos + eNeg
-            val runOff = (ePos - eNeg) * 0.5f
-            val slices = 4
-            val sw = cell / slices
-            val halfSpan = across * 0.5f + 0.12f
-            for (k in 0 until slices) {
-                val u = before + (k + 0.5f) / slices          // 在整片里的位置（格）
-                val hgt = (peak * (1f - abs(u - across * 0.5f) / halfSpan)).coerceAtLeast(0.12f)
-                // 最外一片多挑出一点檐
-                val edge = (before == 0 && k == 0) || (before == across - 1 && k == slices - 1)
-                val w = sw + if (edge) 0.14f else 0f
-                val o = -half + sw * (k + 0.5f) + if (edge) (if (k == 0) -0.07f else 0.07f) else 0f
-                val wall = c(m[1])
-                val cap = c(roofArgb)
-                if (alongX) {
-                    p.part(runOff, half + (hgt - 0.12f) * 0.5f, o, runLen - 0.02f, hgt - 0.12f, w - 0.002f, wall)
-                    p.part(runOff, half + hgt - 0.06f, o, runLen, 0.14f, w, cap)
-                } else {
-                    p.part(o, half + (hgt - 0.12f) * 0.5f, runOff, w - 0.002f, hgt - 0.12f, runLen - 0.02f, wall)
-                    p.part(o, half + hgt - 0.06f, runOff, w, 0.14f, runLen, cap)
+            when (world) {
+                // 熔岩世界的屋顶是平的城垛：岩浆地带不长尖顶，长堡垒
+                Game.UNI_LAVA -> flatRoof(p, g, m, x, y, z, half, battlement = true)
+                // 星空：平顶加天线 / 小碟，像一排舱段
+                Game.UNI_SPACE -> {
+                    flatRoof(p, g, m, x, y, z, half, battlement = false)
+                    when (cellHash(x, y, z, 7) % 5) {
+                        0 -> {
+                            p.part(0f, half + 0.6f, 0f, 0.06f, 1.0f, 0.06f, c(m[2]))
+                            p.mode(3)
+                            p.part(0f, half + 1.12f, 0f, 0.14f, 0.14f, 0.14f, c(pal.accent, 0.6f + 0.4f * sin(phase * 3f + x)))
+                            p.mode(0)
+                        }
+                        1 -> {
+                            p.push(0f, half + 0.42f, 0f)
+                            p.rotX(-35f)
+                            p.part(0f, 0f, 0f, 0.7f, 0.08f, 0.7f, c(m[2]))
+                            p.pop()
+                            p.part(0f, half + 0.22f, 0f, 0.08f, 0.32f, 0.08f, c(m[1]))
+                        }
+                    }
                 }
-            }
-            if (world == Game.UNI_CANDY) {
-                p.part(0f, half + 0.04f, 0f, cell + 0.2f, 0.08f, cell + 0.2f, c(pal.hi))
+                else -> buildGable(p, world, pal, m, roofArgb, half, xNeg, xPos, zNeg, zPos, runX, runZ)
             }
             return
         }
-        val steps = 4
-        // 孤立的一根：尖顶；越高越尖，三层以上插旗
-        val tall = y >= 2
-        val h = if (tall) 1.7f else 0.95f
-        if (world == Game.UNI_WATER) {
-            for (s in 0 until 4) {
-                val k = (s + 0.5f) / 4f
-                val hw = (half + 0.12f) * cos(k * 1.35f)
-                p.part(0f, half + h * 0.7f * k, 0f, hw * 2f, h * 0.7f / 4f * 1.3f, hw * 2f,
-                    if (s < 2) shade(roofArgb, 0.85f) else c(roofArgb))
-            }
-        } else {
-            for (s in 0 until steps) {
-                val k = s / steps.toFloat()
-                val hw = (half + 0.14f) * (1f - k * 0.88f)
-                p.part(0f, half + h * (s + 0.5f) / steps, 0f, hw * 2f, h / steps, hw * 2f,
-                    if (s == 0) shade(roofArgb, 0.82f) else c(roofArgb))
+        spireTop(p, world, pal, m, roofArgb, x, y, z, half, phase)
+    }
+
+    /**
+     * 人字坡：沿长边走脊，横截面按这一格在整片里的位置取高度，
+     * 一排格子拼起来就是一个完整的坡，而不是每格各起一道小脊。
+     * 水下世界把同一个截面换成圆拱——海里的房子没有尖角。
+     */
+    private fun buildGable(
+        p: Painter, world: Int, pal: HomePalette.Ramp, m: IntArray, roofArgb: Int, half: Float,
+        xNeg: Int, xPos: Int, zNeg: Int, zPos: Int, runX: Int, runZ: Int
+    ) {
+        val cell = HomeBuild.CELL
+        val alongX = runX >= runZ
+        val across = if (alongX) runZ else runX
+        val before = if (alongX) zNeg else xNeg
+        val vault = world == Game.UNI_WATER
+        val peak = if (vault) 0.35f + 0.34f * across else 0.45f + 0.42f * across
+        val ePos = if (alongX) (if (xPos > 0) 0f else 0.14f) else (if (zPos > 0) 0f else 0.14f)
+        val eNeg = if (alongX) (if (xNeg > 0) 0f else 0.14f) else (if (zNeg > 0) 0f else 0.14f)
+        val runLen = cell + ePos + eNeg
+        val runOff = (ePos - eNeg) * 0.5f
+        val slices = 4
+        val sw = cell / slices
+        val halfSpan = across * 0.5f + 0.12f
+        for (k in 0 until slices) {
+            val u = before + (k + 0.5f) / slices          // 在整片里的位置（格）
+            val d = (abs(u - across * 0.5f) / halfSpan).coerceIn(0f, 1f)
+            val prof = if (vault) kotlin.math.sqrt(1f - d * d) else 1f - d
+            val hgt = (peak * prof).coerceAtLeast(0.12f)
+            // 最外一片多挑出一点檐
+            val edge = (before == 0 && k == 0) || (before == across - 1 && k == slices - 1)
+            val w = sw + if (edge) 0.14f else 0f
+            val o = -half + sw * (k + 0.5f) + if (edge) (if (k == 0) -0.07f else 0.07f) else 0f
+            val wall = c(m[1])
+            val cap = c(roofArgb)
+            if (alongX) {
+                p.part(runOff, half + (hgt - 0.12f) * 0.5f, o, runLen - 0.02f, hgt - 0.12f, w - 0.002f, wall)
+                p.part(runOff, half + hgt - 0.06f, o, runLen, 0.14f, w, cap)
+            } else {
+                p.part(o, half + (hgt - 0.12f) * 0.5f, runOff, w - 0.002f, hgt - 0.12f, runLen - 0.02f, wall)
+                p.part(o, half + hgt - 0.06f, runOff, w, 0.14f, runLen, cap)
             }
         }
-        if (y >= 3) {
+        if (world == Game.UNI_CANDY) icing(p, pal, half)
+    }
+
+    /** 糖霜：檐口一圈白边，四面各挂两滴 */
+    private fun icing(p: Painter, pal: HomePalette.Ramp, half: Float) {
+        val cell = HomeBuild.CELL
+        p.part(0f, half + 0.04f, 0f, cell + 0.2f, 0.1f, cell + 0.2f, c(pal.hi))
+        for (dir in 0 until 4) {
+            p.push(0f, 0f, 0f)
+            p.rotY(dir * 90f)
+            p.part(-0.28f, half - 0.16f, half + 0.08f, 0.16f, 0.36f, 0.06f, c(pal.hi))
+            p.part(0.22f, half - 0.1f, half + 0.08f, 0.14f, 0.24f, 0.06f, c(pal.hi))
+            p.pop()
+        }
+    }
+
+    /** 平顶：一块顶板；城垛版在露出来的边上隔一个立一个垛口 */
+    private fun flatRoof(
+        p: Painter, g: ByteArray, m: IntArray, x: Int, y: Int, z: Int, half: Float, battlement: Boolean
+    ) {
+        val cell = HomeBuild.CELL
+        p.part(0f, half + 0.07f, 0f, cell + 0.08f, 0.14f, cell + 0.08f, c(m[1]))
+        if (!battlement) return
+        val open = booleanArrayOf(
+            !HomeBuild.filled(g, x, y, z + 1), !HomeBuild.filled(g, x + 1, y, z),
+            !HomeBuild.filled(g, x, y, z - 1), !HomeBuild.filled(g, x - 1, y, z)
+        )
+        for (dir in 0 until 4) {
+            if (!open[dir]) continue
+            p.push(0f, 0f, 0f)
+            p.rotY(dir * 90f)
+            for (k in intArrayOf(-1, 1)) {
+                p.part(k * 0.32f, half + 0.34f, half - 0.12f, 0.3f, 0.4f, 0.24f, c(m[0]))
+            }
+            p.pop()
+        }
+    }
+
+    /** 孤零零一根的顶：每个世界长不同的东西，三层以上的「塔」再加点招牌 */
+    private fun spireTop(
+        p: Painter, world: Int, pal: HomePalette.Ramp, m: IntArray, roofArgb: Int,
+        x: Int, y: Int, z: Int, half: Float, phase: Float
+    ) {
+        val tall = y >= 2
+        val h = if (tall) 1.7f else 0.95f
+        when (world) {
+            Game.UNI_WATER -> {
+                for (s in 0 until 4) {
+                    val k = (s + 0.5f) / 4f
+                    val hw = (half + 0.12f) * cos(k * 1.35f)
+                    p.part(0f, half + h * 0.7f * k, 0f, hw * 2f, h * 0.7f / 4f * 1.3f, hw * 2f,
+                        if (s < 2) shade(roofArgb, 0.85f) else c(roofArgb))
+                }
+            }
+            Game.UNI_LAVA -> {
+                // 烟囱：方墩 + 顶口一圈火光
+                p.part(0f, half + 0.08f, 0f, HomeBuild.CELL + 0.06f, 0.16f, HomeBuild.CELL + 0.06f, c(m[1]))
+                p.part(0f, half + 0.16f + h * 0.35f, 0f, 0.62f, h * 0.7f, 0.62f, c(m[0]))
+                p.mode(3)
+                p.part(0f, half + 0.18f + h * 0.7f, 0f, 0.46f, 0.12f, 0.46f,
+                    c(pal.accent, 0.7f + 0.3f * sin(phase * 4f + x)))
+                for (i in 0 until 2) {
+                    val t = (phase * 0.35f + i * 0.5f) % 1f
+                    val sz = 0.3f + t * 0.4f
+                    p.part(sin(phase + i) * 0.2f, half + h * 0.7f + 0.4f + t * 1.6f, 0f, sz, sz, sz,
+                        c(pal.accent2, (1f - t) * 0.45f))
+                }
+                p.mode(0)
+                return
+            }
+            Game.UNI_CANDY -> {
+                // 棒棒糖：一根棍子顶一片慢慢转的糖
+                p.part(0f, half + 0.08f, 0f, HomeBuild.CELL + 0.06f, 0.16f, HomeBuild.CELL + 0.06f, c(pal.hi))
+                p.part(0f, half + h * 0.45f, 0f, 0.1f, h * 0.9f, 0.1f, c(pal.hi))
+                p.push(0f, half + h * 0.9f + 0.5f, 0f)
+                p.rotY(phase * 25f + x * 40f)
+                // 两片十字交叉的糖：从哪个角度看都是一个圆鼓鼓的糖球，而不是一块牌子
+                for (k in 0..1) {
+                    p.push(0f, 0f, 0f)
+                    p.rotY(k * 90f)
+                    p.part(0f, 0f, 0f, 1.1f, 1.1f, 0.2f, c(pal.accent))
+                    p.part(0f, 0f, 0f, 0.76f, 0.76f, 0.24f, c(pal.hi))
+                    p.part(0f, 0f, 0f, 0.4f, 0.4f, 0.28f, c(pal.accent2))
+                    p.pop()
+                }
+                p.pop()
+                return
+            }
+            Game.UNI_SPACE -> {
+                // 玻璃穹顶：半透明罩子里一粒会呼吸的光
+                p.part(0f, half + 0.08f, 0f, HomeBuild.CELL + 0.06f, 0.16f, HomeBuild.CELL + 0.06f, c(m[1]))
+                p.mode(3)
+                p.part(0f, half + 0.45f, 0f, 0.26f, 0.26f, 0.26f, c(pal.accent, 0.55f + 0.45f * sin(phase * 2.4f + y)))
+                p.mode(2)
+                for (s in 0 until 3) {
+                    val k = (s + 0.5f) / 3f
+                    val hw = (half + 0.02f) * cos(k * 1.3f)
+                    p.part(0f, half + 0.16f + 0.75f * k, 0f, hw * 2f, 0.32f, hw * 2f, c(pal.win, 0.38f))
+                }
+                p.mode(0)
+                return
+            }
+            else -> {
+                val steps = 4
+                for (s in 0 until steps) {
+                    val k = s / steps.toFloat()
+                    val hw = (half + 0.14f) * (1f - k * 0.88f)
+                    p.part(0f, half + h * (s + 0.5f) / steps, 0f, hw * 2f, h / steps, hw * 2f,
+                        if (s == 0) shade(roofArgb, 0.82f) else c(roofArgb))
+                }
+            }
+        }
+        // 三层以上插旗：这就是「塔」；塔顶摆了文物就让给文物，不再插旗
+        if (y >= 3 && !dispHasRelic[HomeBuild.idx(x, y, z)]) {
             p.part(0f, half + h + 0.5f, 0f, 0.07f, 1.0f, 0.07f, c(m[2]))
             p.part(0.3f + sin(phase * 2f + x) * 0.04f, half + h + 0.82f, 0f, 0.52f, 0.3f, 0.04f, c(pal.accent))
         }
-        if (world == Game.UNI_SPACE && y >= 2) {
-            p.mode(3)
-            p.part(0f, half + h + 0.2f, 0f, 0.18f, 0.18f, 0.18f, c(pal.accent, 0.6f + 0.4f * sin(phase * 3f + y)))
-            p.mode(0)
+    }
+
+    /**
+     * 悬空块的底下：
+     *  - 天空世界不立柱，托一团云——那儿的房子本来就飘着
+     *  - 星空用两根细支架，像舱段的桁架
+     *  - 其余世界立柱直到碰到下面的块或地面，拱廊就这么长出来了
+     */
+    private fun buildUnderside(
+        p: Painter, g: ByteArray, world: Int, pal: HomePalette.Ramp, m: IntArray,
+        x: Int, y: Int, z: Int, half: Float, phase: Float
+    ) {
+        val cell = HomeBuild.CELL
+        p.part(0f, -half - 0.05f, 0f, cell, 0.1f, cell, c(m[2]))
+        if (world == Game.UNI_SKY) {
+            val bob = sin(phase * 0.9f + x + z) * 0.05f
+            p.part(0f, -half - 0.3f + bob, 0f, cell * 0.9f, 0.4f, cell * 0.8f, c(pal.hi, 0.95f))
+            p.part(-0.3f, -half - 0.5f + bob, 0.15f, 0.6f, 0.36f, 0.6f, c(pal.hi, 0.9f))
+            p.part(0.32f, -half - 0.46f + bob, -0.12f, 0.5f, 0.3f, 0.5f, c(pal.hi, 0.9f))
+            return
+        }
+        var gap = 0
+        var yy = y - 1
+        while (yy >= 0 && !HomeBuild.filled(g, x, yy, z)) { gap++; yy-- }
+        val len = gap * cell
+        if (world == Game.UNI_SPACE) {
+            for (sx in intArrayOf(-1, 1)) {
+                p.part(sx * (half - 0.2f), -half - len * 0.5f, 0f, 0.08f, len, 0.08f, c(m[2]))
+            }
+            p.part(0f, -half - len * 0.5f, 0f, cell - 0.4f, 0.06f, 0.06f, c(m[2]))
+            return
+        }
+        for (sx in intArrayOf(-1, 1)) for (sz in intArrayOf(-1, 1)) {
+            p.part(sx * (half - 0.14f), -half - len * 0.5f, sz * (half - 0.14f), 0.2f, len, 0.2f, c(m[1]))
         }
     }
 

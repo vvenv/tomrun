@@ -661,6 +661,7 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
 
         HomeScene3D.draw(homePainter, game, homePhase, house, roof, ghostDeco, catColor, catScarf, catHat)
         publishHomeHits(house)
+        publishHomeDisplays()
 
         GLES20.glDisableVertexAttribArray(aPos)
         GLES20.glDisableVertexAttribArray(aNormal)
@@ -731,6 +732,29 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         }
     }
 
+    private val dispIds = IntArray(HomeBuild.DISPLAY_MAX)
+    private val dispXs = FloatArray(HomeBuild.DISPLAY_MAX)
+    private val dispYs = FloatArray(HomeBuild.DISPLAY_MAX)
+    private val dispSs = FloatArray(HomeBuild.DISPLAY_MAX)
+
+    /** 展位上的文物投影到屏幕，HUD 在它头顶叠像素图标、点了开详情 */
+    private fun publishHomeDisplays() {
+        var n = 0
+        for (i in 0 until HomeScene3D.displayCount) {
+            val x = HomeScene3D.displayPos[i * 3]
+            val y = HomeScene3D.displayPos[i * 3 + 1]
+            val z = HomeScene3D.displayPos[i * 3 + 2]
+            val cw = vp[3] * x + vp[7] * y + vp[11] * z + vp[15]
+            if (!projectWorld(x, y, z, projectTmp)) continue
+            dispIds[n] = HomeScene3D.displayIds[i]
+            dispXs[n] = projectTmp[0]
+            dispYs[n] = projectTmp[1]
+            dispSs[n] = (16f / cw.coerceAtLeast(1f)).coerceIn(0.45f, 1.4f)
+            n++
+        }
+        HomeYard.putDisplays(n, dispIds, dispXs, dispYs, dispSs)
+    }
+
     private fun argbTo(argb: Int, out: FloatArray) {
         out[0] = ((argb ushr 16) and 0xFF) / 255f
         out[1] = ((argb ushr 8) and 0xFF) / 255f
@@ -753,6 +777,33 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         override fun rotX(deg: Float) = Matrix.rotateM(model, 0, deg, 1f, 0f, 0f)
         override fun rotZ(deg: Float) = Matrix.rotateM(model, 0, deg, 0f, 0f, 1f)
         override fun mode(m: Int) { mMode = m }
+
+        override fun relic(id: Int, x: Float, y: Float, z: Float, spin: Float, scale: Float) {
+            val idc = id.coerceIn(0, Game.RELIC_COUNT - 1)
+            val rarity = Game.RELIC_RARITY[idc].coerceIn(0, RELIC_BODY.size - 1)
+            val body = RELIC_BODY[rarity]
+            val keep = mMode
+            pushModel(x, y, z)
+            Matrix.scaleM(model, 0, scale, scale, scale)
+            val halo = RELIC_HALO[rarity.coerceIn(0, RELIC_HALO.size - 1)]
+            val pulse = 0.72f + 0.28f * sin(homePhase * 2.2f + x)
+            fxTmp[0] = halo[0]; fxTmp[1] = halo[1]; fxTmp[2] = halo[2]; fxTmp[3] = halo[3] * pulse
+            emitGlowHalo(0f, 0.12f, 0f, 1.05f, 1.05f, 0.55f, fxTmp)
+            Matrix.rotateM(model, 0, spin, 0f, 1f, 0f)
+            mMode = 0
+            drawPart(0f, -0.42f, 0f, 0.66f, 0.12f, 0.66f, RELIC_BASE)
+            when (RELIC_SHAPE[idc.coerceIn(0, RELIC_SHAPE.size - 1)]) {
+                RELIC_SHAPE_TABLET -> drawRelicTablet(body)
+                RELIC_SHAPE_DISC -> drawRelicDisc(body)
+                RELIC_SHAPE_BLADE -> drawRelicBlade(body)
+                RELIC_SHAPE_STATUE -> drawRelicStatue(body)
+                RELIC_SHAPE_BELL -> drawRelicBell(body)
+                RELIC_SHAPE_JADE -> drawRelicJade(body)
+                else -> drawRelicVessel(body)
+            }
+            popModel()
+            mMode = keep
+        }
 
         override fun shadow(x: Float, z: Float, r: Float, y: Float) {
             val keep = mMode

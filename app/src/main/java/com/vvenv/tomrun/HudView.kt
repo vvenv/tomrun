@@ -187,6 +187,13 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private val buildRayFar = FloatArray(3)
     private val buildPickOut = IntArray(2)
     private val buildExt = IntArray(5)
+    // 房子里的藏品展位：渲染层投影过来的位置，在这儿叠图标、接点击
+    private val dispIds = IntArray(HomeBuild.DISPLAY_MAX)
+    private val dispXs = FloatArray(HomeBuild.DISPLAY_MAX)
+    private val dispYs = FloatArray(HomeBuild.DISPLAY_MAX)
+    private val dispSs = FloatArray(HomeBuild.DISPLAY_MAX)
+    private val dispHits = Array(HomeBuild.DISPLAY_MAX) { RectF() }
+    private var dispHitN = 0
     private val btnUpdate = RectF()
     private var updateVersionName = ""
     private val btnSoundPause = RectF()
@@ -558,7 +565,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
                     yardFingerY = event.y
                     yardFingerDownTime = SystemClock.uptimeMillis()
                 }
-                if (isHomeDraggable() && !homeOverlayBlocks(event.x, event.y)) {
+                if (isHomeDraggable() && !homeOverlayBlocks(event.x, event.y) && displayHitAt(event.x, event.y) < 0) {
                     val id = hitHomeDraggable(event.x, event.y)
                     if (id != null) {
                         homeDragId = id
@@ -905,6 +912,11 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 }
                 // 选物面板开着时，它盖住的那片区域优先归它，别让底下的物件抢走点击
                 if (homeEditing && handlePickTap(x, y)) return
+                val shown = displayHitAt(x, y)
+                if (shown >= 0) {
+                    openRelicFromHouse(shown)
+                    return
+                }
 
                 when {
                     btnLeaveHome.contains(x, y) -> leaveHomePage()
@@ -3119,6 +3131,46 @@ class HudView(context: Context, private val game: Game) : View(context) {
             drawPetHearts(canvas, yardCatHit.centerX(), yardCatHit.top, s)
         }
         drawYardFloaters(canvas, s)
+        drawHouseDisplays(canvas, w, h, s)
+    }
+
+    /**
+     * 展位上方浮一枚文物的像素图标：3D 器型只看得出「是个鼎」，图标才认得出「是后母戊鼎」。
+     * 搭房子时不画——那时候点哪儿都是在加砖，图标只会挡手。
+     */
+    private fun drawHouseDisplays(canvas: Canvas, w: Float, h: Float, s: Float) {
+        dispHitN = 0
+        if (buildMode || homeSubView != HOME_SUB_SCENE || homeEditing) return
+        val n = HomeYard.displays(dispIds, dispXs, dispYs, dispSs)
+        for (i in 0 until n) {
+            val half = 20f * s * dispSs[i]
+            val cx = dispXs[i] * w
+            val cy = dispYs[i] * h - half - 4f * s
+            RelicIcons.draw(
+                canvas, btnPaint, dispIds[i], cx, cy, half, collected = true,
+                fancy = Game.RELIC_RARITY[dispIds[i]] == Game.RELIC_LEGEND, phase = homePhase, withChrome = true
+            )
+            // 热区比图标大一圈：远处的图标只有手指尖大小
+            val pad = (28f * s - half).coerceAtLeast(6f * s)
+            dispHits[dispHitN].set(cx - half - pad, cy - half - pad, cx + half + pad, cy + half + pad)
+            dispIds[dispHitN] = dispIds[i]
+            dispHitN++
+        }
+    }
+
+    /** 点中的展位文物 id，没点中返回 -1 */
+    private fun displayHitAt(x: Float, y: Float): Int {
+        for (i in dispHitN - 1 downTo 0) if (dispHits[i].contains(x, y)) return dispIds[i]
+        return -1
+    }
+
+    private fun openRelicFromHouse(id: Int) {
+        closeHomePick()
+        museumPage = 0
+        museumTab = MUSEUM_TAB_RELIC
+        museumDetailId = id
+        homeSubView = HOME_SUB_COLLECTION
+        game.markRelicsSeen()
     }
 
     /** 把渲染层投影出来的屏幕矩形接成热区与拖放目标 */
@@ -3505,6 +3557,8 @@ class HudView(context: Context, private val game: Game) : View(context) {
         catHops = 0
         when (HomeBuild.spotKind(code)) {
             HomeBuild.SPOT_TERRACE -> {
+                // 后半格可能摆着文物，猫坐前半格
+                catSpotZ += HomeBuild.CELL * 0.22f
                 catSpotY = (y + 1) * HomeBuild.CELL + 0.05f
                 catHops = y + 1
                 catBaseX = catSpotX
