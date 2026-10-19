@@ -15,10 +15,6 @@ object PlayerHomeLayout {
     /** 家园可单独显示/隐藏的元素（与 HudView 拖放 id 一致） */
     val ELEMENTS = arrayOf(
         Element("house", "房子"),
-        // 藏品馆与荣誉墙已合成一栋「藏馆」：museum = 整栋（可搬可缩放），
-        // honor = 侧翼墙上的等级奖章（只能开关，位置跟着整栋走）
-        Element("museum", "藏馆"),
-        Element("honor", "荣誉奖章"),
         Element("garden", "花坛"),
         Element("fence", "栅栏"),
         Element("mailbox", "信箱"),
@@ -31,7 +27,6 @@ object PlayerHomeLayout {
         Element("energy", "家能量"),
         Element("reward", "开局奖励"),
         Element("homeHint", "摆放提示"),
-        Element("museumLabel", "藏馆铭牌"),
         Element("leave", "出门"),
         Element("wallet", "钱包"),
     )
@@ -45,7 +40,6 @@ object PlayerHomeLayout {
         var telescopeX = 0f; var telescopeY = 0f
         var poolDX = 0f; var poolDY = 0f
         var houseDX = 0f; var houseDY = 0f
-        var museumDX = 0f; var museumDY = 0f
         var nameDX = 0f; var nameDY = 0f
         var energyDX = 0f; var energyDY = 0f
         var rewardDX = 0f; var rewardDY = 0f
@@ -72,7 +66,6 @@ object PlayerHomeLayout {
         put("telescopeX", s.telescopeX); put("telescopeY", s.telescopeY)
         put("poolDX", s.poolDX); put("poolDY", s.poolDY)
         put("houseDX", s.houseDX); put("houseDY", s.houseDY)
-        put("museumDX", s.museumDX); put("museumDY", s.museumDY)
         put("nameDX", s.nameDX); put("nameDY", s.nameDY)
         put("energyDX", s.energyDX); put("energyDY", s.energyDY)
         put("rewardDX", s.rewardDX); put("rewardDY", s.rewardDY)
@@ -108,8 +101,6 @@ object PlayerHomeLayout {
         into.poolDY = j.optDouble("poolDY", 0.0).toFloat()
         into.houseDX = j.optDouble("houseDX", 0.0).toFloat()
         into.houseDY = j.optDouble("houseDY", 0.0).toFloat()
-        into.museumDX = j.optDouble("museumDX", 0.0).toFloat()
-        into.museumDY = j.optDouble("museumDY", 0.0).toFloat()
         into.nameDX = j.optDouble("nameDX", 0.0).toFloat()
         into.nameDY = j.optDouble("nameDY", 0.0).toFloat()
         into.energyDX = j.optDouble("energyDX", 0.0).toFloat()

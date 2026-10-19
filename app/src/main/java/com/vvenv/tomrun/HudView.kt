@@ -87,9 +87,8 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private val btnLbScopeLocal = RectF()
     private val btnLbScopeGlobal = RectF()
     private val btnLeaveHome = RectF()
-    /** 庭院远景地标：藏品馆 / 荣誉墙，取代原先顶栏的两个按钮 */
-    private val hitMuseum = RectF()
-    private val hitHonorWall = RectF()
+    /** 右上角「图鉴」：藏品 / 妖怪 / 荣誉的唯一入口（房里的展位只能点开已摆出来的那几件） */
+    private val btnHomeAlbum = RectF()
     /** 右下角钱包铭牌，与左下角「出门」成对 */
     private val homeWalletPlate = RectF()
     private var homeWalletLabelSize = 0f
@@ -126,6 +125,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private val yokaiTileHits = Array(Game.YOKAI_COUNT) { RectF() }
     private val btnMuseumTabRelic = RectF()
     private val btnMuseumTabYokai = RectF()
+    private val btnMuseumTabHonor = RectF()
     /**
      * 选物面板的格子：分类 tab + 该分类内的下标 + 屏幕矩形，三条并行数组。
      * 家面板最多 小屋4 + 屋顶4 + 摆件8，猫面板 4×4，留 24 个位子足够。
@@ -279,7 +279,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
     )
     private val homeDragOrder = arrayOf(
         "leave", "wallet", "name", "energy", "reward",
-        "cat", "museum", "honor", "house"
+        "cat", "house"
     )
     /**
      * 家园 UI 文字（提示语、名牌等）。
@@ -287,7 +287,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
      * 不再需要把三个字段拆开各自摆位。
      */
     private val homeUiTextDragOrder = arrayOf(
-        "homeHint", "museumLabel", "honorLabel"
+        "homeHint"
     )
     private val ownedDecoDragId = arrayOf(
         "garden", "fence", "mailbox", "swing", "perch", "pool", "telescope"
@@ -765,7 +765,8 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private fun homeOverlayBlocks(x: Float, y: Float): Boolean =
         (!pickPanelRect.isEmpty && pickPanelRect.contains(x, y)) ||
             (showHomeLayers && homeLayerPanel.contains(x, y)) ||
-            (!btnHomeLayers.isEmpty && btnHomeLayers.contains(x, y))
+            (!btnHomeLayers.isEmpty && btnHomeLayers.contains(x, y)) ||
+            (!btnHomeAlbum.isEmpty && btnHomeAlbum.contains(x, y))
 
     private fun handleTap(x: Float, y: Float) {
         if (game.state == Game.State.RUNNING) {
@@ -864,14 +865,9 @@ class HudView(context: Context, private val game: Game) : View(context) {
                             hitClose(btnCatalogClose, x, y) -> {
                                 closeHomeSubView()
                             }
-                            btnMuseumTabRelic.contains(x, y) -> {
-                                museumTab = MUSEUM_TAB_RELIC
-                                museumPage = 0
-                            }
-                            btnMuseumTabYokai.contains(x, y) -> {
-                                museumTab = MUSEUM_TAB_YOKAI
-                                museumPage = 0
-                            }
+                            btnMuseumTabRelic.contains(x, y) -> openMuseumTab(MUSEUM_TAB_RELIC)
+                            btnMuseumTabYokai.contains(x, y) -> openMuseumTab(MUSEUM_TAB_YOKAI)
+                            btnMuseumTabHonor.contains(x, y) -> openHonorTab()
                             museumTab == MUSEUM_TAB_YOKAI -> {
                                 for (i in yokaiTileHits.indices) {
                                     if (!yokaiTileHits[i].contains(x, y)) continue
@@ -906,7 +902,11 @@ class HudView(context: Context, private val game: Game) : View(context) {
                         return
                     }
                     HOME_SUB_HONOR -> {
-                        if (hitClose(btnCatalogClose, x, y)) closeHomeSubView()
+                        when {
+                            hitClose(btnCatalogClose, x, y) -> closeHomeSubView()
+                            btnMuseumTabRelic.contains(x, y) -> openMuseumTab(MUSEUM_TAB_RELIC)
+                            btnMuseumTabYokai.contains(x, y) -> openMuseumTab(MUSEUM_TAB_YOKAI)
+                        }
                         return
                     }
                 }
@@ -927,18 +927,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
                         closeHomePick()
                     }
                     yardTelescopeHit.contains(x, y) && game.canUseTelescope() -> openStargazing()
-                    hitMuseum.contains(x, y) -> {
-                        museumPage = 0
-                        museumDetailId = -1
-                        museumTab = MUSEUM_TAB_RELIC
-                        homeSubView = HOME_SUB_COLLECTION
-                        game.markRelicsSeen()
-                    }
-                    hitHonorWall.contains(x, y) -> {
-                        honorPage = 0
-                        homeSubView = HOME_SUB_HONOR
-                        game.markHonorsSeen()
-                    }
+                    btnHomeAlbum.contains(x, y) -> openAlbum()
                     hitHouse.contains(x, y) -> enterBuildMode()
                     yardCatHit.contains(x, y) -> {
                         if (!(homeEditing && game.isCatHomeTab(pickArmedTab) && confirmArmedPurchase())) {
@@ -1047,6 +1036,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         relicDetailFrame.setEmpty()
         btnMuseumTabRelic.setEmpty()
         btnMuseumTabYokai.setEmpty()
+        btnMuseumTabHonor.setEmpty()
     }
 
     /**
@@ -1164,8 +1154,12 @@ class HudView(context: Context, private val game: Game) : View(context) {
         game.setHomePreviewing(false)
         HomeYard.camFocus = HomeYard.CAM_REST
         homeRewardLife = 0f
-        homeHintLife = if (game.shouldShowHomeYardHint()) 5.6f else 0f
-        if (game.consumeHomeDoorHint()) {
+        // 场地还空着就每次都提一句，直到搭下第一块
+        homeHintLife = if (game.shouldShowHomeYardHint() || HomeBuild.count(game.buildGrid()) == 0) 5.6f else 0f
+        if (game.pendingHomeNotice.isNotEmpty()) {
+            showToast(game.pendingHomeNotice)
+            game.pendingHomeNotice = ""
+        } else if (game.consumeHomeDoorHint()) {
             HomeYard.doorHint = 5f
             showToast("点房门可以去别的家")
         }
@@ -1933,7 +1927,10 @@ class HudView(context: Context, private val game: Game) : View(context) {
             drawBuildPanel(canvas, w, h, s, sdx, sdy)
             btnLeaveHome.setEmpty()
             homeWalletPlate.setEmpty()
+            btnHomeAlbum.setEmpty()
         } else if (homeSubView == HOME_SUB_SCENE) {
+            layoutHomeAlbumBtn(w, h, s)
+            drawHomeAlbumBtn(canvas, btnHomeAlbum, s)
             layoutLeaveHomeButton(w, h, s)
             if (homeShown("leave")) {
                 drawLeaveHomeBtn(canvas, btnLeaveHome, s)
@@ -1946,6 +1943,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
             } else homeWalletPlate.setEmpty()
         } else {
             btnLeaveHome.setEmpty()
+            btnHomeAlbum.setEmpty()
         }
 
         when (homeSubView) {
@@ -2199,9 +2197,10 @@ class HudView(context: Context, private val game: Game) : View(context) {
             hitHomeReward.setEmpty()
         }
 
-        val showHint = homeHintLife > 0f && !homeEditing && homeShown("homeHint")
+        val showHint = homeHintLife > 0f && !homeEditing && !buildMode && homeShown("homeHint")
         if (showHint) {
-            val hint = "点房子，自己动手搭 · 拖空地看看四周"
+            val hint = if (HomeBuild.count(game.buildGrid()) == 0) "点插旗的场地，开始搭房子"
+            else "点房子，自己动手搭 · 拖空地看看四周"
             val hintSize = fittedTextSize(hint, 16f * s, w * 0.86f, 12f * s)
             val fade = (homeHintLife / 0.6f).coerceIn(0f, 1f).let { if (homeHintLife > 0.6f) 1f else it }
             drawDraggableUiText(
@@ -2444,6 +2443,56 @@ class HudView(context: Context, private val game: Game) : View(context) {
         applyUiOverride("leave", w, h, s, btnLeaveHome)
     }
 
+    /** 底栏正中，夹在「出门」和钱包之间，高度跟两边一样 */
+    private fun layoutHomeAlbumBtn(w: Float, h: Float, s: Float) {
+        val portrait = h > w
+        val bottomPad = if (portrait) 44f * s else 26f * s
+        val btnH = if (portrait) 68f * s else 56f * s
+        val btnW = if (portrait) min(128f * s, w * 0.26f) else 128f * s
+        val bottom = h - bottomPad
+        btnHomeAlbum.set(w / 2f - btnW / 2f, bottom - btnH, w / 2f + btnW / 2f, bottom)
+    }
+
+    /** 有没看过的新文物或新荣誉时，右上角亮一个小红点——原先藏馆的呼吸光挪到这儿 */
+    private fun drawHomeAlbumBtn(canvas: Canvas, r: RectF, s: Float) {
+        drawHomeWoodPlate(canvas, r.left, r.top, r.right, r.bottom, s)
+        val labelSize = min(30f * s, r.height() * 0.42f).coerceAtLeast(22f * s)
+        pixText(
+            canvas, "图鉴", r.centerX(), centeredBaselineY(r.centerY(), labelSize),
+            labelSize, HomePalette.hudInk(game.homeWorld), 0f, 0f
+        )
+        if (game.hasUnseenRelics() || game.hasUnseenHonors()) {
+            val d = 14f * s
+            btnPaint.style = Paint.Style.FILL
+            btnPaint.color = 0xFFE5483A.toInt()
+            canvas.drawRect(r.right - d - 6f * s, r.top + 6f * s, r.right - 6f * s, r.top + 6f * s + d, btnPaint)
+        }
+    }
+
+    /** 打开图鉴：有新荣誉而没有新文物时直接翻到荣誉页 */
+    private fun openAlbum() {
+        closeHomePick()
+        museumDetailId = -1
+        if (game.hasUnseenHonors() && !game.hasUnseenRelics()) {
+            openHonorTab()
+        } else {
+            openMuseumTab(MUSEUM_TAB_RELIC)
+        }
+    }
+
+    private fun openMuseumTab(tab: Int) {
+        museumPage = 0
+        museumTab = tab
+        homeSubView = HOME_SUB_COLLECTION
+        game.markRelicsSeen()
+    }
+
+    private fun openHonorTab() {
+        honorPage = 0
+        homeSubView = HOME_SUB_HONOR
+        game.markHonorsSeen()
+    }
+
     private fun drawLeaveHomeBtn(canvas: Canvas, r: RectF, s: Float) {
         drawHomeWoodPlate(canvas, r.left, r.top, r.right, r.bottom, s)
         val labelSize = min(32f * s, r.height() * 0.45f).coerceAtLeast(24f * s)
@@ -2580,7 +2629,8 @@ class HudView(context: Context, private val game: Game) : View(context) {
         )
 
         val title = if (buildRemove) "拆：点哪块拆哪块，金币退回" else
-            "搭：点房子的一面加一块 · 每块 ${HomeBuild.matCost(game.buildMat)}"
+            (if (HomeBuild.count(game.buildGrid()) == 0) "搭：点场地放下第一块" else "搭：点房子的一面加一块") +
+                " · 每块 ${HomeBuild.matCost(game.buildMat)}"
         textPaint.textAlign = Paint.Align.LEFT
         val walletText = "${game.wallet}"
         textPaint.textSize = 20f * s
@@ -3178,15 +3228,11 @@ class HudView(context: Context, private val game: Game) : View(context) {
         if (!HomeYard.ready()) return
         HomeYard.hit(HomeYard.HOUSE, w, h, hitHouse)
         HomeYard.hit(HomeYard.DOOR, w, h, hitDoor)
-        HomeYard.hit(HomeYard.MUSEUM, w, h, hitMuseum)
-        HomeYard.hit(HomeYard.HONOR, w, h, hitHonorWall)
         HomeYard.hit(HomeYard.CAT, w, h, yardCatHit)
         HomeYard.hit(HomeYard.BUTTERFLY, w, h, butterflyHit)
         HomeYard.hit(HomeYard.TELESCOPE, w, h, yardTelescopeHit)
         if (!hitHouse.isEmpty) putDragHit(HomeYard.HOUSE, hitHouse)
         if (!hitDoor.isEmpty) putDragHit(HomeYard.DOOR, hitDoor)
-        if (!hitHonorWall.isEmpty) putDragHit(HomeYard.HONOR, hitHonorWall)
-        if (!hitMuseum.isEmpty) putDragHit(HomeYard.MUSEUM, hitMuseum)
         if (!yardCatHit.isEmpty) putDragHit(HomeYard.CAT, yardCatHit)
         for (id in ownedDecoDragId) {
             if (HomeYard.hit(id, w, h, dragHitScratch)) putDragHit(id, dragHitScratch)
@@ -3675,7 +3721,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
 
     /** 会落在院子地面上、按世界坐标存偏移的元素；其余（顶栏文字、按钮）仍按屏幕像素挪 */
     private fun isYardDragId(id: String) = when (id) {
-        HomeYard.HOUSE, HomeYard.MUSEUM, HomeYard.CAT, HomeYard.GARDEN, HomeYard.FENCE,
+        HomeYard.HOUSE, HomeYard.CAT, HomeYard.GARDEN, HomeYard.FENCE,
         HomeYard.MAILBOX, HomeYard.SWING, HomeYard.PERCH, HomeYard.POOL, HomeYard.TELESCOPE -> true
         else -> false
     }
@@ -3684,7 +3730,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
      * 命中判定：**盖住这个点的最小的那个矩形赢**。
      *
      * 2D 时代热区是按元素顺序排的，因为每个热区都贴着画出来的轮廓、彼此几乎不重叠。
-     * 3D 之后热区是包围盒投影出来的矩形，大件会整个罩住小件：门在房子里、奖章墙在藏馆里、
+     * 3D 之后热区是包围盒投影出来的矩形，大件会整个罩住小件：门在房子里、
      * 猫可能站在房子前面。固定顺序在这种情况下必然误判——按面积取最小的那个，
      * 「点小的那件」永远符合直觉，也不用为每对元素手工排优先级。
      */
@@ -3700,8 +3746,8 @@ class HudView(context: Context, private val game: Game) : View(context) {
         return best
     }
 
-    /** 不能拖、但可以点开的东西：门（换世界）、荣誉奖章墙 */
-    private fun isTapOnlyId(id: String) = id == HomeYard.DOOR || id == HomeYard.HONOR
+    /** 不能拖、但可以点开的东西：门（换世界） */
+    private fun isTapOnlyId(id: String) = id == HomeYard.DOOR
 
     private fun beginHomeDrag(id: String, screenX: Float, screenY: Float) {
         homeDragStartFingerX = screenX
@@ -3769,10 +3815,9 @@ class HudView(context: Context, private val game: Game) : View(context) {
         "perch" -> game.ownsDeco(4)
         "pool" -> game.ownsDeco(5)
         "telescope" -> game.ownsDeco(6)
-        // 门与荣誉侧墙是房屋 / 藏馆剪影的一部分，只能点开、不能单独搬走
-        "honor", "door" -> false
-        "leave", "wallet", "name", "energy", "reward", "homeHint",
-        "museumLabel", "honorLabel" -> false
+        // 门是房子的一部分，只能点开、不能单独搬走
+        "door" -> false
+        "leave", "wallet", "name", "energy", "reward", "homeHint" -> false
         else -> true
     }
 
@@ -3780,14 +3825,6 @@ class HudView(context: Context, private val game: Game) : View(context) {
         when (id) {
             "door" -> { showHomeWorlds = true; closeHomePick() }
             "telescope" -> if (game.canUseTelescope()) openStargazing()
-            "museum" -> {
-                museumPage = 0
-                museumDetailId = -1
-                museumTab = MUSEUM_TAB_RELIC
-                homeSubView = HOME_SUB_COLLECTION
-                game.markRelicsSeen()
-            }
-            "honor" -> { honorPage = 0; homeSubView = HOME_SUB_HONOR; game.markHonorsSeen() }
             // 门套在房子的热区里，而拖放这条链路比 handleTap 先跑，
             // 所以门要在这儿先分流出去，否则永远是「翻修房子」把它吃掉
             "house" -> if (hitDoor.contains(x, y)) {
@@ -3812,8 +3849,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
             }
             "name" -> showRenameDialog(firstTime = false)
             "leave" -> leaveHomePage()
-            "energy", "reward", "wallet", "homeHint",
-            "museumLabel", "honorLabel" -> { }
+            "energy", "reward", "wallet", "homeHint" -> { }
         }
     }
 
@@ -4484,6 +4520,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
             game.nextAchieveHint(),
             sdx, sdy, HALL_HONOR
         )
+        val contentTop = drawMuseumTabs(canvas, frame, s) + 8f * s
         val pages = honorPages().coerceAtLeast(1)
         val page = honorPage.coerceIn(0, pages - 1)
         val start = page * HONOR_PER_PAGE
@@ -4491,14 +4528,14 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val rows = (end - start).coerceAtLeast(1)
         val rowGap = 6f * s
         // 卡片高度按满页行数固定，短页顶端对齐、底部留白，避免不同页卡片忽高忽低
-        val rowH = ((frame.contentBottom - frame.contentTop) - rowGap * (HONOR_PER_PAGE - 1)) / HONOR_PER_PAGE
+        val rowH = ((frame.contentBottom - contentTop) - rowGap * (HONOR_PER_PAGE - 1)) / HONOR_PER_PAGE
         val rowLeft = frame.left + 16f * s
         val rowRight = frame.right - 16f * s
         val badgeW = 56f * s
 
         for (i in 0 until rows) {
             val c = start + i
-            val rowTop = frame.contentTop + i * (rowH + rowGap)
+            val rowTop = contentTop + i * (rowH + rowGap)
             val rowBottom = rowTop + rowH
             val lv = game.achieveLevels[c]
             val tierColor = when (lv) {
@@ -4642,14 +4679,20 @@ class HudView(context: Context, private val game: Game) : View(context) {
     ): Float {
         val tabH = 40f * s
         val gap = 10f * s
-        val tabW = min(150f * s, (frame.pw - 40f * s - gap) * 0.5f)
+        val tabW = min(130f * s, (frame.pw - 40f * s - gap * 2f) / 3f)
         val cy = frame.contentTop + tabH * 0.5f
-        val relicCx = frame.left + frame.pw * 0.5f - gap * 0.5f - tabW * 0.5f
-        val yokaiCx = frame.left + frame.pw * 0.5f + gap * 0.5f + tabW * 0.5f
-        btnMuseumTabRelic.set(relicCx - tabW * 0.5f, cy - tabH * 0.5f, relicCx + tabW * 0.5f, cy + tabH * 0.5f)
-        btnMuseumTabYokai.set(yokaiCx - tabW * 0.5f, cy - tabH * 0.5f, yokaiCx + tabW * 0.5f, cy + tabH * 0.5f)
-        drawLightBtn(canvas, btnMuseumTabRelic, "文物", s, selected = museumTab == MUSEUM_TAB_RELIC)
-        drawLightBtn(canvas, btnMuseumTabYokai, "妖怪", s, selected = museumTab == MUSEUM_TAB_YOKAI)
+        val midCx = frame.left + frame.pw * 0.5f
+        val tabs = arrayOf(btnMuseumTabRelic, btnMuseumTabYokai, btnMuseumTabHonor)
+        val labels = arrayOf("文物", "妖怪", "荣誉")
+        val honor = homeSubView == HOME_SUB_HONOR
+        val selected = booleanArrayOf(
+            !honor && museumTab == MUSEUM_TAB_RELIC, !honor && museumTab == MUSEUM_TAB_YOKAI, honor
+        )
+        for (i in 0 until 3) {
+            val cx = midCx + (i - 1) * (tabW + gap)
+            tabs[i].set(cx - tabW * 0.5f, cy - tabH * 0.5f, cx + tabW * 0.5f, cy + tabH * 0.5f)
+            drawLightBtn(canvas, tabs[i], labels[i], s, selected = selected[i])
+        }
         return frame.contentTop + tabH
     }
 

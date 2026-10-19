@@ -29,7 +29,6 @@ object LayoutConfig {
     class Set {
         var catS = 1f
         var houseS = 1f
-        var museumS = 1f
         var nameDX = 0f; var nameDY = 0f; var nameS = 1f
         var energyDX = 0f; var energyDY = 0f; var energyS = 1f
         var rewardDX = 0f; var rewardDY = 0f; var rewardS = 1f
@@ -75,7 +74,6 @@ object LayoutConfig {
         yard?.let { y ->
             s.catS = y.optFloat("catS", s.catS)
             s.houseS = y.optFloat("houseS", s.houseS)
-            s.museumS = y.optFloat("museumS", s.museumS)
         }
         text?.let { t ->
             s.nameDX = t.optFloat("nameDX", s.nameDX); s.nameDY = t.optFloat("nameDY", s.nameDY); s.nameS = t.optFloat("nameS", s.nameS)

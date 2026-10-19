@@ -43,8 +43,6 @@ object HomeYard {
     // ---------- 元素 ----------
     const val HOUSE = "house"
     const val DOOR = "door"
-    const val MUSEUM = "museum"
-    const val HONOR = "honor"
     const val GARDEN = "garden"
     const val FENCE = "fence"
     const val MAILBOX = "mailbox"
@@ -57,7 +55,7 @@ object HomeYard {
 
     /** 可命中元素表；下标即 [rects] 的槽位 */
     val HIT_IDS = arrayOf(
-        HOUSE, DOOR, MUSEUM, HONOR, GARDEN, FENCE, MAILBOX,
+        HOUSE, DOOR, GARDEN, FENCE, MAILBOX,
         SWING, PERCH, POOL, TELESCOPE, CAT, BUTTERFLY
     )
 
@@ -77,12 +75,10 @@ object HomeYard {
      * 各元素的默认锚点 (x, z)。
      *
      * 构图纪律沿用重构时定下的三条（见 memory: home-scene-redesign）：主角是房屋，
-     * 藏馆偏置在右后方当远景地标，其余摆件贴着院子两侧留出中间那条从门口到镜头的路。
+     * 其余摆件贴着院子两侧，留出中间那条从门口到镜头的路。
      */
     fun anchorX(id: String): Float = when (id) {
         HOUSE -> 0f
-        // 藏馆压在房屋右后方更深处：竖屏里它离得越远、越靠中，越不会被切出画外
-        MUSEUM -> 9.6f
         GARDEN -> -5.6f
         FENCE -> 0f
         MAILBOX -> 4.8f
@@ -95,7 +91,6 @@ object HomeYard {
 
     fun anchorZ(id: String): Float = when (id) {
         HOUSE -> -6.2f
-        MUSEUM -> -19f
         GARDEN -> 1.6f
         FENCE -> 0f
         MAILBOX -> 5.4f

@@ -14,7 +14,7 @@ import kotlin.math.sin
  * **构图**（沿用重构时定下的三条纪律，见 memory: home-scene-redesign）：
  *  1. 配色只有 [HomePalette] 一个来源，这里不写颜色字面量，只从 ramp 取或派生。
  *  2. 层次靠静止的剪影：远景山脊 / 珊瑚脊 / 云堤压住地平线，氛围物每个世界最多两样。
- *  3. 只有「可交互且有新东西」才发光（藏馆的未读提示），其余安静。
+ *  3. 只有「可交互且有新东西」才发光，其余安静。
  *
  * **新增的一条**：院子前面有一条马路，笔直伸向雾里——那就是跑酷的赛道。
  * 家和跑道是同一个世界的两端，「出门」这个动作因此有了去处。
@@ -106,23 +106,17 @@ object HomeScene3D {
         val hz = HomeYard.posZ(game, HomeYard.HOUSE)
         if (game.homeElVisible(HomeYard.HOUSE)) {
             val g = game.buildGrid(world)
+            drawPlot(p, pal, hx, hz, HomeBuild.count(g) == 0, phase)
             prepareDisplays(game, g)
             drawBuild(p, game, g, world, pal, roof, hx, hz, phase)
             drawDisplays(p, g, pal, hx, hz, phase)
-            val door = HomeBuild.doorCell(g)
-            if (door >= 0 && game.homeWorldsUnlockedCount() > 1) {
+            val door = doorSpot(g)
+            if (game.homeWorldsUnlockedCount() > 1) {
                 drawDoorMat(
                     p, pal, HomeBuild.cellX(hx, door % HomeBuild.SX),
                     HomeBuild.cellZ(hz, door / HomeBuild.SX) + HomeBuild.CELL * 0.5f, phase
                 )
             }
-        }
-        if (game.homeElVisible(HomeYard.MUSEUM)) {
-            drawMuseum(
-                p, game, world, pal,
-                HomeYard.posX(game, HomeYard.MUSEUM), HomeYard.posZ(game, HomeYard.MUSEUM),
-                phase, LayoutConfig.cur.museumS, game.homeElVisible(HomeYard.HONOR)
-            )
         }
 
         for (deco in Game.DECO_NAMES.indices) {
@@ -303,20 +297,45 @@ object HomeScene3D {
 
     // ---------- 房屋 ----------
 
-    /** 屋顶：一层层收窄的板，从正面看就是那个熟悉的三角山墙 */
-    private fun gableRoof(
-        p: Painter, y: Float, halfW: Float, halfD: Float, h: Float,
-        top: FloatArray, side: FloatArray, steps: Int = 5
-    ) {
-        for (s in 0 until steps) {
-            val k = s / steps.toFloat()
-            val hw = halfW * (1f - k * 0.86f)
-            val yy = y + h * (s + 0.5f) / steps
-            p.part(0f, yy, 0f, hw * 2f, h / steps, halfD * 2f, if (s == steps - 1) top else side)
-        }
+    /** 门所在的地面格；还没搭出门时退到场地前沿正中，门垫照样铺在那儿，换家的入口不会丢 */
+    private fun doorSpot(g: ByteArray): Int {
+        val door = HomeBuild.doorCell(g)
+        return if (door >= 0) door else HomeBuild.idx(HomeBuild.SX / 2, 0, HomeBuild.SZ - 1)
     }
 
-
+    /**
+     * 场地：能搭房子的那块地，一圈压边的石沿 + 四角木桩。
+     * 空着的时候四根桩头的小旗慢慢晃，告诉孩子「这儿可以点」；搭起来以后旗子收掉，只留石沿当地基。
+     */
+    private fun drawPlot(p: Painter, pal: HomePalette.Ramp, hx: Float, hz: Float, empty: Boolean, phase: Float) {
+        val cell = HomeBuild.CELL
+        val x0 = HomeBuild.cellX(hx, 0) - cell * 0.5f
+        val x1 = HomeBuild.cellX(hx, HomeBuild.SX - 1) + cell * 0.5f
+        val z0 = HomeBuild.cellZ(hz, 0) - cell * 0.5f
+        val z1 = HomeBuild.cellZ(hz, HomeBuild.SZ - 1) + cell * 0.5f
+        val cx = (x0 + x1) * 0.5f
+        val cz = (z0 + z1) * 0.5f
+        val y = HomeYard.DECK_Y + 0.04f
+        p.mode(0)
+        p.box(cx, y, cz, x1 - x0, 0.06f, z1 - z0, mix(pal.ground[0], pal.light, 0.22f))
+        val rim = mix(pal.light, pal.body, 0.4f)
+        val e = 0.22f
+        p.box(cx, y + 0.04f, z0, x1 - x0 + e, 0.12f, e, rim)
+        p.box(cx, y + 0.04f, z1, x1 - x0 + e, 0.12f, e, rim)
+        p.box(x0, y + 0.04f, cz, e, 0.12f, z1 - z0, rim)
+        p.box(x1, y + 0.04f, cz, e, 0.12f, z1 - z0, rim)
+        for (sx in 0..1) for (sz in 0..1) {
+            val px = if (sx == 0) x0 else x1
+            val pz = if (sz == 0) z0 else z1
+            if (empty) {
+                val wave = sin(phase * 2.4f + sx * 1.7f + sz * 0.9f) * 0.1f
+                p.box(px, y + 0.8f, pz, 0.22f, 1.6f, 0.22f, c(pal.body))
+                p.box(px + 0.5f, y + 1.32f + wave, pz, 0.9f, 0.56f, 0.06f, c(pal.accent))
+            } else {
+                p.box(px, y + 0.3f, pz, 0.2f, 0.6f, 0.2f, c(pal.body))
+            }
+        }
+    }
 
     /**
      * 门口地垫 + 一个指向门的箭头。
@@ -821,106 +840,6 @@ object HomeScene3D {
         }
     }
 
-    // ---------- 藏馆：藏品门廊 + 荣誉侧翼 ----------
-    private fun drawMuseum(
-        p: Painter, game: Game, world: Int, pal: HomePalette.Ramp,
-        mx: Float, mz: Float, phase: Float, scale: Float, showHonor: Boolean
-    ) {
-        val t = HomePalette.horizonLuma(world) * 0.55f
-        fun far(argb: Int, k: Float = 1f) = c(HomePalette.lift(argb, world, (t * k).coerceIn(0f, 0.8f)))
-        val stoneArgb = HomePalette.mix(pal.light, pal.hi, 0.4f)
-        val stone = far(stoneArgb)
-        val stoneD = far(HomePalette.shade(stoneArgb, 0.8f), 0.9f)
-        val stoneL = far(pal.hi, 1.2f)
-        val inner = far(HomePalette.shade(pal.body, 0.62f), 0.75f)
-        val cave = c(pal.deep)
-
-        val k = scale * MUSEUM_K
-        p.shadow(mx, mz + 0.6f, 6.5f * k)
-        p.push(mx, HomeYard.DECK_Y * 0.4f, mz)
-        p.scale(k, k, k)
-        p.rotY(-18f)     // 侧过身朝向院子，剪影更立体，也不跟主角房屋抢正面
-        p.mode(0)
-
-        // 台基
-        p.part(0f, 0.22f, 0f, 13.5f, 0.45f, 8.4f, stoneD)
-        p.part(0f, 0.55f, 0f, 12.6f, 0.3f, 7.6f, stone)
-
-        // 右半：荣誉侧翼墙（先画，门廊压在前面，接缝自然）
-        p.push(3.6f, 0.7f, 0f)
-        p.part(0f, 1.8f, 0f, 5.6f, 3.6f, 5.2f, inner)
-        p.part(0f, 3.75f, 0f, 6.1f, 0.36f, 5.7f, stone)
-        p.part(0f, 3.95f, 0f, 6.1f, 0.14f, 5.7f, stoneL)
-        // 铜 / 银 / 金 / 钻四枚等级章：任一类别摸到该档就点亮
-        val tierOn = BooleanArray(Game.ACHIEVE_TIERS_PER)
-        for (cat in 0 until Game.ACHIEVE_CATS) {
-            val lv = game.achieveLevels[cat].coerceIn(0, Game.ACHIEVE_TIERS_PER)
-            for (k in 0 until lv) tierOn[k] = true
-        }
-        for (k in 0 until Game.ACHIEVE_TIERS_PER) {
-            val bx = -2.0f + k * 1.34f
-            p.part(bx, 2.0f, 2.62f, 1.05f, 1.05f, 0.14f, far(HomePalette.shade(pal.body, 0.46f), 0.6f))
-            if (!showHonor) continue
-            val on = tierOn[k]
-            p.part(bx, 2.0f, 2.74f, 0.86f, 0.86f, 0.16f, c(if (on) MEDAL_FACE[k] else MEDAL_OFF))
-            p.mode(if (on) 2 else 0)
-            p.part(bx, 2.0f, 2.92f, 0.44f, 0.44f, 0.12f, c(if (on) MEDAL_GLOW[k] else MEDAL_OFF_IN))
-            p.mode(0)
-        }
-        p.pop()
-
-        // 左半：藏品门廊（三角山墙 + 立柱 + 透着暖光的门洞）
-        p.push(-3.4f, 0.7f, 0f)
-        p.part(0f, 2.6f, -1.2f, 6.4f, 5.2f, 3.2f, inner)
-        p.part(0f, 1.5f, 0.4f, 1.8f, 3.0f, 0.6f, cave)
-        // 门内的暖光要**明确地探出门洞前脸**：贴着同一个深度画会 z-fighting，
-        // 远景 + 镜头微微漂移下就是「门在飞快地闪」——用户报的正是这个。
-        p.mode(2)
-        p.part(0f, 1.35f, 0.86f, 1.2f, 2.4f, 0.2f, c(pal.win))
-        p.mode(0)
-        for (colX in floatArrayOf(-2.5f, 2.5f)) {
-            p.part(colX, 2.6f, 2.2f, 0.72f, 5.2f, 0.72f, stone)
-            p.part(colX, 5.35f, 2.2f, 1.0f, 0.4f, 1.0f, stoneL)
-            p.part(colX, 0.2f, 2.2f, 1.0f, 0.4f, 1.0f, stoneL)
-        }
-        p.part(0f, 5.75f, 1.0f, 6.8f, 0.6f, 3.2f, stone)
-        p.part(0f, 6.0f, 1.0f, 6.8f, 0.16f, 3.2f, stoneL)
-        gableRoof(p, 6.05f, 3.2f, 1.7f, 1.5f, stoneL, stone, 4)
-        p.pop()
-
-        // 只有还没翻开看过的新解锁才发光——平时整栋是安静的
-        // 呼吸光是「这里有没看过的新东西」的提示：慢、稳、贴在建筑前方，
-        // 插进墙体的话会与墙面互相抢深度，读起来是刺眼的高频闪
-        if (game.hasUnseenRelics()) {
-            val pulse = 0.5f + 0.5f * sin(phase * 1.1f)
-            p.mode(3)
-            p.part(-3.4f, 1.8f, 1.5f, 3.0f, 3.0f, 0.3f, c(pal.win, 0.08f + 0.12f * pulse))
-            p.mode(0)
-        }
-        if (showHonor && game.hasUnseenHonors()) {
-            val pulse = 0.5f + 0.5f * sin(phase * 1.1f + 1.2f)
-            p.mode(3)
-            p.part(3.6f, 2.0f, 3.15f, 6.0f, 2.0f, 0.3f, c(pal.accent, 0.08f + 0.12f * pulse))
-            p.mode(0)
-        }
-        p.pop()
-    }
-
-    /**
-     * 藏馆的整体尺度。
-     *
-     * 它是**远景**地标：竖屏水平视野只有 ±19°，一栋按原尺寸摆在房屋右后方的建筑会直接
-     * 顶出画外。压到 0.72 之后，它的剪影正好落在房屋右缘与画面右缘之间那条缝里——
-     * 「退后一步、让主角站出来」这件事靠的是位置和尺寸，不是把它画淡。
-     */
-    private const val MUSEUM_K = 0.72f
-
-    /** 奖章档位色是语义色（金牌就该是金的），不随世界换 */
-    private val MEDAL_FACE = intArrayOf(0xFFC87A3A.toInt(), 0xFFAEB6C4.toInt(), 0xFFF2C14E.toInt(), 0xFF6FD3E0.toInt())
-    private val MEDAL_GLOW = intArrayOf(0xFFE8AE74.toInt(), 0xFFDCE3EC.toInt(), 0xFFFFEDB0.toInt(), 0xFFCBF3F9.toInt())
-    private const val MEDAL_OFF = 0xFF6B5B4B.toInt()
-    private const val MEDAL_OFF_IN = 0xFF564A3E.toInt()
-
     // ---------- 庭院摆件 ----------
     private fun drawDeco(
         p: Painter, game: Game, world: Int, pal: HomePalette.Ramp,
@@ -1303,8 +1222,17 @@ object HomeScene3D {
             HomeYard.HOUSE -> {
                 if (!game.homeElVisible(HomeYard.HOUSE)) return false
                 val g = game.buildGrid()
-                if (!HomeBuild.extents(g, ext)) return false
                 val cell = HomeBuild.CELL
+                if (!HomeBuild.extents(g, ext)) {
+                    // 空地：整块场地都是「点这儿开始搭」，薄薄一层贴着地面
+                    val x0 = HomeBuild.cellX(hx, 0) - cell * 0.5f
+                    val x1 = HomeBuild.cellX(hx, HomeBuild.SX - 1) + cell * 0.5f
+                    val z0 = HomeBuild.cellZ(hz, 0) - cell * 0.5f
+                    val z1 = HomeBuild.cellZ(hz, HomeBuild.SZ - 1) + cell * 0.5f
+                    set(out, (x0 + x1) * 0.5f, HomeYard.DECK_Y + 0.5f, (z0 + z1) * 0.5f,
+                        (x1 - x0) * 0.5f, 0.5f, (z1 - z0) * 0.5f)
+                    return true
+                }
                 val x0 = HomeBuild.cellX(hx, ext[0]) - cell * 0.5f
                 val x1 = HomeBuild.cellX(hx, ext[1]) + cell * 0.5f
                 val z0 = HomeBuild.cellZ(hz, ext[3]) - cell * 0.5f
@@ -1317,25 +1245,10 @@ object HomeScene3D {
                 // 只有一个家时门后没别处可去，整栋都归「搭房子」；
                 // 有了第二个家，门才单独成为入口
                 if (!game.homeElVisible(HomeYard.HOUSE) || game.homeWorldsUnlockedCount() < 2) return false
-                val door = HomeBuild.doorCell(game.buildGrid())
-                if (door < 0) return false
+                val door = doorSpot(game.buildGrid())
                 // 热区向前吃掉门口地垫，但不往墙上长：小木屋只有三格宽，门的热区一宽就把整面墙吞了
                 set(out, HomeBuild.cellX(hx, door % HomeBuild.SX), HomeYard.DECK_Y + 0.45f,
                     HomeBuild.cellZ(hz, door / HomeBuild.SX) + HomeBuild.CELL * 0.5f + 0.8f, 0.55f, 0.45f, 0.8f)
-            }
-            HomeYard.MUSEUM -> {
-                if (!game.homeElVisible(HomeYard.MUSEUM)) return false
-                val s = LayoutConfig.cur.museumS * MUSEUM_K
-                set(out, HomeYard.posX(game, HomeYard.MUSEUM) - 3.3f * s, 3.2f * s,
-                    HomeYard.posZ(game, HomeYard.MUSEUM) + 1.2f * s, 3.4f * s, 3.0f * s, 2.4f * s)
-            }
-            HomeYard.HONOR -> {
-                if (!game.homeElVisible(HomeYard.MUSEUM) || !game.homeElVisible(HomeYard.HONOR)) return false
-                val s = LayoutConfig.cur.museumS * MUSEUM_K
-                // 只圈住四枚奖章那一条：藏馆整栋是「藏品」，奖章墙是「荣誉」，
-                // 两个热区必须能分得开，靠的是这条比整栋小得多
-                set(out, HomeYard.posX(game, HomeYard.MUSEUM) + 4.4f * s, 2.7f * s,
-                    HomeYard.posZ(game, HomeYard.MUSEUM) + 2.2f * s, 2.8f * s, 1.3f * s, 1.0f * s)
             }
             HomeYard.CAT -> {
                 if (!game.homeElVisible(HomeYard.CAT)) return false

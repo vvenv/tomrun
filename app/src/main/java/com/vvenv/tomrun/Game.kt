@@ -641,7 +641,7 @@ class Game {
     var roofStyle: Int
         get() = roofStyles[homeWorld.coerceIn(0, UNIVERSE_COUNT - 1)]
         set(v) { roofStyles[homeWorld.coerceIn(0, UNIVERSE_COUNT - 1)] = v.coerceIn(0, ROOF_NAMES.size - 1) }
-    private var ownedHouses = 1       // bit0 免费小木屋；现在只用来决定老存档的起步蓝图
+    private var ownedHouses = 1       // bit0 免费小木屋；房型早已停售，只剩迁移时算退款用
     /**
      * 每个世界亲手搭的房子（[HomeBuild] 格子）。改动时整份换新数组再赋值：
      * GL 线程拿到的永远是一份完整快照，不会读到搭了一半的格子。
@@ -882,6 +882,7 @@ class Game {
             buildGrids[w] = HomeBuild.decode(p.getString("buildGrid$w", null))
         }
         buildShapes = p.getInt("buildShapes", 0)
+        migrateBuildToEmptyPlots(p)
         loadHomePlayerLayout(p.getString("homePlayerLayout", null) ?: p.getString("yardPlayerLayout", null))
         migrateHomeLayoutRev(p)
         homeWorld = p.getInt("homeWorld", UNI_MEADOW).coerceIn(0, UNIVERSE_COUNT - 1)
@@ -1114,10 +1115,36 @@ class Game {
 
     // ---------- 亲手搭房子 ----------
 
-    /** 某个世界的格子；第一次来按当年买的房型给一套起步蓝图 */
+    /** 某个世界的格子；没搭过就是一块空地 */
     fun buildGrid(world: Int = homeWorld): ByteArray {
         val w = world.coerceIn(0, UNIVERSE_COUNT - 1)
-        return buildGrids[w] ?: HomeBuild.template(houseStyles[w]).also { buildGrids[w] = it }
+        return buildGrids[w] ?: ByteArray(HomeBuild.SIZE).also { buildGrids[w] = it }
+    }
+
+    /** 拆房退款的一句交代，进家时由 HudView 取走显示一次 */
+    @Volatile var pendingHomeNotice = ""
+
+    /**
+     * 每个家都从空地开始（2026-10）。之前的房子是起步蓝图 + 亲手加的块，
+     * 这里一次性全部拆回空地：买房型花的钱和多搭的块原样退，白送的蓝图不退。
+     */
+    private fun migrateBuildToEmptyPlots(p: android.content.SharedPreferences) {
+        if (p.getInt("buildRev", 0) >= 1) return
+        var refund = 0
+        for (i in 1 until HOUSE_PRICES.size) if (ownsHouse(i)) refund += HOUSE_PRICES[i]
+        for (w in 0 until UNIVERSE_COUNT) {
+            val g = buildGrids[w] ?: continue
+            refund += (HomeBuild.value(g) - HomeBuild.value(HomeBuild.template(houseStyles[w]))).coerceAtLeast(0)
+        }
+        java.util.Arrays.fill(buildGrids, null)
+        ownedHouses = 1
+        houseStyles.fill(0)
+        wallet += refund
+        val ed = p.edit().putInt("buildRev", 1).putInt("wallet", wallet).putInt("ownedHouses", ownedHouses)
+        for (w in 0 until UNIVERSE_COUNT) ed.remove("buildGrid$w")
+        persistPerWorldHouseStyles(ed)
+        ed.apply()
+        if (refund > 0) pendingHomeNotice = "家变回空地了，退还 $refund 金币"
     }
 
     fun buildMatUnlocked(mat: Int): Boolean {
@@ -1187,12 +1214,11 @@ class Game {
         return ""
     }
 
-    /** 拆一块，金币原样退回——鼓励试，拆错了不心疼。至少留一块，免得家没了门 */
+    /** 拆一块，金币原样退回——鼓励试，拆错了不心疼 */
     @Synchronized fun removeBlock(cell: Int): String {
         if (state == State.RUNNING) return ""
         val g = buildGrid()
         if (cell !in 0 until HomeBuild.SIZE || g[cell].toInt() == 0) return ""
-        if (HomeBuild.count(g) <= 1) return "至少留一块，猫要有地方住"
         val mat = g[cell].toInt()
         wallet += HomeBuild.matCost(mat)
         val next = g.copyOf()
@@ -1216,13 +1242,10 @@ class Game {
         tryUnlockAchievements(persist = true)
     }
 
-    /** 比起步蓝图多搭出来的那部分（金币计），所有世界合计 */
-    fun buildExtraValue(): Int {
+    /** 所有世界亲手搭的块（金币计） */
+    fun buildValue(): Int {
         var v = 0
-        for (w in 0 until UNIVERSE_COUNT) {
-            val g = buildGrids[w] ?: continue
-            v += (HomeBuild.value(g) - HomeBuild.value(HomeBuild.template(houseStyles[w]))).coerceAtLeast(0)
-        }
+        for (w in 0 until UNIVERSE_COUNT) v += HomeBuild.value(buildGrids[w] ?: continue)
         return v
     }
 
@@ -1257,7 +1280,6 @@ class Game {
             HomeYard.TELESCOPE -> po.telescopeX
             HomeYard.POOL -> po.poolDX
             HomeYard.HOUSE -> po.houseDX
-            HomeYard.MUSEUM -> po.museumDX
             HomeYard.CAT -> po.catDX
             else -> 0f
         }
@@ -1274,7 +1296,6 @@ class Game {
             HomeYard.TELESCOPE -> po.telescopeY
             HomeYard.POOL -> po.poolDY
             HomeYard.HOUSE -> po.houseDY
-            HomeYard.MUSEUM -> po.museumDY
             HomeYard.CAT -> po.catDY
             else -> 0f
         }
@@ -1291,7 +1312,6 @@ class Game {
             HomeYard.TELESCOPE -> { po.telescopeX = x; po.telescopeY = z }
             HomeYard.POOL -> { po.poolDX = x; po.poolDY = z }
             HomeYard.HOUSE -> { po.houseDX = x; po.houseDY = z }
-            HomeYard.MUSEUM -> { po.museumDX = x; po.museumDY = z }
             HomeYard.CAT -> { po.catDX = x; po.catDY = z }
         }
     }
@@ -1367,7 +1387,6 @@ class Game {
                 set.telescopeX = 0f; set.telescopeY = 0f
                 set.poolDX = 0f; set.poolDY = 0f
                 set.houseDX = 0f; set.houseDY = 0f
-                set.museumDX = 0f; set.museumDY = 0f
                 set.catDX = 0f; set.catDY = 0f
                 set.hidden.remove("honorLabel")
             }
@@ -1537,8 +1556,7 @@ class Game {
     /** 小屋繁荣值：已购项目总价值（含猫装扮与庭院） */
     fun homeScore(): Int {
         var sum = 0
-        for (i in 1 until HOUSE_PRICES.size) if (ownsHouse(i)) sum += HOUSE_PRICES[i]
-        sum += buildExtraValue()
+        sum += buildValue()
         for (i in 1 until ROOF_PRICES.size) if (ownsRoof(i)) sum += ROOF_PRICES[i]
         for (i in DECO_PRICES.indices) {
             for (w in 0 until UNIVERSE_COUNT) {
@@ -1955,9 +1973,9 @@ class Game {
             Integer.bitCount(ownedScarves) + Integer.bitCount(ownedHats)
 
     /** 家园建造拥有件数：房屋 / 屋顶 / 庭院装饰 */
-    /** 房型不再出售：老存档买过的照算，新搭的每 100 金币折一件，最多抵 4 件 */
+    /** 房子按搭的块折算：每 100 金币折一件，最多 4 件 */
     fun homeCosmeticCount(): Int =
-        Integer.bitCount(ownedHouses).coerceAtLeast(1 + (buildExtraValue() / 100).coerceAtMost(3)) +
+        (1 + (buildValue() / 100).coerceAtMost(3)) +
             Integer.bitCount(ownedRoofs) + decoOwnedCount()
 
     // ---------- 输入 ----------
