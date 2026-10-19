@@ -100,7 +100,13 @@ object HomeScene3D {
         night = HomeYard.lightNight
 
         drawTerrain(p, world, pal, phase)
-        drawHorizon(p, world, pal, phase)
+        // 院子能绕着房子转一整圈，远景四面都得有：同一套剪影转 90° 摆四份
+        for (side in 0 until 4) {
+            p.push(0f, 0f, 0f)
+            p.rotY(side * 90f)
+            drawHorizon(p, world, pal, phase)
+            p.pop()
+        }
 
         val hx = HomeYard.posX(HomeYard.HOUSE)
         val hz = HomeYard.posZ(HomeYard.HOUSE)
@@ -180,6 +186,8 @@ object HomeScene3D {
      * 有一条铁律：**山头不能高过镜头**（相机在 y≈12），否则它就不是「远处的山」，
      * 而是压在院子后面的一堵墙——一屏的天空会被吃掉大半，主角房屋也失去了背景。
      * 所以这里的高度一律压在 11 以下、距离推到 110~170，只留一条低低的轮廓。
+     *
+     * 这里只画「房子背后」那一面（-z）；四面由调用处转着画，所以只能用跟着矩阵走的 [Painter.part]。
      */
     private fun drawHorizon(p: Painter, world: Int, pal: HomePalette.Ramp, phase: Float) {
         p.mode(0)
@@ -193,8 +201,8 @@ object HomeScene3D {
                     val x = -150f + k * 30f + (k % 3) * 8f
                     val h = 5f + (k % 4) * 2.6f
                     val z = -125f - (k % 3) * 16f
-                    p.box(x, h * 0.4f, z, 30f, h, 22f, far(pal.body, 0.9f))
-                    p.box(x + 6f, h * 0.8f, z, 12f, h * 0.5f, 13f, far(pal.light, 1.1f))
+                    p.part(x, h * 0.4f, z, 30f, h, 22f, far(pal.body, 0.9f))
+                    p.part(x + 6f, h * 0.8f, z, 12f, h * 0.5f, 13f, far(pal.light, 1.1f))
                 }
                 for (k in 0 until 6) {
                     val x = -52f + k * 21f
@@ -211,8 +219,8 @@ object HomeScene3D {
                     val x = -150f + k * 28f + (k % 4) * 7f
                     val y = 2.5f + (k % 3) * 2.4f
                     val z = -120f - (k % 4) * 18f
-                    p.box(x, y, z, 34f, 5f, 20f, far(pal.body, 0.75f))
-                    p.box(x + 7f, y + 3.4f, z, 20f, 4f, 15f, far(pal.light, 0.8f))
+                    p.part(x, y, z, 34f, 5f, 20f, far(pal.body, 0.75f))
+                    p.part(x + 7f, y + 3.4f, z, 20f, 4f, 15f, far(pal.light, 0.8f))
                 }
             }
             Game.UNI_LAVA -> {

@@ -253,8 +253,11 @@ object HomeYard {
     const val BUILD_ZOOM_MIN = 0.55f
     const val BUILD_ZOOM_MAX = 1.5f
 
-    /** 逛院子时镜头的平移（世界单位）与远近，拖动 / 双指缩放改它 */
-    @Volatile var panX = 0f
+    /**
+     * 逛院子的镜头：绕房子转的角度（弧度，和 [buildYaw] 同一套朝向，0 = 正面）、
+     * 沿视线的远近平移、缩放。左右拖转、上下拖推拉、双指缩放。
+     */
+    @Volatile var yardYaw = 0f
     @Volatile var panZ = PAN_Z_DEFAULT
     @Volatile var yardZoom = YARD_ZOOM_DEFAULT
     /**
@@ -263,7 +266,6 @@ object HomeYard {
      */
     const val YARD_ZOOM_DEFAULT = 0.62f
     const val PAN_Z_DEFAULT = 0f
-    const val PAN_X_MAX = 9f
     const val PAN_Z_MIN = -12f
     const val PAN_Z_MAX = 6f
     const val YARD_ZOOM_MIN = 0.5f
@@ -295,7 +297,7 @@ object HomeYard {
         buildYaw = 0f
         buildPitch = BUILD_PITCH_DEFAULT
         buildZoom = 1f
-        panX = 0f
+        yardYaw = 0f
         panZ = PAN_Z_DEFAULT
         yardZoom = YARD_ZOOM_DEFAULT
     }

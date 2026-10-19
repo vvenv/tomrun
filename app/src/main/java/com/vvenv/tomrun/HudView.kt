@@ -170,7 +170,9 @@ class HudView(context: Context, private val game: Game) : View(context) {
     /** 逛院子时拖动平移镜头（按在哪儿都一样，院子里的东西不会被拖走） */
     private var yardPanCandidate = false
     private var yardPanning = false
-    private var panXAtDown = 0f
+    private var yardYawAtDown = 0f
+    /** 「搭好了」之后绕房子转一圈展示，还剩多少弧度没转；手一碰屏幕就停 */
+    private var yardSpinLeft = 0f
     private var panZAtDown = 0f
     /** 双指缩放（院子与建造通用） */
     private var pinching = false
@@ -363,6 +365,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         private const val HALL_MUSEUM = 0
         private const val HALL_HONOR = 1
         private const val HOME_SUB_SCENE = 0
+        private const val TWO_PI = (Math.PI * 2).toFloat()
         private const val HOME_SUB_COLLECTION = 1
         private const val HOME_SUB_HONOR = 2
         private const val MUSEUM_TAB_RELIC = 0
@@ -526,7 +529,9 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 buildPitchAtDown = HomeYard.buildPitch
                 yardPanning = false
                 pinching = false
-                panXAtDown = HomeYard.panX
+                yardSpinLeft = 0f
+                HomeYard.yardYaw = wrapAngle(HomeYard.yardYaw)
+                yardYawAtDown = HomeYard.yardYaw
                 panZAtDown = HomeYard.panZ
                 yardPanCandidate = false
                 if (isYardInteractive() && !homeOverlayBlocks(event.x, event.y)) {
@@ -597,10 +602,10 @@ class HudView(context: Context, private val game: Game) : View(context) {
                         cancelYardTouch()
                     }
                     if (yardPanning) {
-                        // 手指往哪拖，院子就往哪走（镜头反向）；拉远时一指头挪得更多
+                        // 左右拖 = 绕房子转（和搭房子时一个手感，转一圈约横跨屏幕两次），
+                        // 上下拖 = 推近拉远（拉远时一指头挪得更多）
                         val z = HomeYard.yardZoom
-                        HomeYard.panX = (panXAtDown - dx / width.coerceAtLeast(1) * 22f * z)
-                            .coerceIn(-HomeYard.PAN_X_MAX, HomeYard.PAN_X_MAX)
+                        HomeYard.yardYaw = yardYawAtDown - dx / width.coerceAtLeast(1) * 3.4f
                         HomeYard.panZ = (panZAtDown - dy / height.coerceAtLeast(1) * 34f * z)
                             .coerceIn(HomeYard.PAN_Z_MIN, HomeYard.PAN_Z_MAX)
                         consumed = true
@@ -1100,6 +1105,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private fun openHomePage() {
         exitBuildMode()
         HomeYard.resetLight()   // 进门重新取一次天色，在家期间不再随实时昼夜漂移
+        yardSpinLeft = 0f
         homeSubView = HOME_SUB_SCENE
         homeEditing = false
         museumDetailId = -1
@@ -1125,6 +1131,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         closeHomePick()
         showHomeWorlds = false
         HomeYard.resetLight()
+        yardSpinLeft = 0f
         homeSubView = HOME_SUB_SCENE
         homeEditing = false
         museumDetailId = -1
@@ -2009,7 +2016,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val showHint = homeHintLife > 0f && !homeEditing && !buildMode
         if (showHint) {
             val hint = if (HomeBuild.count(game.buildGrid()) == 0) "点插旗的场地，开始搭房子"
-            else "点房子，自己动手搭 · 拖动看看四周"
+            else "点房子，自己动手搭 · 左右拖转着看"
             val hintSize = fittedTextSize(hint, 16f * s, w * 0.86f, 12f * s)
             val fade = (homeHintLife / 0.6f).coerceIn(0f, 1f).let { if (homeHintLife > 0.6f) 1f else it }
             textPaint.textAlign = Paint.Align.CENTER
@@ -2304,6 +2311,13 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private fun exitBuildMode() {
         if (!buildMode) return
         buildMode = false
+        // 接着搭房子时的朝向转回正面，顺路多绕一圈展示刚搭好的房子（太短的弧不够看，补满一圈）
+        if (HomeBuild.count(game.buildGrid()) > 0) {
+            val a = wrapAngle(HomeYard.buildYaw)
+            HomeYard.yardYaw = a
+            val toFront = TWO_PI - (if (a < 0f) a + TWO_PI else a)
+            yardSpinLeft = if (toFront < Math.PI.toFloat()) toFront + TWO_PI else toFront
+        }
         buildOrbiting = false
         buildRoofArmed = -1
         buildPanelRect.setEmpty()
@@ -2915,6 +2929,14 @@ class HudView(context: Context, private val game: Game) : View(context) {
         return true
     }
 
+    /** 角度归到 (-π, π]，绕了好多圈之后数值也不会越滚越大 */
+    private fun wrapAngle(a: Float): Float {
+        var v = a % TWO_PI
+        if (v > Math.PI.toFloat()) v -= TWO_PI
+        if (v <= -Math.PI.toFloat()) v += TWO_PI
+        return v
+    }
+
     private fun withAlpha(c: Int, a: Int): Int = (a shl 24) or (c and 0x00FFFFFF)
 
     // ---------- 家园 3D 场景的交互层 ----------
@@ -2931,6 +2953,13 @@ class HudView(context: Context, private val game: Game) : View(context) {
         val dt = 0.016f
         yardSceneS = s
         yardSceneHit.set(0f, 0f, w, h)
+        if (yardSpinLeft > 0f && !buildMode) {
+            // 起步和收尾都慢一点，中段一秒约一弧度：一圈六七秒，够孩子看清每一面
+            val v = 0.25f + 0.85f * (yardSpinLeft / 1.4f).coerceAtMost(1f)
+            val step = minOf(yardSpinLeft, v * dt)
+            HomeYard.yardYaw += step
+            yardSpinLeft -= step
+        }
         updateYardCat(dt)
         syncHomeHits(w, h)
 
