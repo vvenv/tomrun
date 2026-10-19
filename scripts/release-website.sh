@@ -78,8 +78,10 @@ if [ "$SKIP_APK" -eq 0 ]; then
   if "$APKSIGNER" verify --print-certs "$APK" | grep -q "CN=Android Debug"; then
     error "$APK 是 debug 签名，拒绝上传"
   fi
-  echo "  Upload APK → ${WEB_ROOT}/downloads/tomrun-1.0.apk"
-  ${SCP} "$APK" "${USER}@${HOST}:${WEB_ROOT}/downloads/tomrun-1.0.apk"
+  # 文件名不带版本号，官网链接每次发版都不用改；tomrun-1.0.apk 是早先分享出去的链接，软链过来继续能下
+  echo "  Upload APK → ${WEB_ROOT}/downloads/tomrun.apk"
+  ${SCP} "$APK" "${USER}@${HOST}:${WEB_ROOT}/downloads/tomrun.apk.part"
+  ${SSH} "cd ${WEB_ROOT}/downloads && chmod 644 tomrun.apk.part && mv -f tomrun.apk.part tomrun.apk && ln -sfn tomrun.apk tomrun-1.0.apk"
   # APK 传完再更新 version.json，免得游戏提示了新版、下载到的却还是旧包
   VERSION_CODE="$(sed -n 's/^ *versionCode = \([0-9]*\).*/\1/p' "$ROOT/app/build.gradle.kts")"
   VERSION_NAME="$(sed -n 's/^ *versionName = "\(.*\)".*/\1/p' "$ROOT/app/build.gradle.kts")"

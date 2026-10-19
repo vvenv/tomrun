@@ -6,7 +6,7 @@
 
 - 网站: https://run.wenfu.dev/
 - 开源仓库: https://github.com/vvenv/tomrun
-- Android 下载: https://run.wenfu.dev/downloads/tomrun-1.0.apk
+- Android 下载: https://run.wenfu.dev/downloads/tomrun.apk
 - 全服纪录榜 API: https://run.wenfu.dev/api/v1/leaderboard/{slug}
 
 ## 产品要点

@@ -1,5 +1,6 @@
 package com.vvenv.tomrun
 
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
 import android.opengl.GLSurfaceView
@@ -89,6 +90,8 @@ class MainActivity : Activity() {
         )
     }
 
+    // 只给 API 33 以下兜底；33+ 已由 [registerPredictiveBack] 接管，lint 看不出这层分工
+    @SuppressLint("GestureBackNavigation")
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         if (hud.handleBackPressed()) return

@@ -89,6 +89,9 @@ export function Download() {
                 <div className="mt-1 text-xs text-paper/40">
                   需允许安装未知来源，或用文件管理器打开 APK
                 </div>
+                <div className="mt-1 text-xs text-gold/70">
+                  装过 v1.0 的需先卸载旧版，以后升级可直接覆盖
+                </div>
               </div>
             </div>
           </div>

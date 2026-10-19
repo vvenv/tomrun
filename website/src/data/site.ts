@@ -17,7 +17,7 @@ export const SITE_KEYWORDS = [
 ].join(",");
 export const GITHUB_URL = "https://github.com/vvenv/tomrun";
 export const APP_VERSION = "1.1";
-export const APK_URL = `${SITE_URL}/downloads/tomrun-1.0.apk`;
+export const APK_URL = `${SITE_URL}/downloads/tomrun.apk`;
 export const OG_IMAGE_URL = `${SITE_URL}/og.png`;
 export const CONTACT_EMAIL_DISPLAY = "vvenvw[at]gmail.com";
 export const MIN_ANDROID = "7.0";
