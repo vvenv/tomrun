@@ -84,6 +84,7 @@ if [ "$SKIP_APK" -eq 0 ]; then
   VERSION_CODE="$(sed -n 's/^ *versionCode = \([0-9]*\).*/\1/p' "$ROOT/app/build.gradle.kts")"
   VERSION_NAME="$(sed -n 's/^ *versionName = "\(.*\)".*/\1/p' "$ROOT/app/build.gradle.kts")"
   VERSION_JSON="$(mktemp)"
+  chmod 644 "$VERSION_JSON"  # mktemp 是 600，scp 会带过去，nginx 读不到就 403
   printf '{"versionCode":%s,"versionName":"%s"}\n' "$VERSION_CODE" "$VERSION_NAME" > "$VERSION_JSON"
   echo "  version.json → v${VERSION_NAME} (${VERSION_CODE})"
   ${SCP} "$VERSION_JSON" "${USER}@${HOST}:${WEB_ROOT}/version.json"
