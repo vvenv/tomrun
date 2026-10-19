@@ -641,7 +641,22 @@ class Game {
     var roofStyle: Int
         get() = roofStyles[homeWorld.coerceIn(0, UNIVERSE_COUNT - 1)]
         set(v) { roofStyles[homeWorld.coerceIn(0, UNIVERSE_COUNT - 1)] = v.coerceIn(0, ROOF_NAMES.size - 1) }
-    private var ownedHouses = 1       // bit0 免费小木屋
+    private var ownedHouses = 1       // bit0 免费小木屋；现在只用来决定老存档的起步蓝图
+    /**
+     * 每个世界亲手搭的房子（[HomeBuild] 格子）。改动时整份换新数组再赋值：
+     * GL 线程拿到的永远是一份完整快照，不会读到搭了一半的格子。
+     */
+    private val buildGrids = arrayOfNulls<ByteArray>(UNIVERSE_COUNT)
+    /** 当前选中的材料（1..[HomeBuild.MAT_COUNT]） */
+    @Volatile var buildMat = 1
+    /** 最近一次加 / 拆的格子与时刻，渲染层据此做落下 / 缩没的动画 */
+    @Volatile var buildFxCell = -1
+    @Volatile var buildFxMat = 0
+    @Volatile var buildFxAdd = true
+    @Volatile var buildFxNanos = 0L
+    /** 已经认出过的造型（[HomeBuild.SHAPE_NAMES] 位掩码），跨世界共用、只奖一次 */
+    @Volatile var buildShapes = 0
+        private set
     private var ownedRoofs = 1
     private var ownedDecos = 0
     /** 各世界庭院装饰拥有情况（bit 与 DECO 下标一致） */
@@ -863,6 +878,10 @@ class Game {
         ownedDecos = p.getInt("ownedDecos", 0)
         loadPerWorldOwnedDecos(p)
         loadPerWorldHouseStyles(p)
+        for (w in 0 until UNIVERSE_COUNT) {
+            buildGrids[w] = HomeBuild.decode(p.getString("buildGrid$w", null))
+        }
+        buildShapes = p.getInt("buildShapes", 0)
         loadHomePlayerLayout(p.getString("homePlayerLayout", null) ?: p.getString("yardPlayerLayout", null))
         migrateHomeLayoutRev(p)
         homeWorld = p.getInt("homeWorld", UNI_MEADOW).coerceIn(0, UNIVERSE_COUNT - 1)
@@ -1091,6 +1110,108 @@ class Game {
         homeDoorHintSeen = true
         prefs?.edit()?.putBoolean("homeDoorHintSeen", true)?.apply()
         return true
+    }
+
+    // ---------- 亲手搭房子 ----------
+
+    /** 某个世界的格子；第一次来按当年买的房型给一套起步蓝图 */
+    fun buildGrid(world: Int = homeWorld): ByteArray {
+        val w = world.coerceIn(0, UNIVERSE_COUNT - 1)
+        return buildGrids[w] ?: HomeBuild.template(houseStyles[w]).also { buildGrids[w] = it }
+    }
+
+    fun buildMatUnlocked(mat: Int): Boolean {
+        if (mat !in 1..HomeBuild.MAT_COUNT) return false
+        val u = HomeBuild.matUniverse(mat)
+        return u < 0 || seenUniverse(u)
+    }
+
+    /** 加一块：成功返回空串，否则返回给孩子看的原因 */
+    @Synchronized fun placeBlock(cell: Int): String {
+        if (state == State.RUNNING) return ""
+        val g = buildGrid()
+        if (cell !in 0 until HomeBuild.SIZE) return ""
+        val x = cell % HomeBuild.SX
+        val z = (cell / HomeBuild.SX) % HomeBuild.SZ
+        val y = cell / (HomeBuild.SX * HomeBuild.SZ)
+        if (!HomeBuild.canPlace(g, x, y, z)) {
+            return if (y >= HomeBuild.SY - 1 && HomeBuild.filled(g, x, y, z)) "已经搭到最高了" else ""
+        }
+        val mat = buildMat.coerceIn(1, HomeBuild.MAT_COUNT)
+        if (!buildMatUnlocked(mat)) return "先去${UNIVERSE_NAMES[HomeBuild.matUniverse(mat)]}看看，才能用${HomeBuild.MAT_NAMES[mat]}"
+        val cost = HomeBuild.matCost(mat)
+        if (wallet < cost) return "金币不够了（一块 $cost）"
+        wallet -= cost
+        val next = g.copyOf()
+        next[cell] = mat.toByte()
+        commitBuild(next, cell, mat, add = true)
+        emit(EV_BUY, HAPTIC_LIGHT)
+        return awardNewShapes(next)
+    }
+
+    /** 新认出的造型：发奖、记下，返回一句庆祝（没有新的返回空串） */
+    private fun awardNewShapes(g: ByteArray): String {
+        val fresh = HomeBuild.shapes(g) and buildShapes.inv()
+        if (fresh == 0) return ""
+        val names = ArrayList<String>()
+        var reward = 0
+        for (i in HomeBuild.SHAPE_NAMES.indices) {
+            if (fresh and (1 shl i) == 0) continue
+            names.add(HomeBuild.SHAPE_NAMES[i])
+            reward += HomeBuild.SHAPE_REWARD[i]
+        }
+        buildShapes = buildShapes or fresh
+        wallet += reward
+        prefs?.edit()?.putInt("buildShapes", buildShapes)?.putInt("wallet", wallet)?.apply()
+        emit(EV_ACHIEVE, HAPTIC_MED)
+        return "认出来了：${names.joinToString("、")}！+$reward 金币"
+    }
+
+    /** 下一个还没认出的造型的提示；全认齐了返回空串 */
+    fun nextShapeHint(): String {
+        for (i in HomeBuild.SHAPE_NAMES.indices) {
+            if (buildShapes and (1 shl i) == 0) return HomeBuild.SHAPE_HINTS[i]
+        }
+        return ""
+    }
+
+    /** 拆一块，金币原样退回——鼓励试，拆错了不心疼。至少留一块，免得家没了门 */
+    @Synchronized fun removeBlock(cell: Int): String {
+        if (state == State.RUNNING) return ""
+        val g = buildGrid()
+        if (cell !in 0 until HomeBuild.SIZE || g[cell].toInt() == 0) return ""
+        if (HomeBuild.count(g) <= 1) return "至少留一块，猫要有地方住"
+        val mat = g[cell].toInt()
+        wallet += HomeBuild.matCost(mat)
+        val next = g.copyOf()
+        next[cell] = 0
+        commitBuild(next, cell, mat, add = false)
+        emit(EV_SLIDE, HAPTIC_LIGHT)
+        return ""
+    }
+
+    private fun commitBuild(next: ByteArray, cell: Int, mat: Int, add: Boolean) {
+        val w = homeWorld.coerceIn(0, UNIVERSE_COUNT - 1)
+        buildGrids[w] = next
+        buildFxCell = cell
+        buildFxMat = mat
+        buildFxAdd = add
+        buildFxNanos = System.nanoTime()
+        prefs?.edit()
+            ?.putString("buildGrid$w", HomeBuild.encode(next))
+            ?.putInt("wallet", wallet)
+            ?.apply()
+        tryUnlockAchievements(persist = true)
+    }
+
+    /** 比起步蓝图多搭出来的那部分（金币计），所有世界合计 */
+    fun buildExtraValue(): Int {
+        var v = 0
+        for (w in 0 until UNIVERSE_COUNT) {
+            val g = buildGrids[w] ?: continue
+            v += (HomeBuild.value(g) - HomeBuild.value(HomeBuild.template(houseStyles[w]))).coerceAtLeast(0)
+        }
+        return v
     }
 
     /** 直接搬到某个已解锁世界的家；返回新家所在世界名，切不过去时返回空串 */
@@ -1405,6 +1526,7 @@ class Game {
     fun homeScore(): Int {
         var sum = 0
         for (i in 1 until HOUSE_PRICES.size) if (ownsHouse(i)) sum += HOUSE_PRICES[i]
+        sum += buildExtraValue()
         for (i in 1 until ROOF_PRICES.size) if (ownsRoof(i)) sum += ROOF_PRICES[i]
         for (i in DECO_PRICES.indices) {
             for (w in 0 until UNIVERSE_COUNT) {
@@ -1821,8 +1943,10 @@ class Game {
             Integer.bitCount(ownedScarves) + Integer.bitCount(ownedHats)
 
     /** 家园建造拥有件数：房屋 / 屋顶 / 庭院装饰 */
+    /** 房型不再出售：老存档买过的照算，新搭的每 100 金币折一件，最多抵 4 件 */
     fun homeCosmeticCount(): Int =
-        Integer.bitCount(ownedHouses) + Integer.bitCount(ownedRoofs) + decoOwnedCount()
+        Integer.bitCount(ownedHouses).coerceAtLeast(1 + (buildExtraValue() / 100).coerceAtMost(3)) +
+            Integer.bitCount(ownedRoofs) + decoOwnedCount()
 
     // ---------- 输入 ----------
     /** Debug 测试开关（不死 + 藏品全览）：仅当前进程内有效，重启后自动关闭。 */

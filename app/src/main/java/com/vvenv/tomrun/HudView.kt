@@ -159,6 +159,33 @@ class HudView(context: Context, private val game: Game) : View(context) {
     private val btnResume = RectF()
     private val btnQuit = RectF()
     private val btnSound = RectF()
+
+    // ---------- 搭房子 ----------
+    private var buildMode = false
+    private var buildRemove = false
+    private var buildOrbiting = false
+    private var buildYawAtDown = 0f
+    /** 屋顶色：未拥有的先套上预览，再点一下才买 */
+    private var buildRoofArmed = -1
+    private val buildPanelRect = RectF()
+    private val btnBuildDone = RectF()
+    private val buildChipRects = Array(16) { RectF() }
+    private val buildChipKind = IntArray(16)
+    private val buildChipIdx = IntArray(16)
+    private var buildChipCount = 0
+    private var buildPitchAtDown = 0f
+    /** 逛院子时拖空地平移镜头 */
+    private var yardPanCandidate = false
+    private var yardPanning = false
+    private var panXAtDown = 0f
+    private var panZAtDown = 0f
+    /** 双指缩放（院子与建造通用） */
+    private var pinching = false
+    private var pinchDist0 = 1f
+    private var pinchZoom0 = 1f
+    private val buildRayNear = FloatArray(3)
+    private val buildRayFar = FloatArray(3)
+    private val buildPickOut = IntArray(2)
     private val btnUpdate = RectF()
     private var updateVersionName = ""
     private val btnSoundPause = RectF()
@@ -355,11 +382,13 @@ class HudView(context: Context, private val game: Game) : View(context) {
          * 小屋 / 屋顶 / 摆件必须在同一张板上——新家默认没有任何摆件可点，
          * 若摆件单独一张板，没买过的人永远进不去商店。
          */
+        // 房子与屋顶改成亲手搭（点房子进建造），这张板只剩庭院摆件
         private val PICK_ROWS_HOUSE = arrayOf(
-            PickRow(Game.HOME_TAB_HOUSE, "小屋"),
-            PickRow(Game.HOME_TAB_ROOF, "屋顶"),
             PickRow(Game.HOME_TAB_DECO, "摆件")
         )
+        private const val BUILD_CHIP_MAT = 0
+        private const val BUILD_CHIP_TOOL = 1
+        private const val BUILD_CHIP_ROOF = 2
         private val PICK_ROWS_CAT = arrayOf(
             PickRow(Game.HOME_TAB_COLOR, "配色"),
             PickRow(Game.HOME_TAB_TRAIL, "光迹"),
@@ -500,6 +529,14 @@ class HudView(context: Context, private val game: Game) : View(context) {
                 yardLongPressTriggered = false
                 homeDragId = null
                 homeDragActive = false
+                buildOrbiting = false
+                buildYawAtDown = HomeYard.buildYaw
+                buildPitchAtDown = HomeYard.buildPitch
+                yardPanning = false
+                pinching = false
+                panXAtDown = HomeYard.panX
+                panZAtDown = HomeYard.panZ
+                yardPanCandidate = false
                 if (isYardInteractive() && !homeOverlayBlocks(event.x, event.y)) {
                     yardFingerDown = true
                     yardFingerX = event.x
@@ -513,8 +550,74 @@ class HudView(context: Context, private val game: Game) : View(context) {
                         if (canHomeDrag(id)) beginHomeDrag(id, event.x, event.y)
                     }
                 }
+                // 按在摆件上是搬摆件；按在空地上，拖起来就是挪镜头
+                if (isYardInteractive() && homeDragId == null && !homeOverlayBlocks(event.x, event.y)) {
+                    yardPanCandidate = true
+                }
+            }
+            MotionEvent.ACTION_POINTER_DOWN -> {
+                if (homeViewGestures() && event.pointerCount >= 2) {
+                    pinching = true
+                    pinchDist0 = pointerSpan(event).coerceAtLeast(1f)
+                    pinchZoom0 = if (buildMode) HomeYard.buildZoom else HomeYard.yardZoom
+                    cancelYardTouch()
+                    homeDragId = null
+                    homeDragActive = false
+                    consumed = true
+                }
+            }
+            MotionEvent.ACTION_POINTER_UP -> {
+                // 松开一根手指后剩下那根别接着当拖动，免得镜头一下跳走
+                if (pinching) {
+                    buildOrbiting = false
+                    yardPanning = false
+                    yardPanCandidate = false
+                }
             }
             MotionEvent.ACTION_MOVE -> {
+                if (pinching) {
+                    if (event.pointerCount >= 2) {
+                        // 手指张开 = 拉近：距离倍数取倒数
+                        val k = pinchDist0 / pointerSpan(event).coerceAtLeast(1f)
+                        if (buildMode) {
+                            HomeYard.buildZoom = (pinchZoom0 * k).coerceIn(HomeYard.BUILD_ZOOM_MIN, HomeYard.BUILD_ZOOM_MAX)
+                        } else {
+                            HomeYard.yardZoom = (pinchZoom0 * k).coerceIn(HomeYard.YARD_ZOOM_MIN, HomeYard.YARD_ZOOM_MAX)
+                        }
+                    }
+                    consumed = true
+                    return true
+                }
+                val slopPx = YARD_DRAG_SLOP * hudScale(width.toFloat(), height.toFloat())
+                if (buildMode && game.menuPanel == Game.PANEL_HOME && !buildPanelRect.contains(downX, downY)) {
+                    // 左右拖 = 绕着房子转（一圈约横跨屏幕两次），上下拖 = 抬高 / 压低视角
+                    val dx = event.x - downX
+                    val dy = event.y - downY
+                    if (!buildOrbiting && kotlin.math.hypot(dx, dy) > slopPx) buildOrbiting = true
+                    if (buildOrbiting) {
+                        HomeYard.buildYaw = buildYawAtDown - dx / width.coerceAtLeast(1) * 3.4f
+                        HomeYard.buildPitch = (buildPitchAtDown + dy / height.coerceAtLeast(1) * 2.2f)
+                            .coerceIn(HomeYard.BUILD_PITCH_MIN, HomeYard.BUILD_PITCH_MAX)
+                        consumed = true
+                    }
+                }
+                if (yardPanCandidate && catState != CAT_CHASE_HAND && homeDragId == null) {
+                    val dx = event.x - downX
+                    val dy = event.y - downY
+                    if (!yardPanning && kotlin.math.hypot(dx, dy) > slopPx) {
+                        yardPanning = true
+                        cancelYardTouch()
+                    }
+                    if (yardPanning) {
+                        // 手指往哪拖，院子就往哪走（镜头反向）；拉远时一指头挪得更多
+                        val z = HomeYard.yardZoom
+                        HomeYard.panX = (panXAtDown - dx / width.coerceAtLeast(1) * 22f * z)
+                            .coerceIn(-HomeYard.PAN_X_MAX, HomeYard.PAN_X_MAX)
+                        HomeYard.panZ = (panZAtDown - dy / height.coerceAtLeast(1) * 34f * z)
+                            .coerceIn(HomeYard.PAN_Z_MIN, HomeYard.PAN_Z_MAX)
+                        consumed = true
+                    }
+                }
                 if (yardFingerDown) {
                     yardFingerX = event.x
                     yardFingerY = event.y
@@ -623,6 +726,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
     }
 
     private fun isHomeDraggable(): Boolean =
+        !buildMode &&
         (game.state == Game.State.READY || game.state == Game.State.DEAD) &&
             game.menuPanel == Game.PANEL_HOME && !showStargazing && homeSubView == HOME_SUB_SCENE &&
             !showHomeLayers && !showHomeWorlds
@@ -722,6 +826,10 @@ class HudView(context: Context, private val game: Game) : View(context) {
                     handleHomeLayersTap(x, y)
                     return
                 }
+                if (buildMode) {
+                    handleBuildTap(x, y)
+                    return
+                }
                 when (homeSubView) {
                     HOME_SUB_COLLECTION -> {
                         if (museumDetailId >= 0) {
@@ -804,12 +912,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
                         homeSubView = HOME_SUB_HONOR
                         game.markHonorsSeen()
                     }
-                    // 房子与屋顶、摆件合成同一张面板，不再靠热区上下半分家
-                    hitHouse.contains(x, y) -> {
-                        if (!(homeEditing && (pickArmedTab == Game.HOME_TAB_HOUSE || pickArmedTab == Game.HOME_TAB_ROOF) &&
-                                confirmArmedPurchase())
-                        ) selectHomeCategory(Game.HOME_TAB_HOUSE)
-                    }
+                    hitHouse.contains(x, y) -> enterBuildMode()
                     yardCatHit.contains(x, y) -> {
                         if (!(homeEditing && game.isCatHomeTab(pickArmedTab) && confirmArmedPurchase())) {
                             selectHomeCategory(Game.HOME_TAB_COLOR)
@@ -948,6 +1051,11 @@ class HudView(context: Context, private val game: Game) : View(context) {
         }
         if (game.menuPanel == Game.PANEL_HOME) {
             when {
+                buildMode -> {
+                    exitBuildMode()
+                    invalidate()
+                    return true
+                }
                 showHomeWorlds -> {
                     showHomeWorlds = false
                     invalidate()
@@ -1020,6 +1128,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
     }
 
     private fun openHomePage() {
+        exitBuildMode()
         HomeYard.resetLight()   // 进门重新取一次天色，在家期间不再随实时昼夜漂移
         homeSubView = HOME_SUB_SCENE
         homeEditing = false
@@ -1037,6 +1146,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
     }
 
     private fun leaveHomePage() {
+        exitBuildMode()
         closeStargazing()
         cancelYardTouch()
         closeHomePick()
@@ -1792,7 +1902,11 @@ class HudView(context: Context, private val game: Game) : View(context) {
         if (homeEditing) drawHomePickPanel(canvas, w, h, s, sdx, sdy)
         else { pickChipCount = 0; pickPanelRect.setEmpty(); btnPickBuy.setEmpty() }
 
-        if (homeSubView == HOME_SUB_SCENE) {
+        if (buildMode) {
+            drawBuildPanel(canvas, w, h, s, sdx, sdy)
+            btnLeaveHome.setEmpty()
+            homeWalletPlate.setEmpty()
+        } else if (homeSubView == HOME_SUB_SCENE) {
             layoutLeaveHomeButton(w, h, s)
             if (homeShown("leave")) {
                 drawLeaveHomeBtn(canvas, btnLeaveHome, s)
@@ -2060,7 +2174,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
 
         val showHint = homeHintLife > 0f && !homeEditing && homeShown("homeHint")
         if (showHint) {
-            val hint = "拖动院子里的花坛、秋千就能摆放"
+            val hint = "点房子，自己动手搭 · 拖空地看看四周"
             val hintSize = fittedTextSize(hint, 16f * s, w * 0.86f, 12f * s)
             val fade = (homeHintLife / 0.6f).coerceIn(0f, 1f).let { if (homeHintLife > 0.6f) 1f else it }
             drawDraggableUiText(
@@ -2309,6 +2423,247 @@ class HudView(context: Context, private val game: Game) : View(context) {
         pixText(
             canvas, "出门", r.centerX(), centeredBaselineY(r.centerY(), labelSize),
             labelSize, HomePalette.hudInk(game.homeWorld), 0f, 0f
+        )
+    }
+
+    // ---------- 搭房子：进出、点击、面板 ----------
+
+    /** 家页面主场景在前台（没有图鉴、观星、世界清单之类的浮层）时才接管平移与缩放 */
+    private fun homeViewGestures(): Boolean =
+        game.menuPanel == Game.PANEL_HOME &&
+            (game.state == Game.State.READY || game.state == Game.State.DEAD) &&
+            homeSubView == HOME_SUB_SCENE && !showStargazing && !showHomeWorlds && !showHomeLayers
+
+    private fun pointerSpan(e: MotionEvent): Float =
+        kotlin.math.hypot(e.getX(0) - e.getX(1), e.getY(0) - e.getY(1))
+
+    private fun enterBuildMode() {
+        closeHomePick()
+        buildMode = true
+        buildRemove = false
+        buildRoofArmed = -1
+        game.markHomeYardHintSeen()
+        if (!game.buildMatUnlocked(game.buildMat)) game.buildMat = 1
+        HomeYard.buildYaw = 0f
+        HomeYard.buildPitch = HomeYard.BUILD_PITCH_DEFAULT
+        HomeYard.buildZoom = 1f
+        HomeYard.camFocus = HomeYard.CAM_BUILD
+    }
+
+    private fun exitBuildMode() {
+        if (!buildMode) return
+        buildMode = false
+        buildOrbiting = false
+        buildRoofArmed = -1
+        buildPanelRect.setEmpty()
+        btnBuildDone.setEmpty()
+        buildChipCount = 0
+        game.setHomePreviewing(false)
+        HomeYard.camFocus = HomeYard.CAM_REST
+    }
+
+    private fun handleBuildTap(x: Float, y: Float) {
+        if (btnBuildDone.contains(x, y)) {
+            exitBuildMode()
+            return
+        }
+        for (n in 0 until buildChipCount) {
+            if (!buildChipRects[n].contains(x, y)) continue
+            val i = buildChipIdx[n]
+            when (buildChipKind[n]) {
+                BUILD_CHIP_MAT -> if (game.buildMatUnlocked(i)) {
+                    game.buildMat = i
+                    buildRemove = false
+                } else {
+                    val u = HomeBuild.matUniverse(i)
+                    showToast("${HomeBuild.MAT_NAMES[i]}要去${Game.UNIVERSE_NAMES[u]}才找得到")
+                }
+                BUILD_CHIP_TOOL -> buildRemove = i == 1
+                else -> tapBuildRoof(i)
+            }
+            invalidate()
+            return
+        }
+        if (buildPanelRect.contains(x, y)) return
+
+        val hx = HomeYard.posX(game, HomeYard.HOUSE)
+        val hz = HomeYard.posZ(game, HomeYard.HOUSE)
+        if (!HomeYard.screenRay(x, y, width.toFloat(), height.toFloat(), buildRayNear, buildRayFar)) return
+        HomeBuild.pick(game.buildGrid(), buildRayNear, buildRayFar, hx, hz, buildPickOut)
+        val msg = if (buildRemove) {
+            if (buildPickOut[1] >= 0) game.removeBlock(buildPickOut[1]) else ""
+        } else {
+            if (buildPickOut[0] >= 0) game.placeBlock(buildPickOut[0]) else ""
+        }
+        if (msg.isNotEmpty()) showToast(msg)
+    }
+
+    private fun tapBuildRoof(i: Int) {
+        game.switchHomeTab(Game.HOME_TAB_ROOF)
+        game.setHomeBrowse(Game.HOME_TAB_ROOF, i)
+        if (game.ownsRoof(i) || buildRoofArmed == i) {
+            val msg = game.buyOrEquipHome()
+            showToast(msg)
+            if (!msg.startsWith("金币不足")) {
+                buildRoofArmed = -1
+                game.setHomePreviewing(false)
+            }
+        } else {
+            buildRoofArmed = i
+            game.setHomePreviewing(true)
+            showToast("${Game.ROOF_NAMES[i]} · ${Game.ROOF_PRICES[i]} 金币，再点一次买下")
+        }
+    }
+
+    private fun putBuildChip(kind: Int, idx: Int, l: Float, t: Float, r: Float, b: Float) {
+        if (buildChipCount >= buildChipRects.size) return
+        buildChipRects[buildChipCount].set(l, t, r, b)
+        buildChipKind[buildChipCount] = kind
+        buildChipIdx[buildChipCount] = idx
+        buildChipCount++
+    }
+
+    /**
+     * 建造面板：一行材料、一行「搭 / 拆 + 屋顶色」、一个「搭好了」。
+     * 材料格就是色块本身——孩子认颜色比认字快；没解锁的压暗打问号，点了告诉他去哪个宇宙找。
+     */
+    private fun drawBuildPanel(canvas: Canvas, w: Float, h: Float, s: Float, sdx: Float, sdy: Float) {
+        buildChipCount = 0
+        val portrait = h > w
+        val pw = min(w * 0.96f, 700f * s)
+        val rowH = if (portrait) 72f * s else 58f * s
+        val titleH = 48f * s
+        val footerH = 66f * s
+        val pad = 14f * s
+        val ph = titleH + rowH * 2f + footerH + 8f * s
+        val l = w / 2f - pw / 2f
+        val b = h - (if (portrait) 36f else 20f) * s
+        val t = b - ph
+        buildPanelRect.set(l, t, l + pw, b)
+        PixelUi.drawPanel(
+            canvas, btnPaint, l, t, l + pw, b,
+            0xB31C2128.toInt(), HomePalette.hudEdge(game.homeWorld), s, 0f, edgeW = 1f
+        )
+
+        val title = if (buildRemove) "拆：点哪块拆哪块，金币退回" else
+            "搭：点房子的一面加一块 · 每块 ${HomeBuild.matCost(game.buildMat)}"
+        textPaint.textAlign = Paint.Align.LEFT
+        val walletText = "${game.wallet}"
+        textPaint.textSize = 20f * s
+        val walletW = textPaint.measureText(walletText) + 30f * s
+        pixText(
+            canvas, title, l + pad, centeredBaselineY(t + titleH * 0.55f, 20f * s),
+            fittedTextSize(title, 20f * s, pw - pad * 3f - walletW, 13f * s), Color.WHITE, sdx, sdy
+        )
+        val coinCx = l + pw - pad - textPaint.measureText(walletText) - 18f * s
+        PixelUi.drawCoin(canvas, btnPaint, coinCx, t + titleH * 0.55f, 10f * s, 1f)
+        pixText(
+            canvas, walletText, coinCx + 18f * s, centeredBaselineY(t + titleH * 0.55f, 20f * s),
+            20f * s, 0xFFF0F4FF.toInt(), sdx, sdy
+        )
+        textPaint.textAlign = Paint.Align.CENTER
+
+        val gap = 6f * s
+        // 第一行：九种材料
+        var ry = t + titleH
+        val n = HomeBuild.MAT_COUNT
+        val cw = (pw - pad * 2f - gap * (n - 1)) / n
+        for (i in 1..n) {
+            val cl = l + pad + (i - 1) * (cw + gap)
+            val ct = ry + 4f * s
+            val cr = cl + cw
+            val cb = ry + rowH - 6f * s
+            val unlocked = game.buildMatUnlocked(i)
+            val selected = !buildRemove && game.buildMat == i
+            val m = HomePalette.buildMaterial(game.homeWorld, i)
+            PixelUi.drawRect(
+                canvas, btnPaint, cl, ct, cr, cb,
+                if (unlocked) m[0] else 0xFF2A3038.toInt(), s,
+                edge = if (selected) 0xFFFFF3D0.toInt() else DARK_EDGE, edgeW = if (selected) 3f else 1f
+            )
+            if (selected) {
+                // 选中的那块整体描一圈亮边，隔着一臂远也看得出「现在拿的是这个」
+                btnPaint.style = Paint.Style.STROKE
+                btnPaint.strokeWidth = 4f * s
+                btnPaint.color = 0xFFFFF3D0.toInt()
+                canvas.drawRect(cl - 3f * s, ct - 3f * s, cr + 3f * s, cb + 3f * s, btnPaint)
+                btnPaint.style = Paint.Style.FILL
+            }
+            val label = if (unlocked) HomeBuild.MAT_NAMES[i] else "?"
+            val ls = fittedTextSize(label, 15f * s, cw - 6f * s, 10f * s)
+            btnPaint.style = Paint.Style.FILL
+            btnPaint.color = withAlpha(0xFF101820.toInt(), 170)
+            canvas.drawRect(cl + 2f * s, cb - ls - 8f * s, cr - 2f * s, cb - 2f * s, btnPaint)
+            pixText(canvas, label, (cl + cr) * 0.5f, cb - 5f * s - ls * 0.15f, ls,
+                if (unlocked) 0xFFF0F4FF.toInt() else 0xFF8090A0.toInt(), 0f, 0f)
+            putBuildChip(BUILD_CHIP_MAT, i, cl, ct, cr, cb)
+        }
+
+        // 第二行：搭 / 拆 + 四种屋顶色
+        ry += rowH
+        val toolW = cw * 1.5f
+        for (k in 0..1) {
+            val cl = l + pad + k * (toolW + gap)
+            val ct = ry + 4f * s
+            val cr = cl + toolW
+            val cb = ry + rowH - 6f * s
+            val on = buildRemove == (k == 1)
+            PixelUi.drawRect(
+                canvas, btnPaint, cl, ct, cr, cb,
+                if (on) HomePalette.hudFill(game.homeWorld) else 0xFF2A3038.toInt(), s,
+                edge = if (on) 0xFFFFF3D0.toInt() else DARK_EDGE, edgeW = if (on) 3f else 1f
+            )
+            val label = if (k == 0) "搭" else "拆"
+            pixText(canvas, label, (cl + cr) * 0.5f, centeredBaselineY((ct + cb) * 0.5f, 24f * s), 24f * s,
+                if (on) HomePalette.hudInk(game.homeWorld) else 0xFFD0E0F0.toInt(), 0f, 0f)
+            putBuildChip(BUILD_CHIP_TOOL, k, cl, ct, cr, cb)
+        }
+        val roofL = l + pad + 2f * (toolW + gap) + gap * 2f
+        val roofN = HomePalette.ROOF_CHIPS.size
+        val rw = (l + pw - pad - roofL - gap * (roofN - 1)) / roofN
+        for (i in 0 until roofN) {
+            val cl = roofL + i * (rw + gap)
+            val ct = ry + 4f * s
+            val cr = cl + rw
+            val cb = ry + rowH - 6f * s
+            val owned = game.ownsRoof(i)
+            val current = game.roofStyle == i
+            val armed = buildRoofArmed == i
+            PixelUi.drawRect(
+                canvas, btnPaint, cl, ct, cr, cb, HomePalette.ROOF_CHIPS[i], s,
+                edge = if (current || armed) 0xFFFFF3D0.toInt() else DARK_EDGE,
+                edgeW = if (current || armed) 3f else 1f
+            )
+            val label = when {
+                armed -> "再点"
+                owned -> "屋顶"
+                else -> "${Game.ROOF_PRICES[i]}"
+            }
+            val ls = fittedTextSize(label, 15f * s, rw - 6f * s, 10f * s)
+            btnPaint.color = withAlpha(0xFF101820.toInt(), 170)
+            canvas.drawRect(cl + 2f * s, cb - ls - 8f * s, cr - 2f * s, cb - 2f * s, btnPaint)
+            pixText(canvas, label, (cl + cr) * 0.5f, cb - 5f * s - ls * 0.15f, ls, 0xFFF0F4FF.toInt(), 0f, 0f)
+            putBuildChip(BUILD_CHIP_ROOF, i, cl, ct, cr, cb)
+        }
+
+        val bw = min(pw - pad * 2f, 300f * s)
+        btnBuildDone.set(w / 2f - bw / 2f, b - footerH + 8f * s, w / 2f + bw / 2f, b - 12f * s)
+        PixelUi.drawBtn(
+            canvas, btnPaint, btnBuildDone.left, btnBuildDone.top, btnBuildDone.right, btnBuildDone.bottom,
+            HomePalette.hudFill(game.homeWorld), s
+        )
+        pixText(canvas, "搭好了", btnBuildDone.centerX(), centeredBaselineY(btnBuildDone.centerY(), 22f * s),
+            22f * s, HomePalette.hudInk(game.homeWorld), 0f, 0f)
+
+        pixText(canvas, "拖动转着看 · 双指缩放", w / 2f, t - 16f * s, 18f * s, 0xFFF0F4FF.toInt(), sdx, sdy)
+        // 永远挂着下一个造型的提示：随便搭也有个方向
+        val got = Integer.bitCount(game.buildShapes)
+        val next = game.nextShapeHint()
+        val shapeLine = if (next.isEmpty()) "造型全都认出来啦 ${got}/${HomeBuild.SHAPE_NAMES.size}"
+            else "造型 ${got}/${HomeBuild.SHAPE_NAMES.size} · 试试：$next"
+        pixText(
+            canvas, shapeLine, w / 2f, t - 50f * s,
+            fittedTextSize(shapeLine, 20f * s, w * 0.92f, 13f * s), 0xFFFFD426.toInt(), sdx, sdy
         )
     }
 
@@ -2564,7 +2919,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         if (game.isCatHomeTab(tab)) PICK_ROWS_CAT else PICK_ROWS_HOUSE
 
     private fun pickTitleFor(tab: Int): String =
-        if (game.isCatHomeTab(tab)) "给猫换身行头" else "装扮家与庭院"
+        if (game.isCatHomeTab(tab)) "给猫换身行头" else "装扮庭院"
 
     /** 该分类共有几件（含本世界不供应的），用于遍历上界 */
     private fun pickIndexCount(tab: Int): Int = when (tab) {
@@ -3215,14 +3570,10 @@ class HudView(context: Context, private val game: Game) : View(context) {
             "house" -> if (hitDoor.contains(x, y)) {
                 showHomeWorlds = true
                 closeHomePick()
-            } else if (!(homeEditing && (pickArmedTab == Game.HOME_TAB_HOUSE || pickArmedTab == Game.HOME_TAB_ROOF) &&
-                    confirmArmedPurchase())
-            ) {
-                selectHomeCategory(Game.HOME_TAB_HOUSE)
+            } else {
+                enterBuildMode()
             }
-            "roof" -> if (!(homeEditing && pickArmedTab == Game.HOME_TAB_ROOF && confirmArmedPurchase())) {
-                selectHomeCategory(Game.HOME_TAB_ROOF)
-            }
+            "roof" -> enterBuildMode()
             "garden", "fence", "mailbox", "swing", "perch", "pool" ->
                 if (!(homeEditing && pickArmedTab == Game.HOME_TAB_DECO && confirmArmedPurchase())) {
                     selectHomeCategory(Game.HOME_TAB_DECO)

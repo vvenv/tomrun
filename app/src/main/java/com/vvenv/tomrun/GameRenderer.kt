@@ -547,6 +547,7 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
     private val homeSkyCol = FloatArray(4) { 1f }
     private val homeTint = FloatArray(4) { 1f }
     private val homePainter = HomePainter()
+    private val buildEye = FloatArray(3)
 
     /**
      * 画家页面。
@@ -598,7 +599,23 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         val focusLookX: Float
         val focusLookY: Float
         val focusLookZ: Float
-        if (pose == HomeYard.CAM_CAT) {
+        if (pose == HomeYard.CAM_BUILD) {
+            // 环绕机位：围着房子转，稍微俯视，整栋楼连同屋顶都在画面里
+            val yaw = HomeYard.buildYaw
+            val pitch = HomeYard.buildPitch
+            val dist = (if (portrait) 19.5f else 16f) * HomeYard.buildZoom
+            val lookCx = hx
+            val lookCz = hz
+            val flat = cos(pitch) * dist
+            buildEye[0] = lookCx + sin(yaw) * flat
+            buildEye[1] = HomeYard.DECK_Y + 2.6f + sin(pitch) * dist
+            buildEye[2] = lookCz + cos(yaw) * flat
+            focusEyeY = buildEye[1]
+            focusEyeZ = buildEye[2]
+            focusLookX = lookCx
+            focusLookY = HomeYard.DECK_Y + 2.6f
+            focusLookZ = lookCz
+        } else if (pose == HomeYard.CAM_CAT) {
             focusEyeY = if (portrait) 10.4f else 8.2f
             focusEyeZ = if (portrait) 16.5f else 14.2f
             focusLookX = cx * 0.55f
@@ -611,12 +628,20 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
             focusLookY = 3.7f
             focusLookZ = hz * 0.35f - 1.5f
         }
-        val eyeX = sway * (1f - 0.4f * t)
-        val eyeY = restEyeY + (focusEyeY - restEyeY) * t
-        val eyeZ = restEyeZ + (focusEyeZ - restEyeZ) * t
-        val lookX = sway * 0.4f * (1f - t) + focusLookX * t
+        val focusEyeX = if (pose == HomeYard.CAM_BUILD) buildEye[0] else sway * 0.6f
+        // 逛院子的机位：拖空地平移、双指拉远拉近（沿视线方向）
+        val zr = HomeYard.yardZoom
+        val restLookX = sway * 0.4f + HomeYard.panX
+        val restLookZ = -4f + HomeYard.panZ
+        val restEyeX = restLookX + (sway - sway * 0.4f) * zr
+        val restEyeYz = restLookY + (restEyeY - restLookY) * zr
+        val restEyeZz = restLookZ + (restEyeZ + 4f) * zr
+        val eyeX = restEyeX * (1f - t) + focusEyeX * t
+        val eyeY = restEyeYz + (focusEyeY - restEyeYz) * t
+        val eyeZ = restEyeZz + (focusEyeZ - restEyeZz) * t
+        val lookX = restLookX * (1f - t) + focusLookX * t
         val lookY = restLookY + (focusLookY - restLookY) * t
-        val lookZ = -4f + (focusLookZ + 4f) * t
+        val lookZ = restLookZ + (focusLookZ - restLookZ) * t
         Matrix.setLookAtM(view, 0, eyeX, eyeY, eyeZ, lookX, lookY, lookZ, 0f, 1f, 0f)
         Matrix.multiplyMM(vp, 0, proj, 0, view, 0)
 

@@ -52,19 +52,6 @@ object HomeScene3D {
     const val POSE_SWIM = 7
     const val POSE_PET = 8
 
-    // ---------- 房屋尺寸表：造型与热区共用同一份，热区永远贴着看到的形状 ----------
-    private val BODY_W = floatArrayOf(6.0f, 7.4f, 7.0f, 6.6f)
-    private val BODY_D = floatArrayOf(5.0f, 5.6f, 5.2f, 5.4f)
-    private val BODY_H = floatArrayOf(3.0f, 3.4f, 6.0f, 6.2f)
-    /** 含屋顶（城堡含塔）的总高，热区与藏馆避让都按它算 */
-    private val TOTAL_H = floatArrayOf(5.0f, 5.6f, 7.9f, 9.8f)
-    /** 城堡两侧塔楼让剪影更宽 */
-    private val TOTAL_W = floatArrayOf(6.4f, 7.8f, 7.4f, 10.4f)
-    private val DOOR_X = floatArrayOf(1.3f, -1.8f, 0f, 0f)
-    private const val DOOR_W = 1.5f
-    private const val DOOR_H = 2.3f
-
-    fun houseHeight(style: Int) = TOTAL_H[style.coerceIn(0, 3)]
 
     // ---------- 取色 ----------
     /**
@@ -116,11 +103,14 @@ object HomeScene3D {
         val hx = HomeYard.posX(game, HomeYard.HOUSE)
         val hz = HomeYard.posZ(game, HomeYard.HOUSE)
         if (game.homeElVisible(HomeYard.HOUSE)) {
-            drawHouse(p, world, pal, house, roof, hx, hz, phase, LayoutConfig.cur.houseS)
-            if (game.homeWorldsUnlockedCount() > 1) {
-                val st = house.coerceIn(0, 3)
-                val hs = LayoutConfig.cur.houseS
-                drawDoorMat(p, pal, hx + DOOR_X[st] * hs, hz + BODY_D[st] * 0.5f * hs, phase)
+            val g = game.buildGrid(world)
+            drawBuild(p, game, g, world, pal, roof, hx, hz, phase)
+            val door = HomeBuild.doorCell(g)
+            if (door >= 0 && game.homeWorldsUnlockedCount() > 1) {
+                drawDoorMat(
+                    p, pal, HomeBuild.cellX(hx, door % HomeBuild.SX),
+                    HomeBuild.cellZ(hz, door / HomeBuild.SX) + HomeBuild.CELL * 0.5f, phase
+                )
             }
         }
         if (game.homeElVisible(HomeYard.MUSEUM)) {
@@ -322,47 +312,7 @@ object HomeScene3D {
         }
     }
 
-    /** 四坡尖顶：塔楼 / 门廊用，两个方向一起收 */
-    private fun pyramidRoof(
-        p: Painter, y: Float, half: Float, h: Float, top: FloatArray, side: FloatArray, steps: Int = 4
-    ) {
-        for (s in 0 until steps) {
-            val k = s / steps.toFloat()
-            val hw = half * (1f - k * 0.9f)
-            p.part(0f, y + h * (s + 0.5f) / steps, 0f, hw * 2f, h / steps, hw * 2f, if (s == 0) side else top)
-        }
-    }
 
-    /** 圆顶：水下世界的房子不该有尖角 */
-    private fun domeRoof(p: Painter, y: Float, half: Float, h: Float, top: FloatArray, side: FloatArray) {
-        val steps = 5
-        for (s in 0 until steps) {
-            val k = (s + 0.5f) / steps
-            val hw = half * cos(k * 1.35f)
-            p.part(0f, y + h * k, 0f, hw * 2f, h / steps * 1.3f, hw * 2f, if (s < 2) side else top)
-        }
-    }
-
-    private fun windowAt(p: Painter, x: Float, y: Float, z: Float, w: Float, h: Float, frame: FloatArray, glass: FloatArray) {
-        p.part(x, y, z, w + 0.26f, h + 0.26f, 0.14f, frame)
-        p.mode(2)
-        p.part(x, y, z + 0.06f, w, h, 0.12f, glass)
-        p.mode(0)
-        p.part(x, y, z + 0.13f, w + 0.02f, 0.08f, 0.06f, frame)
-        p.part(x, y, z + 0.13f, 0.08f, h + 0.02f, 0.06f, frame)
-    }
-
-    private fun doorAt(p: Painter, x: Float, z: Float, deep: FloatArray, lamp: FloatArray, trim: FloatArray) {
-        p.part(x, DOOR_H * 0.5f, z, DOOR_W + 0.3f, DOOR_H + 0.2f, 0.16f, trim)
-        p.part(x, DOOR_H * 0.5f, z + 0.1f, DOOR_W, DOOR_H, 0.16f, deep)
-        // 门内透出来的一线暖光：明确探出门板，别和门板前脸同深度（会闪）
-        p.mode(2)
-        p.part(x, DOOR_H * 0.42f, z + 0.26f, DOOR_W * 0.55f, DOOR_H * 0.62f, 0.1f, lamp)
-        p.mode(0)
-        p.part(x + DOOR_W * 0.32f, DOOR_H * 0.5f, z + 0.34f, 0.14f, 0.14f, 0.14f, trim)
-        // 门口台阶
-        p.part(x, 0.12f, z + 0.9f, DOOR_W + 0.9f, 0.24f, 1.4f, trim)
-    }
 
     /**
      * 门口地垫 + 一个指向门的箭头。
@@ -390,154 +340,257 @@ object HomeScene3D {
         p.pop()
     }
 
-    /** 三团循环上升的烟：越高越淡越大 */
-    private fun smoke(p: Painter, x: Float, y: Float, z: Float, phase: Float, tint: Int) {
-        p.mode(2)
-        for (i in 0 until 3) {
-            val t = (phase * 0.28f + i * 0.34f) % 1f
-            val s = 0.5f + t * 0.9f
-            p.box(
-                x + sin(phase * 1.2f + i * 2.1f) * 0.5f + t * 0.8f, y + t * 4.2f, z,
-                s, s, s, c(tint, (1f - t) * 0.5f)
-            )
-        }
-        p.mode(0)
+    // ---------- 亲手搭的房子：每一格长成什么样，由它的邻居决定 ----------
+
+    private val ext = IntArray(5)
+    private const val BUILD_DROP_SECS = 0.28f
+    private const val BUILD_SHRINK_SECS = 0.2f
+
+    /** 位置散列：窗开不开、砖色深浅都靠它，同一格每帧结果一致，不会闪 */
+    private fun cellHash(x: Int, y: Int, z: Int, salt: Int): Int {
+        var h = x * 73856093 xor (y * 19349663) xor (z * 83492791) xor (salt * 2654435)
+        h = h xor (h ushr 13)
+        h *= 0x5bd1e995
+        return (h xor (h ushr 15)) and 0x7fffffff
     }
 
-    private fun drawHouse(
-        p: Painter, world: Int, pal: HomePalette.Ramp,
-        style: Int, roof: Int, hx: Float, hz: Float, phase: Float, scale: Float
+    private fun drawBuild(
+        p: Painter, game: Game, g: ByteArray, world: Int, pal: HomePalette.Ramp,
+        roof: Int, hx: Float, hz: Float, phase: Float
     ) {
-        val st = style.coerceIn(0, 3)
-        val hp = HomePalette.house(world, st)
-        val body = c(hp[0]); val bodyD = c(hp[1]); val trim = c(hp[2])
-        val roofArgb = HomePalette.ROOF_CHIPS[roof.coerceIn(0, HomePalette.ROOF_CHIPS.size - 1)]
-        val roofC = c(roofArgb); val roofD = shade(roofArgb, 0.78f)
-        val glass = c(pal.win)
-        val frame = shade(hp[1], 0.9f)
-        val deep = c(pal.deep)
-        val w = BODY_W[st]; val d = BODY_D[st]; val bh = BODY_H[st]
+        val cell = HomeBuild.CELL
+        val half = cell * 0.5f
+        if (HomeBuild.extents(g, ext)) {
+            val cxm = (HomeBuild.cellX(hx, ext[0]) + HomeBuild.cellX(hx, ext[1])) * 0.5f
+            val czm = (HomeBuild.cellZ(hz, ext[3]) + HomeBuild.cellZ(hz, ext[4])) * 0.5f
+            val r = ((ext[1] - ext[0] + 1).coerceAtLeast(ext[4] - ext[3] + 1)) * cell * 0.62f
+            p.shadow(cxm, czm + 0.3f, r)
+        }
+        val door = HomeBuild.doorCell(g)
+        val fxAge = (System.nanoTime() - game.buildFxNanos) / 1e9f
+        val fxCell = game.buildFxCell
 
-        p.shadow(hx, hz + 0.4f, TOTAL_W[st] * 0.55f * scale)
-        p.push(hx, HomeYard.DECK_Y, hz)
-        p.scale(scale, scale, scale)
-        p.mode(0)
-
-        // 主体 + 墙脚
-        p.part(0f, bh * 0.5f, 0f, w, bh, d, body)
-        p.part(0f, 0.18f, 0f, w + 0.35f, 0.36f, d + 0.35f, bodyD)
-        val fz = d * 0.5f
-
-        when (st) {
-            0 -> {
-                // 小木屋：横向木板 + 烟囱炊烟
-                for (r in 0 until 4) {
-                    p.part(0f, 0.5f + r * 0.75f, fz + 0.01f, w - 0.2f, 0.1f, 0.06f, bodyD)
-                }
-                gableRoof(p, bh, w * 0.58f, d * 0.62f, 1.9f, roofC, roofD)
-                p.part(w * 0.3f, bh + 1.5f, -d * 0.18f, 0.7f, 1.9f, 0.7f, bodyD)
-                p.part(w * 0.3f, bh + 2.5f, -d * 0.18f, 0.9f, 0.24f, 0.9f, trim)
-                smoke(p, hx + w * 0.3f, HomeYard.DECK_Y + bh + 3f, hz - d * 0.18f, phase, pal.hi)
-                windowAt(p, -1.5f, bh * 0.62f, fz, 1.1f, 1.0f, frame, glass)
-                doorAt(p, DOOR_X[st], fz, deep, c(pal.win), trim)
-                // 窗下花箱
-                p.part(-1.5f, bh * 0.62f - 0.75f, fz + 0.18f, 1.4f, 0.28f, 0.3f, bodyD)
-                for (k in -1..1) {
-                    p.part(-1.5f + k * 0.42f, bh * 0.62f - 0.5f, fz + 0.18f, 0.2f, 0.24f, 0.2f,
-                        c(HomePalette.flowers(world)[(k + 1) % 3]))
-                }
-            }
-            1 -> {
-                // 砖瓦房：错缝砖纹 + 门口雨棚
-                for (r in 0 until 5) for (col in 0 until 6) {
-                    val bx = -w * 0.5f + 0.55f + col * 1.2f + if (r % 2 == 0) 0f else 0.6f
-                    if (abs(bx - DOOR_X[st]) < 1.2f && r < 2) continue
-                    p.part(bx, 0.55f + r * 0.62f, fz + 0.01f, 0.85f, 0.1f, 0.06f, bodyD)
-                }
-                gableRoof(p, bh, w * 0.57f, d * 0.62f, 2.1f, roofC, roofD)
-                windowAt(p, 1.1f, bh * 0.6f, fz, 1.0f, 1.0f, frame, glass)
-                windowAt(p, 2.9f, bh * 0.6f, fz, 1.0f, 1.0f, frame, glass)
-                doorAt(p, DOOR_X[st], fz, deep, c(pal.win), trim)
-                p.part(DOOR_X[st], DOOR_H + 0.35f, fz + 0.55f, 2.4f, 0.16f, 1.2f, roofC)
-                p.part(DOOR_X[st], DOOR_H + 0.2f, fz + 1.05f, 2.2f, 0.14f, 0.16f, roofD)
-            }
-            2 -> {
-                // 双层小楼：腰线 + 阳台 + 阁楼圆窗
-                p.part(0f, bh * 0.5f, fz + 0.01f, w - 0.1f, 0.16f, 0.06f, bodyD)
-                gableRoof(p, bh, w * 0.56f, d * 0.62f, 1.9f, roofC, roofD)
-                windowAt(p, -2.1f, 1.9f, fz, 1.0f, 1.0f, frame, glass)
-                windowAt(p, 2.1f, 1.9f, fz, 1.0f, 1.0f, frame, glass)
-                windowAt(p, -2.1f, 4.6f, fz, 1.0f, 1.1f, frame, glass)
-                windowAt(p, 2.1f, 4.6f, fz, 1.0f, 1.1f, frame, glass)
-                doorAt(p, DOOR_X[st], fz, deep, c(pal.win), trim)
-                // 阳台
-                p.part(0f, 3.35f, fz + 0.6f, 3.6f, 0.16f, 1.2f, trim)
-                for (k in -3..3) p.part(k * 0.5f, 3.7f, fz + 1.15f, 0.12f, 0.6f, 0.12f, trim)
-                p.part(0f, 4.0f, fz + 1.15f, 3.6f, 0.14f, 0.16f, trim)
-                p.mode(2)
-                p.part(0f, bh + 1.1f, fz - 0.2f, 0.66f, 0.66f, 0.2f, glass)
-                p.mode(0)
-            }
-            else -> {
-                // 城堡：主楼 + 双塔 + 城垛 + 旗
-                p.part(0f, bh + 0.22f, 0f, w + 0.5f, 0.44f, d + 0.5f, bodyD)
-                for (k in -2..2) {
-                    p.part(k * 1.4f, bh + 0.7f, 0f, 0.7f, 0.6f, d + 0.5f, body)
-                }
-                for (side in intArrayOf(-1, 1)) {
-                    p.push(side * (w * 0.5f + 0.9f), 0f, 0.3f)
-                    p.part(0f, 4.1f, 0f, 2.3f, 8.2f, 2.3f, body)
-                    p.part(0f, 8.35f, 0f, 2.8f, 0.4f, 2.8f, bodyD)
-                    pyramidRoof(p, 8.55f, 1.5f, 1.9f, roofC, roofD)
-                    p.mode(2)
-                    p.part(0f, 5.6f, 1.2f, 0.5f, 0.8f, 0.1f, glass)
-                    p.mode(0)
-                    // 塔尖小旗
-                    p.part(0f, 10.9f, 0f, 0.1f, 1.4f, 0.1f, trim)
-                    p.part(0.45f + sin(phase * 2f + side) * 0.05f, 11.3f, 0f, 0.8f, 0.45f, 0.06f, c(pal.accent))
-                    p.pop()
-                }
-                doorAt(p, DOOR_X[st], fz, deep, c(pal.win), trim)
-                p.part(DOOR_X[st], DOOR_H + 0.45f, fz + 0.02f, DOOR_W + 0.3f, 0.5f, 0.16f, trim)
-                windowAt(p, -1.9f, 4.2f, fz, 0.8f, 1.2f, frame, glass)
-                windowAt(p, 1.9f, 4.2f, fz, 0.8f, 1.2f, frame, glass)
-            }
+        // 刚拆掉的那块：在原位缩没，告诉孩子「是这一块没了」
+        if (!game.buildFxAdd && fxCell >= 0 && fxAge < BUILD_SHRINK_SECS) {
+            val k = 1f - fxAge / BUILD_SHRINK_SECS
+            val x = fxCell % HomeBuild.SX
+            val z = (fxCell / HomeBuild.SX) % HomeBuild.SZ
+            val y = fxCell / (HomeBuild.SX * HomeBuild.SZ)
+            val m = HomePalette.buildMaterial(world, game.buildFxMat)
+            p.box(
+                HomeBuild.cellX(hx, x), HomeBuild.cellY(y), HomeBuild.cellZ(hz, z),
+                cell * k, cell * k, cell * k, c(m[0], k)
+            )
         }
 
-        // 世界专属小装点：同一栋房子在六个世界里长出当地的东西
-        when (world) {
-            Game.UNI_WATER -> {
-                domeRoof(p, bh + 0.1f, w * 0.42f, 1.6f, c(pal.light), c(pal.body))
-                for (side in intArrayOf(-1, 1)) {
-                    for (k in 0 until 3) {
-                        val sway = sin(phase * 1.4f + k * 0.8f + side) * (0.1f + k * 0.12f)
-                        p.part(side * (w * 0.5f + 0.7f) + sway, 0.4f + k * 0.7f, fz - 0.6f, 0.22f, 0.7f, 0.22f, c(pal.organic))
+        for (y in 0 until HomeBuild.SY) for (z in 0 until HomeBuild.SZ) for (x in 0 until HomeBuild.SX) {
+            val mat = HomeBuild.at(g, x, y, z)
+            if (mat == 0) continue
+            val up = HomeBuild.filled(g, x, y + 1, z)
+            val down = y == 0 || HomeBuild.filled(g, x, y - 1, z)
+            val nxm = HomeBuild.filled(g, x - 1, y, z)
+            val nxp = HomeBuild.filled(g, x + 1, y, z)
+            val nzm = HomeBuild.filled(g, x, y, z - 1)
+            val nzp = HomeBuild.filled(g, x, y, z + 1)
+            // 六面都被围住的格子一眼都看不见，跳过省下一大截绘制
+            if (up && down && nxm && nxp && nzm && nzp) continue
+
+            val m = HomePalette.buildMaterial(world, mat)
+            val id = HomeBuild.idx(x, y, z)
+            var yOff = 0f
+            var squash = 1f
+            if (game.buildFxAdd && id == fxCell && fxAge < BUILD_DROP_SECS + 0.12f) {
+                // 从头顶落下，落地时压一下：「啪」地一声放上去的手感
+                val t = (fxAge / BUILD_DROP_SECS).coerceIn(0f, 1f)
+                yOff = (1f - t) * (1f - t) * 2.4f
+                if (t >= 1f) squash = 1f - 0.12f * sin(((fxAge - BUILD_DROP_SECS) / 0.12f) * Math.PI.toFloat())
+            }
+            p.push(HomeBuild.cellX(hx, x), HomeBuild.cellY(y) + yOff, HomeBuild.cellZ(hz, z))
+            if (squash != 1f) p.scale(1f + (1f - squash) * 0.5f, squash, 1f + (1f - squash) * 0.5f)
+
+            val tone = 0.93f + (cellHash(x, y, z, 1) % 8) * 0.01f
+            p.part(0f, 0f, 0f, cell, cell, cell, shade(m[0], tone))
+            if (y == 0) {
+                // 墙脚：只在露出来的那几面加一条深色勒脚，相邻格之间不叠
+                if (!nzp) p.part(0f, -half + 0.12f, half + 0.03f, cell, 0.24f, 0.06f, c(m[1]))
+                if (!nzm) p.part(0f, -half + 0.12f, -half - 0.03f, cell, 0.24f, 0.06f, c(m[1]))
+                if (!nxp) p.part(half + 0.03f, -half + 0.12f, 0f, 0.06f, 0.24f, cell, c(m[1]))
+                if (!nxm) p.part(-half - 0.03f, -half + 0.12f, 0f, 0.06f, 0.24f, cell, c(m[1]))
+            }
+
+            // 四个立面：门 / 窗 / 素墙
+            val isDoor = y == 0 && door == x + z * HomeBuild.SX
+            for (dir in 0 until 4) {
+                val open = when (dir) { 0 -> !nzp; 1 -> !nxp; 2 -> !nzm; else -> !nxm }
+                if (!open) continue
+                p.push(0f, 0f, 0f)
+                p.rotY(dir * 90f)
+                if (isDoor && dir == 0) {
+                    buildDoor(p, pal, m, half)
+                } else {
+                    // 楼上的窗按「列」决定（不看 y）：同一竖列要开就层层都开，立面才有秩序；
+                    // 一楼另算、开得少一些，留出墙脚的分量
+                    val roll = if (y == 0) cellHash(x, 0, z, 10 + dir) % 10 else cellHash(x, 99, z, 20 + dir) % 10
+                    if (roll < (if (y == 0) 4 else 6)) buildWindow(p, pal, m, half, roll)
+                    if (HomeBuild.matGlows(mat)) {
+                        p.mode(3)
+                        p.part(0f, -half * 0.35f, half + 0.02f, cell * 0.8f, 0.05f, 0.03f,
+                            c(m[2], 0.55f + 0.25f * sin(phase * 1.6f + x + z)))
+                        p.mode(0)
                     }
                 }
+                p.pop()
             }
-            Game.UNI_SKY -> for (k in 0 until 3) {
-                val fx = (k - 1) * (w * 0.42f)
-                p.part(fx, -0.35f + sin(phase * 0.9f + k) * 0.08f, 0.4f, 2.2f, 0.7f, 2.0f, c(pal.light, 0.85f))
-            }
-            Game.UNI_LAVA -> {
-                p.mode(2)
-                for (k in 0 until 3) {
-                    p.part(-w * 0.4f + k * w * 0.4f, 0.14f, fz + 0.5f, 0.5f, 0.06f, 1.2f, c(pal.accent, 0.8f))
+
+            if (!up) buildTop(p, g, world, pal, m, roof, x, y, z, nxm, nxp, nzm, nzp, half, phase)
+            if (!down) {
+                // 悬空：往下立柱直到碰到下面的块或地面，拱廊就这么长出来了
+                var gap = 0
+                var yy = y - 1
+                while (yy >= 0 && !HomeBuild.filled(g, x, yy, z)) { gap++; yy-- }
+                val len = gap * cell
+                p.part(0f, -half - 0.05f, 0f, cell, 0.1f, cell, c(m[2]))
+                for (sx in intArrayOf(-1, 1)) for (sz in intArrayOf(-1, 1)) {
+                    p.part(sx * (half - 0.14f), -half - len * 0.5f, sz * (half - 0.14f), 0.2f, len, 0.2f, c(m[1]))
                 }
-                p.mode(0)
             }
-            Game.UNI_CANDY -> for (k in 0 until 5) {
-                p.part(-w * 0.4f + k * w * 0.2f, bh + 0.06f, fz - 0.1f, 0.5f, 0.5f, 0.5f, c(pal.hi))
+            p.pop()
+        }
+    }
+
+    /** 顶上空着、但旁边有更高的楼 → 这块顶是露台 */
+    private fun isTerrace(g: ByteArray, x: Int, y: Int, z: Int) =
+        HomeBuild.filled(g, x - 1, y + 1, z) || HomeBuild.filled(g, x + 1, y + 1, z) ||
+            HomeBuild.filled(g, x, y + 1, z - 1) || HomeBuild.filled(g, x, y + 1, z + 1)
+
+    private fun buildWindow(p: Painter, pal: HomePalette.Ramp, m: IntArray, half: Float, roll: Int) {
+        val tall = roll % 3 == 0
+        val w = 0.56f
+        val h = if (tall) 0.78f else 0.56f
+        p.part(0f, 0.04f, half + 0.03f, w + 0.18f, h + 0.18f, 0.08f, c(m[2]))
+        p.mode(2)
+        p.part(0f, 0.04f, half + 0.07f, w, h, 0.06f, c(pal.win))
+        p.mode(0)
+        p.part(0f, 0.04f, half + 0.11f, w + 0.02f, 0.06f, 0.04f, c(m[2]))
+        p.part(0f, 0.04f, half + 0.11f, 0.06f, h + 0.02f, 0.04f, c(m[2]))
+        // 窗台
+        p.part(0f, 0.04f - h * 0.5f - 0.12f, half + 0.1f, w + 0.3f, 0.08f, 0.16f, c(m[1]))
+    }
+
+    private fun buildDoor(p: Painter, pal: HomePalette.Ramp, m: IntArray, half: Float) {
+        val dh = 0.98f
+        val dw = 0.66f
+        val by = -half + dh * 0.5f
+        p.part(0f, by + 0.04f, half + 0.03f, dw + 0.18f, dh + 0.1f, 0.08f, c(m[2]))
+        p.part(0f, by, half + 0.06f, dw, dh, 0.08f, c(pal.deep))
+        p.mode(2)
+        p.part(0f, by - 0.04f, half + 0.12f, dw * 0.5f, dh * 0.6f, 0.04f, c(pal.win))
+        p.mode(0)
+        p.part(dw * 0.3f, by, half + 0.15f, 0.08f, 0.08f, 0.08f, c(m[2]))
+        p.part(0f, -half + 0.06f, half + 0.4f, dw + 0.5f, 0.12f, 0.7f, c(m[1]))
+    }
+
+    /**
+     * 屋顶：
+     *  - 旁边有更高的楼 → 露台（平板 + 栏杆），二层楼自然长出阳台
+     *  - 同一高度左右 / 前后还有屋顶 → 沿那个方向起一道山脊，一排连起来就是长坡顶
+     *  - 孤零零一根 → 尖顶；三层以上的尖顶插旗，就是塔
+     */
+    private fun buildTop(
+        p: Painter, g: ByteArray, world: Int, pal: HomePalette.Ramp, m: IntArray, roof: Int,
+        x: Int, y: Int, z: Int, nxm: Boolean, nxp: Boolean, nzm: Boolean, nzp: Boolean,
+        half: Float, phase: Float
+    ) {
+        val cell = HomeBuild.CELL
+        val roofArgb = HomePalette.ROOF_CHIPS[roof.coerceIn(0, HomePalette.ROOF_CHIPS.size - 1)]
+        if (isTerrace(g, x, y, z)) {
+            p.part(0f, half + 0.05f, 0f, cell, 0.1f, cell, c(m[2]))
+            val rail = c(m[1])
+            if (!nzp) p.part(0f, half + 0.26f, half - 0.04f, cell, 0.06f, 0.06f, rail)
+            if (!nzm && !HomeBuild.filled(g, x, y + 1, z - 1)) p.part(0f, half + 0.26f, -half + 0.04f, cell, 0.06f, 0.06f, rail)
+            if (!nxp && !HomeBuild.filled(g, x + 1, y + 1, z)) p.part(half - 0.04f, half + 0.26f, 0f, 0.06f, 0.06f, cell, rail)
+            if (!nxm && !HomeBuild.filled(g, x - 1, y + 1, z)) p.part(-half + 0.04f, half + 0.26f, 0f, 0.06f, 0.06f, cell, rail)
+            for (sx in intArrayOf(-1, 1)) for (sz in intArrayOf(-1, 1)) {
+                p.part(sx * (half - 0.04f), half + 0.16f, sz * (half - 0.04f), 0.08f, 0.24f, 0.08f, rail)
             }
-            Game.UNI_SPACE -> {
-                p.part(w * 0.36f, bh + 1.4f, -d * 0.2f, 0.1f, 2.6f, 0.1f, c(pal.light))
-                p.mode(3)
-                p.part(w * 0.36f, bh + 2.8f, -d * 0.2f, 0.28f, 0.28f, 0.28f,
-                    c(pal.accent, 0.6f + 0.4f * sin(phase * 3f)))
-                p.mode(0)
+            return
+        }
+        fun topAt(xx: Int, zz: Int) = HomeBuild.filled(g, xx, y, zz) && !HomeBuild.filled(g, xx, y + 1, zz) &&
+            !isTerrace(g, xx, y, zz)
+        fun run(dx: Int, dz: Int): Int {
+            var n = 0
+            var xx = x + dx; var zz = z + dz
+            while (topAt(xx, zz)) { n++; xx += dx; zz += dz }
+            return n
+        }
+        val xNeg = run(-1, 0); val xPos = run(1, 0)
+        val zNeg = run(0, -1); val zPos = run(0, 1)
+        val runX = xNeg + xPos + 1
+        val runZ = zNeg + zPos + 1
+        if (runX > 1 || runZ > 1) {
+            // 一整片屋顶起一道山脊：沿长边走脊，横截面按这一格在整片里的位置取高度，
+            // 一排格子拼起来就是一个完整的人字坡，而不是每格各起一道小脊
+            val alongX = runX >= runZ
+            val across = if (alongX) runZ else runX
+            val before = if (alongX) zNeg else xNeg
+            val peak = 0.45f + 0.42f * across
+            val ePos = if (alongX) (if (xPos > 0) 0f else 0.14f) else (if (zPos > 0) 0f else 0.14f)
+            val eNeg = if (alongX) (if (xNeg > 0) 0f else 0.14f) else (if (zNeg > 0) 0f else 0.14f)
+            val runLen = cell + ePos + eNeg
+            val runOff = (ePos - eNeg) * 0.5f
+            val slices = 4
+            val sw = cell / slices
+            val halfSpan = across * 0.5f + 0.12f
+            for (k in 0 until slices) {
+                val u = before + (k + 0.5f) / slices          // 在整片里的位置（格）
+                val hgt = (peak * (1f - abs(u - across * 0.5f) / halfSpan)).coerceAtLeast(0.12f)
+                // 最外一片多挑出一点檐
+                val edge = (before == 0 && k == 0) || (before == across - 1 && k == slices - 1)
+                val w = sw + if (edge) 0.14f else 0f
+                val o = -half + sw * (k + 0.5f) + if (edge) (if (k == 0) -0.07f else 0.07f) else 0f
+                val wall = c(m[1])
+                val cap = c(roofArgb)
+                if (alongX) {
+                    p.part(runOff, half + (hgt - 0.12f) * 0.5f, o, runLen - 0.02f, hgt - 0.12f, w - 0.002f, wall)
+                    p.part(runOff, half + hgt - 0.06f, o, runLen, 0.14f, w, cap)
+                } else {
+                    p.part(o, half + (hgt - 0.12f) * 0.5f, runOff, w - 0.002f, hgt - 0.12f, runLen - 0.02f, wall)
+                    p.part(o, half + hgt - 0.06f, runOff, w, 0.14f, runLen, cap)
+                }
+            }
+            if (world == Game.UNI_CANDY) {
+                p.part(0f, half + 0.04f, 0f, cell + 0.2f, 0.08f, cell + 0.2f, c(pal.hi))
+            }
+            return
+        }
+        val steps = 4
+        // 孤立的一根：尖顶；越高越尖，三层以上插旗
+        val tall = y >= 2
+        val h = if (tall) 1.7f else 0.95f
+        if (world == Game.UNI_WATER) {
+            for (s in 0 until 4) {
+                val k = (s + 0.5f) / 4f
+                val hw = (half + 0.12f) * cos(k * 1.35f)
+                p.part(0f, half + h * 0.7f * k, 0f, hw * 2f, h * 0.7f / 4f * 1.3f, hw * 2f,
+                    if (s < 2) shade(roofArgb, 0.85f) else c(roofArgb))
+            }
+        } else {
+            for (s in 0 until steps) {
+                val k = s / steps.toFloat()
+                val hw = (half + 0.14f) * (1f - k * 0.88f)
+                p.part(0f, half + h * (s + 0.5f) / steps, 0f, hw * 2f, h / steps, hw * 2f,
+                    if (s == 0) shade(roofArgb, 0.82f) else c(roofArgb))
             }
         }
-        p.pop()
+        if (y >= 3) {
+            p.part(0f, half + h + 0.5f, 0f, 0.07f, 1.0f, 0.07f, c(m[2]))
+            p.part(0.3f + sin(phase * 2f + x) * 0.04f, half + h + 0.82f, 0f, 0.52f, 0.3f, 0.04f, c(pal.accent))
+        }
+        if (world == Game.UNI_SPACE && y >= 2) {
+            p.mode(3)
+            p.part(0f, half + h + 0.2f, 0f, 0.18f, 0.18f, 0.18f, c(pal.accent, 0.6f + 0.4f * sin(phase * 3f + y)))
+            p.mode(0)
+        }
     }
 
     // ---------- 藏馆：藏品门廊 + 荣誉侧翼 ----------
@@ -750,9 +803,12 @@ object HomeScene3D {
             }
             else -> {  // 彩旗：从房檐拉到院角的一串
                 val flags = HomePalette.flags(world)
-                val ax = hx - BODY_W[house.coerceIn(0, 3)] * 0.5f
-                val ay = HomeYard.DECK_Y + BODY_H[house.coerceIn(0, 3)] + 0.6f
-                val az = hz + BODY_D[house.coerceIn(0, 3)] * 0.5f
+                val g = game.buildGrid(world)
+                if (!HomeBuild.extents(g, ext)) return
+                // 从房子左前角的檐口拉出去
+                val ax = HomeBuild.cellX(hx, ext[0]) - HomeBuild.CELL * 0.5f
+                val ay = HomeYard.DECK_Y + (ext[2] + 1) * HomeBuild.CELL + 0.2f
+                val az = HomeBuild.cellZ(hz, ext[4]) + HomeBuild.CELL * 0.5f
                 val bx = -HomeYard.HALF_X + 1.5f
                 val by = HomeYard.DECK_Y + 2.6f
                 val bz = HomeYard.FRONT_Z - 2f
@@ -1018,16 +1074,26 @@ object HomeScene3D {
         when (id) {
             HomeYard.HOUSE -> {
                 if (!game.homeElVisible(HomeYard.HOUSE)) return false
-                // 只裹住墙体：包围盒若含屋顶与塔尖，那一大片天空点下去会莫名弹出「翻修房子」
-                set(out, hx, HomeYard.DECK_Y + BODY_H[st] * 0.5f * hs, hz,
-                    BODY_W[st] * 0.55f * hs, BODY_H[st] * 0.5f * hs, BODY_D[st] * 0.5f * hs)
+                val g = game.buildGrid()
+                if (!HomeBuild.extents(g, ext)) return false
+                val cell = HomeBuild.CELL
+                val x0 = HomeBuild.cellX(hx, ext[0]) - cell * 0.5f
+                val x1 = HomeBuild.cellX(hx, ext[1]) + cell * 0.5f
+                val z0 = HomeBuild.cellZ(hz, ext[3]) - cell * 0.5f
+                val z1 = HomeBuild.cellZ(hz, ext[4]) + cell * 0.5f
+                val top = (ext[2] + 1) * cell
+                set(out, (x0 + x1) * 0.5f, HomeYard.DECK_Y + top * 0.5f, (z0 + z1) * 0.5f,
+                    (x1 - x0) * 0.5f, top * 0.5f, (z1 - z0) * 0.5f)
             }
             HomeYard.DOOR -> {
-                if (!game.homeElVisible(HomeYard.HOUSE)) return false
-                // 热区比门板本身宽一圈、并向前吃掉门口地垫那一块：门在远处只有十几个像素，
-                // 手指偏一点就落到房子上，「点门换世界」就成了「翻修一下房子」。
-                set(out, hx + DOOR_X[st] * hs, HomeYard.DECK_Y + DOOR_H * 0.55f * hs,
-                    hz + (BODY_D[st] * 0.5f + 1.1f) * hs, DOOR_W * 1.0f * hs, DOOR_H * 0.75f * hs, 1.5f)
+                // 只有一个家时门后没别处可去，整栋都归「搭房子」；
+                // 有了第二个家，门才单独成为入口
+                if (!game.homeElVisible(HomeYard.HOUSE) || game.homeWorldsUnlockedCount() < 2) return false
+                val door = HomeBuild.doorCell(game.buildGrid())
+                if (door < 0) return false
+                // 热区向前吃掉门口地垫，但不往墙上长：小木屋只有三格宽，门的热区一宽就把整面墙吞了
+                set(out, HomeBuild.cellX(hx, door % HomeBuild.SX), HomeYard.DECK_Y + 0.45f,
+                    HomeBuild.cellZ(hz, door / HomeBuild.SX) + HomeBuild.CELL * 0.5f + 0.8f, 0.55f, 0.45f, 0.8f)
             }
             HomeYard.MUSEUM -> {
                 if (!game.homeElVisible(HomeYard.MUSEUM)) return false

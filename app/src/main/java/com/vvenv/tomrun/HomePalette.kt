@@ -184,6 +184,35 @@ object HomePalette {
     }
 
     /** 房屋材质 [style] = 主墙 / 暗部 / 点缀。四档房子共用 ramp，靠明度分级 */
+    /**
+     * 搭房子的材料色：主体 / 暗面 / 镶边。
+     * 1..4 是孩子一眼认得的木 / 砖 / 灰泥 / 石，各自固定一个颜色，只往本世界的主色靠两成，
+     * 所以在哪个世界都还是「红砖」，又不会跳出那个世界的调子；
+     * 5..9 是五个宇宙的特产，颜色固定，搬到别的世界也认得出是从哪儿带回来的。
+     */
+    fun buildMaterial(world: Int, mat: Int): IntArray = when (mat) {
+        in 1..4 -> {
+            val base = BUILD_BASE[mat - 1]
+            val body = mix(base, of(world).body, 0.18f)
+            intArrayOf(body, shade(body, 0.78f), BUILD_TRIM[mat - 1])
+        }
+        5 -> intArrayOf(0xFFE98A7A.toInt(), 0xFFB85E55.toInt(), 0xFFFFD6C2.toInt())   // 珊瑚
+        6 -> intArrayOf(0xFFEAF2FA.toInt(), 0xFFB9CBE0.toInt(), 0xFFFFFFFF.toInt())   // 云絮
+        7 -> intArrayOf(0xFF3A2E40.toInt(), 0xFF241C2A.toInt(), 0xFFFF8A3D.toInt())   // 黑曜石（镶边是熔岩缝）
+        8 -> intArrayOf(0xFFF7A8C8.toInt(), 0xFFD97BA4.toInt(), 0xFFB8F0D8.toInt())   // 糖块
+        else -> intArrayOf(0xFF7FD8F0.toInt(), 0xFF4BA3C7.toInt(), 0xFFE6FBFF.toInt()) // 晶体
+    }
+
+    private val BUILD_BASE = intArrayOf(
+        0xFFB07A45.toInt(),  // 木
+        0xFFC0573F.toInt(),  // 砖
+        0xFFE8DCC0.toInt(),  // 灰泥
+        0xFF9C9A92.toInt()   // 石
+    )
+    private val BUILD_TRIM = intArrayOf(
+        0xFFF2DDB0.toInt(), 0xFFF0E2C8.toInt(), 0xFF8A6A48.toInt(), 0xFFE6E2D6.toInt()
+    )
+
     fun house(world: Int, style: Int): IntArray {
         val p = of(world)
         return when (style.coerceIn(0, 3)) {

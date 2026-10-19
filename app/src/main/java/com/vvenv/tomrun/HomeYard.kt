@@ -178,6 +178,27 @@ object HomeYard {
         return true
     }
 
+    /**
+     * 屏幕点 → 世界里的一条射线（近点、远点各 3 个数）。搭房子靠它找「点中了哪一格的哪一面」。
+     */
+    @Synchronized fun screenRay(
+        px: Float, py: Float, viewW: Float, viewH: Float, near: FloatArray, far: FloatArray
+    ): Boolean {
+        if (!hasFrame || viewW <= 0f || viewH <= 0f) return false
+        val ndcX = px / viewW * 2f - 1f
+        val ndcY = 1f - py / viewH * 2f
+        for (k in 0..1) {
+            rayTmp[0] = ndcX; rayTmp[1] = ndcY; rayTmp[2] = if (k == 0) -1f else 1f; rayTmp[3] = 1f
+            Matrix.multiplyMV(rayTmp2, 0, vpInv, 0, rayTmp, 0)
+            if (rayTmp2[3] == 0f) return false
+            val out = if (k == 0) near else far
+            out[0] = rayTmp2[0] / rayTmp2[3]
+            out[1] = rayTmp2[1] / rayTmp2[3]
+            out[2] = rayTmp2[2] / rayTmp2[3]
+        }
+        return true
+    }
+
     // ---------- 庭院猫（AI 在 HudView，位置在这儿） ----------
     @Volatile var catX = -3.5f
     @Volatile var catZ = 4.2f
@@ -209,6 +230,29 @@ object HomeYard {
     const val CAM_REST = 0
     const val CAM_HOUSE = 1
     const val CAM_CAT = 2
+    /** 搭房子：绕着房子转的环绕机位，角度由 [buildYaw] 给 */
+    const val CAM_BUILD = 3
+    /** 搭房子时的环绕角（弧度，0 = 正面），左右滑动改它 */
+    @Volatile var buildYaw = 0f
+    /** 搭房子时的俯仰（弧度，越大越从上往下看），上下滑动改它 */
+    @Volatile var buildPitch = BUILD_PITCH_DEFAULT
+    /** 搭房子时的远近倍数，双指缩放 */
+    @Volatile var buildZoom = 1f
+    const val BUILD_PITCH_DEFAULT = 0.5f
+    const val BUILD_PITCH_MIN = 0.12f
+    const val BUILD_PITCH_MAX = 1.2f
+    const val BUILD_ZOOM_MIN = 0.55f
+    const val BUILD_ZOOM_MAX = 1.5f
+
+    /** 逛院子时镜头的平移（世界单位）与远近，拖空地 / 双指缩放改它 */
+    @Volatile var panX = 0f
+    @Volatile var panZ = 0f
+    @Volatile var yardZoom = 1f
+    const val PAN_X_MAX = 9f
+    const val PAN_Z_MIN = -12f
+    const val PAN_Z_MAX = 6f
+    const val YARD_ZOOM_MIN = 0.5f
+    const val YARD_ZOOM_MAX = 1.2f
     /** 选物时镜头让开：0 静物机位，1 看房子，2 看猫 */
     @Volatile var camFocus = CAM_REST
     /** 0 静物机位 ↔ 1 看选中的主体，进门时清零 */
@@ -229,5 +273,15 @@ object HomeYard {
         camFocus = CAM_REST
         camBlend = 0f
         doorHint = 0f
+        resetView()
+    }
+
+    fun resetView() {
+        buildYaw = 0f
+        buildPitch = BUILD_PITCH_DEFAULT
+        buildZoom = 1f
+        panX = 0f
+        panZ = 0f
+        yardZoom = 1f
     }
 }
