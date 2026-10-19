@@ -3143,7 +3143,7 @@ class HudView(context: Context, private val game: Game) : View(context) {
         if (buildMode || homeSubView != HOME_SUB_SCENE || homeEditing) return
         val n = HomeYard.displays(dispIds, dispXs, dispYs, dispSs)
         for (i in 0 until n) {
-            val half = 20f * s * dispSs[i]
+            val half = 24f * s * dispSs[i]
             val cx = dispXs[i] * w
             val cy = dispYs[i] * h - half - 4f * s
             RelicIcons.draw(

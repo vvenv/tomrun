@@ -264,8 +264,14 @@ object HomeYard {
 
     /** 逛院子时镜头的平移（世界单位）与远近，拖空地 / 双指缩放改它 */
     @Volatile var panX = 0f
-    @Volatile var panZ = 0f
-    @Volatile var yardZoom = 1f
+    @Volatile var panZ = PAN_Z_DEFAULT
+    @Volatile var yardZoom = YARD_ZOOM_DEFAULT
+    /**
+     * 进门时的机位：比整院全景拉近、往房子那边挪一点。
+     * 房子是自己搭的、上面还摆着文物，它才是这一屏的主角；院子前排的泳池和信箱拖一下就看得到。
+     */
+    const val YARD_ZOOM_DEFAULT = 0.62f
+    const val PAN_Z_DEFAULT = 0f
     const val PAN_X_MAX = 9f
     const val PAN_Z_MIN = -12f
     const val PAN_Z_MAX = 6f
@@ -299,7 +305,7 @@ object HomeYard {
         buildPitch = BUILD_PITCH_DEFAULT
         buildZoom = 1f
         panX = 0f
-        panZ = 0f
-        yardZoom = 1f
+        panZ = PAN_Z_DEFAULT
+        yardZoom = YARD_ZOOM_DEFAULT
     }
 }

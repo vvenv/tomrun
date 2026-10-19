@@ -629,13 +629,14 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
             focusLookZ = hz * 0.35f - 1.5f
         }
         val focusEyeX = if (pose == HomeYard.CAM_BUILD) buildEye[0] else sway * 0.6f
-        // 逛院子的机位：拖空地平移、双指拉远拉近（沿视线方向）
+        // 逛院子的机位：盯着房子（玩家把房子拖到哪儿就跟到哪儿），视点落在房前一点，
+        // 前景留一截院子；拖空地平移、双指沿视线拉远拉近
         val zr = HomeYard.yardZoom
-        val restLookX = sway * 0.4f + HomeYard.panX
-        val restLookZ = -4f + HomeYard.panZ
+        val restLookX = sway * 0.4f + hx + HomeYard.panX
+        val restLookZ = hz + 2.2f + HomeYard.panZ
         val restEyeX = restLookX + (sway - sway * 0.4f) * zr
         val restEyeYz = restLookY + (restEyeY - restLookY) * zr
-        val restEyeZz = restLookZ + (restEyeZ + 4f) * zr
+        val restEyeZz = restLookZ + (restEyeZ + 4f) * zr   // 视线方向沿用原全景机位：(0, 9.5, 27)
         val eyeX = restEyeX * (1f - t) + focusEyeX * t
         val eyeY = restEyeYz + (focusEyeY - restEyeYz) * t
         val eyeZ = restEyeZz + (focusEyeZ - restEyeZz) * t
