@@ -9,12 +9,12 @@ import android.opengl.Matrix
  * 家页面从 Canvas 2D 改成与跑酷同一套体素 3D 之后，画面由 [GameRenderer] 在 GL 线程出，
  * 交互仍然由 [HudView] 在 UI 线程处理——两边必须对同一份坐标说话，这里就是那份坐标：
  *
- *  - **摆放**：每件东西有一个世界坐标锚点 (x, z)，玩家拖动只改相对锚点的偏移
- *    （存在 [PlayerHomeLayout]，单位就是世界单位，不再是屏幕 s 单位）。
+ *  - **摆放**：每件东西有一个固定的世界坐标锚点 (x, z)。院子不让拖：场地居中不动，
+ *    摆件守在场地两侧，搭房子的时候什么都不会挪位。
  *  - **命中**：GL 线程每帧把每件东西的包围盒投影成屏幕矩形放进 [rects]，HudView 直接拿来
  *    做热区——热区永远跟着 3D 里看到的位置走，不用在 UI 侧复刻一遍相机。
- *  - **拖动**：GL 线程同时发布逆 view-projection 矩阵，UI 侧用 [screenToGround] 把手指
- *    打到 y=0 的地面上，换算成世界坐标。屏幕上拖多远、院子里就走多远，透视自动生效。
+ *  - **落点**：GL 线程同时发布逆 view-projection 矩阵，UI 侧用 [screenToGround] / [screenRay]
+ *    把手指打到地面或房子上，换算成世界坐标（追手的猫、搭房子都靠它）。
  *  - **庭院猫 / 蝴蝶**：AI 仍在 HudView（它要弹提示、发金币、接手势），位置写进这里给渲染读。
  *
  * y 轴向上、z 轴朝镜头为正（与跑酷一致：镜头在 +z 往 -z 看），房屋在院子深处。
@@ -101,13 +101,9 @@ object HomeYard {
         else -> 0f
     }
 
-    /** 玩家偏移之后的最终位置 */
-    fun posX(game: Game, id: String) = anchorX(id) + game.homeYardOffX(id)
-    fun posZ(game: Game, id: String) = anchorZ(id) + game.homeYardOffZ(id)
-
-    /** 拖动夹取范围：别把东西拖出台地 */
-    fun clampX(v: Float) = v.coerceIn(-13.5f, 15.5f)
-    fun clampZ(v: Float) = v.coerceIn(-16f, 9f)
+    /** 院子是固定布局（不能拖），位置就是锚点 */
+    fun posX(id: String) = anchorX(id)
+    fun posZ(id: String) = anchorZ(id)
 
     // ---------- 跨线程：投影出来的屏幕热区 ----------
     /** 每个元素 4 个数：l, t, r, b，归一化到 0~1（原点左上）；宽<=0 表示这帧不可见 */
@@ -257,7 +253,7 @@ object HomeYard {
     const val BUILD_ZOOM_MIN = 0.55f
     const val BUILD_ZOOM_MAX = 1.5f
 
-    /** 逛院子时镜头的平移（世界单位）与远近，拖空地 / 双指缩放改它 */
+    /** 逛院子时镜头的平移（世界单位）与远近，拖动 / 双指缩放改它 */
     @Volatile var panX = 0f
     @Volatile var panZ = PAN_Z_DEFAULT
     @Volatile var yardZoom = YARD_ZOOM_DEFAULT

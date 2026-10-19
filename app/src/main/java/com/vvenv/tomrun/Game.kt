@@ -677,11 +677,6 @@ class Game {
     @Volatile var hasChosenCharacterName = false
         private set
 
-    /** 玩家自定义家园布局偏移（每个世界的家一套，横竖屏各一份） */
-    private val homeLayoutPortrait = Array(UNIVERSE_COUNT) { PlayerHomeLayout.Set() }
-    private val homeLayoutLandscape = Array(UNIVERSE_COUNT) { PlayerHomeLayout.Set() }
-    private var homeLayoutPortraitActive = true
-
     // 菜单
     @Volatile var menuPanel = PANEL_MAIN
     @Volatile var shopBrowseColor = 0
@@ -883,8 +878,10 @@ class Game {
         }
         buildShapes = p.getInt("buildShapes", 0)
         migrateBuildToEmptyPlots(p)
-        loadHomePlayerLayout(p.getString("homePlayerLayout", null) ?: p.getString("yardPlayerLayout", null))
-        migrateHomeLayoutRev(p)
+        // 院子不再能拖：玩家挪过的位置、藏起来的东西一律作废，回到固定布局
+        if (p.contains("homePlayerLayout") || p.contains("yardPlayerLayout")) {
+            p.edit().remove("homePlayerLayout").remove("yardPlayerLayout").remove("homeLayoutRev").apply()
+        }
         homeWorld = p.getInt("homeWorld", UNI_MEADOW).coerceIn(0, UNIVERSE_COUNT - 1)
         if (!homeWorldUnlocked(homeWorld)) homeWorld = UNI_MEADOW
         homeBrowseHouse = houseStyle
@@ -1076,15 +1073,6 @@ class Game {
 
     fun homeHouseName(i: Int) = HomeWorldContent.houseName(homeWorld, i)
 
-    fun selectHomeLayoutOrientation(portrait: Boolean) {
-        homeLayoutPortraitActive = portrait
-    }
-
-    fun homeLayout(): PlayerHomeLayout.Set {
-        val w = homeWorld.coerceIn(0, UNIVERSE_COUNT - 1)
-        return if (homeLayoutPortraitActive) homeLayoutPortrait[w] else homeLayoutLandscape[w]
-    }
-
     /** 草原家默认拥有；其他世界的家在跑酷中穿越到过该世界即解锁 */
     fun homeWorldUnlocked(i: Int) = i == UNI_MEADOW || seenUniverse(i)
 
@@ -1262,159 +1250,9 @@ class Game {
         return UNIVERSE_NAMES[w]
     }
 
-    /**
-     * 庭院元素相对默认锚点的玩家偏移，**单位是世界单位**（x 向右、z 朝镜头）。
-     *
-     * 家页面改成 3D 之后这批数字换了坐标系：原来是屏幕 s 单位的平移量，现在是院子里的
-     * 米数。存档字段沿用（`gardenX/gardenY` 这些名字里的 Y 现在读作 Z），靠
-     * [migrateHomeLayoutRev] 的 rev 3 把旧值清零一次——旧单位换到新坐标系是纯噪声，
-     * 一个 -232 会把花坛甩到雾里去。
-     */
-    fun homeYardOffX(id: String): Float {
-        val po = homeLayout()
-        return when (id) {
-            HomeYard.GARDEN -> po.gardenX
-            HomeYard.MAILBOX -> po.mailboxX
-            HomeYard.SWING -> po.swingX
-            HomeYard.PERCH -> po.perchX
-            HomeYard.TELESCOPE -> po.telescopeX
-            HomeYard.POOL -> po.poolDX
-            HomeYard.HOUSE -> po.houseDX
-            HomeYard.CAT -> po.catDX
-            else -> 0f
-        }
-    }
+    fun homeNameDX() = LayoutConfig.cur.nameDX
+    fun homeNameDY() = LayoutConfig.cur.nameDY
 
-    fun homeYardOffZ(id: String): Float {
-        val po = homeLayout()
-        return when (id) {
-            HomeYard.GARDEN -> po.gardenY
-            HomeYard.FENCE -> po.fenceY
-            HomeYard.MAILBOX -> po.mailboxY
-            HomeYard.SWING -> po.swingY
-            HomeYard.PERCH -> po.perchY
-            HomeYard.TELESCOPE -> po.telescopeY
-            HomeYard.POOL -> po.poolDY
-            HomeYard.HOUSE -> po.houseDY
-            HomeYard.CAT -> po.catDY
-            else -> 0f
-        }
-    }
-
-    fun setHomeYardOff(id: String, x: Float, z: Float) {
-        val po = homeLayout()
-        when (id) {
-            HomeYard.GARDEN -> { po.gardenX = x; po.gardenY = z }
-            HomeYard.FENCE -> po.fenceY = z
-            HomeYard.MAILBOX -> { po.mailboxX = x; po.mailboxY = z }
-            HomeYard.SWING -> { po.swingX = x; po.swingY = z }
-            HomeYard.PERCH -> { po.perchX = x; po.perchY = z }
-            HomeYard.TELESCOPE -> { po.telescopeX = x; po.telescopeY = z }
-            HomeYard.POOL -> { po.poolDX = x; po.poolDY = z }
-            HomeYard.HOUSE -> { po.houseDX = x; po.houseDY = z }
-            HomeYard.CAT -> { po.catDX = x; po.catDY = z }
-        }
-    }
-
-    fun homeNameDX() = LayoutConfig.cur.nameDX + homeLayout().nameDX
-    fun homeNameDY() = LayoutConfig.cur.nameDY + homeLayout().nameDY
-    fun homeEnergyDX() = LayoutConfig.cur.energyDX + homeLayout().energyDX
-    fun homeEnergyDY() = LayoutConfig.cur.energyDY + homeLayout().energyDY
-    fun homeRewardDX() = LayoutConfig.cur.rewardDX + homeLayout().rewardDX
-    fun homeRewardDY() = LayoutConfig.cur.rewardDY + homeLayout().rewardDY
-    fun homeUiDX(id: String) = homeLayout().uiDX[id] ?: 0f
-    fun homeUiDY(id: String) = homeLayout().uiDY[id] ?: 0f
-
-    fun homeElVisible(id: String) = id !in homeLayout().hidden
-
-    fun setHomeElVisible(id: String, visible: Boolean) {
-        val po = homeLayout()
-        if (visible) po.hidden.remove(id) else po.hidden.add(id)
-        persistHomeLayout()
-    }
-
-    fun toggleHomeElVisible(id: String): Boolean {
-        val on = !homeElVisible(id)
-        setHomeElVisible(id, on)
-        return on
-    }
-
-    fun showAllHomeElements() {
-        homeLayout().hidden.clear()
-        persistHomeLayout()
-    }
-
-    fun saveHomeLayout() = persistHomeLayout()
-
-    private fun loadHomePlayerLayout(json: String?) {
-        if (json.isNullOrBlank()) return
-        runCatching {
-            val root = org.json.JSONObject(json)
-            // 旧版顶层 portrait/landscape 即草原家布局
-            PlayerHomeLayout.fromJson(root.optJSONObject("portrait"), homeLayoutPortrait[UNI_MEADOW])
-            PlayerHomeLayout.fromJson(root.optJSONObject("landscape"), homeLayoutLandscape[UNI_MEADOW])
-            root.optJSONObject("worlds")?.let { worlds ->
-                for (i in 0 until UNIVERSE_COUNT) {
-                    worlds.optJSONObject(i.toString())?.let { wj ->
-                        PlayerHomeLayout.fromJson(wj.optJSONObject("portrait"), homeLayoutPortrait[i])
-                        PlayerHomeLayout.fromJson(wj.optJSONObject("landscape"), homeLayoutLandscape[i])
-                    }
-                }
-            }
-        }
-    }
-
-    /**
-     * 家园布局的一次性迁移。
-     *
-     * rev 2：藏品馆与荣誉墙合成一栋「藏馆」，锚点从「房屋左后方」改到了右后方。玩家早先
-     * 对藏品馆的位移是相对旧锚点存的，换到新锚点后方向完全不对（会把藏馆推出屏幕），
-     * 所以这里把它清零一次，让藏馆回到新的默认位置。
-     *
-     * rev 3：家页面从 Canvas 2D 换成体素 3D，所有偏移的单位从「屏幕 s 像素」变成
-     * 「院子里的世界单位」（见 [homeYardOffX]）。一个旧的 -232 在新坐标系里等于把花坛
-     * 扔进两百米外的雾里，没有任何换算能救——整批清零，让每件东西回到新的默认锚点。
-     */
-    private fun migrateHomeLayoutRev(p: android.content.SharedPreferences) {
-        if (p.getInt("homeLayoutRev", 0) >= 3) return
-        for (i in 0 until UNIVERSE_COUNT) {
-            for (set in arrayOf(homeLayoutPortrait[i], homeLayoutLandscape[i])) {
-                set.gardenX = 0f; set.gardenY = 0f
-                set.fenceY = 0f
-                set.mailboxX = 0f; set.mailboxY = 0f
-                set.swingX = 0f; set.swingY = 0f
-                set.perchX = 0f; set.perchY = 0f
-                set.telescopeX = 0f; set.telescopeY = 0f
-                set.poolDX = 0f; set.poolDY = 0f
-                set.houseDX = 0f; set.houseDY = 0f
-                set.catDX = 0f; set.catDY = 0f
-                set.hidden.remove("honorLabel")
-            }
-        }
-        p.edit().putInt("homeLayoutRev", 3).apply()
-        persistHomeLayout()
-    }
-
-    private fun persistHomeLayout() {
-        // 顶层仍写草原家，旧版本读到的行为不变；各世界的家写进 worlds
-        val worlds = org.json.JSONObject()
-        for (i in 0 until UNIVERSE_COUNT) {
-            worlds.put(
-                i.toString(),
-                org.json.JSONObject()
-                    .put("portrait", PlayerHomeLayout.toJson(homeLayoutPortrait[i]))
-                    .put("landscape", PlayerHomeLayout.toJson(homeLayoutLandscape[i]))
-            )
-        }
-        val root = org.json.JSONObject()
-            .put("portrait", PlayerHomeLayout.toJson(homeLayoutPortrait[UNI_MEADOW]))
-            .put("landscape", PlayerHomeLayout.toJson(homeLayoutLandscape[UNI_MEADOW]))
-            .put("worlds", worlds)
-        prefs?.edit()
-            ?.putString("homePlayerLayout", root.toString())
-            ?.putString("yardPlayerLayout", root.toString())
-            ?.apply()
-    }
     fun seenUniverse(i: Int) = (seenMask and (1 shl i)) != 0
     fun codexComplete() = universesSeen >= UNIVERSE_COUNT
 
@@ -3554,7 +3392,6 @@ class Game {
             ?.putString("stargazeDayKey", stargazeDayKey)
             ?.putBoolean("stargazeDailyNewDone", stargazeDailyNewDone)
             ?.apply()
-        persistHomeLayout()
     }
 
     private fun persistAll() {
@@ -3610,7 +3447,6 @@ class Game {
             .putString("characterName", characterName)
         for (i in 0 until ACHIEVE_CATS) ed.putInt("achieveLv$i", achieveLevels[i])
         ed.apply()
-        persistHomeLayout()
         leaderboards.save(p)
     }
 

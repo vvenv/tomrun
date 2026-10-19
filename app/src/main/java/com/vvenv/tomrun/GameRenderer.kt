@@ -590,8 +590,8 @@ class GameRenderer(private val game: Game) : GLSurfaceView.Renderer {
         val restEyeY = if (portrait) 12.5f else 9.5f
         val restEyeZ = if (portrait) 23f else 19.5f
         val restLookY = if (portrait) 3.0f else 2.6f
-        val hx = HomeYard.posX(game, HomeYard.HOUSE)
-        val hz = HomeYard.posZ(game, HomeYard.HOUSE)
+        val hx = HomeYard.posX(HomeYard.HOUSE)
+        val hz = HomeYard.posZ(HomeYard.HOUSE)
         val cx = HomeYard.catX
         val cz = HomeYard.catZ
         val focusEyeY: Float

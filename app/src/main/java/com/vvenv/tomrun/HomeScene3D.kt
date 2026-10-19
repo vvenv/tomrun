@@ -102,35 +102,29 @@ object HomeScene3D {
         drawTerrain(p, world, pal, phase)
         drawHorizon(p, world, pal, phase)
 
-        val hx = HomeYard.posX(game, HomeYard.HOUSE)
-        val hz = HomeYard.posZ(game, HomeYard.HOUSE)
-        if (game.homeElVisible(HomeYard.HOUSE)) {
-            val g = game.buildGrid(world)
-            drawPlot(p, pal, hx, hz, HomeBuild.count(g) == 0, phase)
-            prepareDisplays(game, g)
-            drawBuild(p, game, g, world, pal, roof, hx, hz, phase)
-            drawDisplays(p, g, pal, hx, hz, phase)
-            val door = doorSpot(g)
-            if (game.homeWorldsUnlockedCount() > 1) {
-                drawDoorMat(
-                    p, pal, HomeBuild.cellX(hx, door % HomeBuild.SX),
-                    HomeBuild.cellZ(hz, door / HomeBuild.SX) + HomeBuild.CELL * 0.5f, phase
-                )
-            }
+        val hx = HomeYard.posX(HomeYard.HOUSE)
+        val hz = HomeYard.posZ(HomeYard.HOUSE)
+        val g = game.buildGrid(world)
+        drawPlot(p, pal, hx, hz, HomeBuild.count(g) == 0, phase)
+        prepareDisplays(game, g)
+        drawBuild(p, game, g, world, pal, roof, hx, hz, phase)
+        drawDisplays(p, g, pal, hx, hz, phase)
+        val door = doorSpot(g)
+        if (game.homeWorldsUnlockedCount() > 1) {
+            drawDoorMat(
+                p, pal, HomeBuild.cellX(hx, door % HomeBuild.SX),
+                HomeBuild.cellZ(hz, door / HomeBuild.SX) + HomeBuild.CELL * 0.5f, phase
+            )
         }
 
         for (deco in Game.DECO_NAMES.indices) {
             if (!HomeWorldContent.decoAvailable(world, deco)) continue
             val owned = game.ownsDeco(deco)
             if (!owned && deco != ghostDeco) continue
-            val id = HomeYard.decoId(deco)
-            if (id != null && !game.homeElVisible(id)) continue
             drawDeco(p, game, world, pal, deco, phase, if (owned) 1f else 0.45f, house, hx, hz)
         }
 
-        if (game.homeElVisible(HomeYard.CAT)) {
-            drawYardCat(p, game, phase, catColor, catScarf, catHat)
-        }
+        drawYardCat(p, game, phase, catColor, catScarf, catHat)
         drawButterfly(p, pal, phase)
         drawHandMark(p, pal, phase)
         drawAmbient(p, world, pal, phase)
@@ -846,8 +840,8 @@ object HomeScene3D {
         deco: Int, phase: Float, alpha: Float, house: Int, hx: Float, hz: Float
     ) {
         val id = HomeYard.decoId(deco)
-        val x = if (id != null) HomeYard.posX(game, id) else 0f
-        val z = if (id != null) HomeYard.posZ(game, id) else 0f
+        val x = if (id != null) HomeYard.posX(id) else 0f
+        val z = if (id != null) HomeYard.posZ(id) else 0f
         val y = HomeYard.DECK_Y
         p.mode(0)
         when (deco) {
@@ -867,7 +861,7 @@ object HomeScene3D {
                 }
                 p.pop()
             }
-            1 -> drawFence(p, game, pal, z, alpha)
+            1 -> drawFence(p, game, pal, alpha)
             2 -> {  // 信箱
                 p.shadow(x, z, 0.7f, y + 0.02f)
                 p.push(x, y, z)
@@ -973,12 +967,12 @@ object HomeScene3D {
     }
 
     /** 栅栏：围着台地三面，正中让开门前那条路 */
-    private fun drawFence(p: Painter, game: Game, pal: HomePalette.Ramp, frontZ: Float, alpha: Float) {
+    private fun drawFence(p: Painter, game: Game, pal: HomePalette.Ramp, alpha: Float) {
         val f = HomePalette.fence(game.homeWorld.coerceIn(0, Game.UNIVERSE_COUNT - 1))
         val post = c(f[0], alpha)
         val rail = c(f[1], alpha)
         val y = HomeYard.DECK_Y
-        val z = HomeYard.FRONT_Z + (frontZ - HomeYard.anchorZ(HomeYard.FENCE))
+        val z = HomeYard.FRONT_Z
         fun seg(x0: Float, z0: Float, x1: Float, z1: Float) {
             val dx = x1 - x0; val dz = z1 - z0
             val len = kotlin.math.hypot(dx, dz)
@@ -1215,12 +1209,11 @@ object HomeScene3D {
     /** 填入 cx, cy, cz, hx, hy, hz（中心 + 半尺寸）；不该出现时返回 false */
     fun bounds(id: String, game: Game, house: Int, out: FloatArray): Boolean {
         val st = house.coerceIn(0, 3)
-        val hx = HomeYard.posX(game, HomeYard.HOUSE)
-        val hz = HomeYard.posZ(game, HomeYard.HOUSE)
+        val hx = HomeYard.posX(HomeYard.HOUSE)
+        val hz = HomeYard.posZ(HomeYard.HOUSE)
         val hs = LayoutConfig.cur.houseS
         when (id) {
             HomeYard.HOUSE -> {
-                if (!game.homeElVisible(HomeYard.HOUSE)) return false
                 val g = game.buildGrid()
                 val cell = HomeBuild.CELL
                 if (!HomeBuild.extents(g, ext)) {
@@ -1244,14 +1237,13 @@ object HomeScene3D {
             HomeYard.DOOR -> {
                 // 只有一个家时门后没别处可去，整栋都归「搭房子」；
                 // 有了第二个家，门才单独成为入口
-                if (!game.homeElVisible(HomeYard.HOUSE) || game.homeWorldsUnlockedCount() < 2) return false
+                if (game.homeWorldsUnlockedCount() < 2) return false
                 val door = doorSpot(game.buildGrid())
                 // 热区向前吃掉门口地垫，但不往墙上长：小木屋只有三格宽，门的热区一宽就把整面墙吞了
                 set(out, HomeBuild.cellX(hx, door % HomeBuild.SX), HomeYard.DECK_Y + 0.45f,
                     HomeBuild.cellZ(hz, door / HomeBuild.SX) + HomeBuild.CELL * 0.5f + 0.8f, 0.55f, 0.45f, 0.8f)
             }
             HomeYard.CAT -> {
-                if (!game.homeElVisible(HomeYard.CAT)) return false
                 // 猫是全场唯一会走的目标，热区比模型再放宽一圈：手指按下去的那一刻它已经挪了半步
                 val k = CatPalette.SCALE * LayoutConfig.cur.catS
                 set(out, HomeYard.catX, HomeYard.DECK_Y + HomeYard.catY + 1.1f * k, HomeYard.catZ,
@@ -1262,9 +1254,8 @@ object HomeScene3D {
                 set(out, HomeYard.butterflyX, HomeYard.butterflyY, HomeYard.butterflyZ, 0.8f, 0.8f, 0.8f)
             }
             HomeYard.FENCE -> {
-                if (!game.ownsDeco(1) || !game.homeElVisible(HomeYard.FENCE)) return false
-                val z = HomeYard.posZ(game, HomeYard.FENCE) + HomeYard.FRONT_Z - HomeYard.anchorZ(HomeYard.FENCE)
-                set(out, 0f, HomeYard.DECK_Y + 0.6f, z, HomeYard.HALF_X, 0.9f, 0.7f)
+                if (!game.ownsDeco(1)) return false
+                set(out, 0f, HomeYard.DECK_Y + 0.6f, HomeYard.FRONT_Z, HomeYard.HALF_X, 0.9f, 0.7f)
             }
             HomeYard.GARDEN -> return decoBox(game, 0, id, 1.7f, 0.9f, 1.2f, out)
             HomeYard.MAILBOX -> return decoBox(game, 2, id, 0.8f, 1.2f, 0.7f, out)
@@ -1278,8 +1269,8 @@ object HomeScene3D {
     }
 
     private fun decoBox(game: Game, deco: Int, id: String, hx: Float, hy: Float, hz: Float, out: FloatArray): Boolean {
-        if (!game.ownsDeco(deco) || !game.homeElVisible(id)) return false
-        set(out, HomeYard.posX(game, id), HomeYard.DECK_Y + hy, HomeYard.posZ(game, id), hx, hy, hz)
+        if (!game.ownsDeco(deco)) return false
+        set(out, HomeYard.posX(id), HomeYard.DECK_Y + hy, HomeYard.posZ(id), hx, hy, hz)
         return true
     }
 
